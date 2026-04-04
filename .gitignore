@@ -1,0 +1,25 @@
+# Build/Packages
+node_modules/
+__pycache__/
+*.pyc
+
+# OS Files
+.DS_Store
+
+# Data/Artifacts
+*.npy
+*.pkl
+*.h5
+*.zip
+*.pptx
+*.log
+infrastructure/*_state.json
+
+# Specialized Storage (Local Only - IGNORE FROM GIT)
+experiments/
+openclaw_state/
+thesis_project/
+
+# Secrets
+.env
+*.env
