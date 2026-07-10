@@ -1,0 +1,412 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2868
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica-Bold;\f1\fswiss\fcharset0 Helvetica;\f2\fswiss\fcharset0 Helvetica-Oblique;
+}
+{\colortbl;\red255\green255\blue255;\red24\green24\blue24;\red52\green55\blue54;\red228\green234\blue244;
+\red236\green241\blue247;\red111\green14\blue195;\red134\green86\blue3;\red77\green80\blue85;\red246\green249\blue252;
+\red109\green109\blue109;}
+{\*\expandedcolortbl;;\cssrgb\c12157\c12157\c12157;\cssrgb\c26667\c27843\c27451;\cssrgb\c91373\c93333\c96471;
+\cssrgb\c94118\c95686\c97647;\cssrgb\c51765\c18824\c80784;\cssrgb\c60000\c41176\c0;\cssrgb\c37255\c38824\c40784;\cssrgb\c97255\c98039\c99216;
+\cssrgb\c50196\c50196\c50196;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc0\levelnfcn0\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{decimal\}}{\leveltext\leveltemplateid1\'01\'00;}{\levelnumbers\'01;}\fi-360\li720\lin720 }{\listname ;}\listid1}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs48 \cf2 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Architectural Framework for the "Recursive Scientist": Advancing Automated Scientific Discovery via Simulation-Based Inference and Large Language Models\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The pursuit of automated scientific discovery has entered a transformative paradigm, shifting from the deployment of static machine learning algorithms for predictive analytics to the engineering of autonomous, agentic systems capable of orchestrating the entire research lifecycle. Current taxonomies categorize the integration of Large Language Models (LLMs) into scientific workflows across three tiers of autonomy: from Level 1 systems serving as analytical tools under direct human supervision, to Level 3 frameworks operating as independent scientists capable of generating hypotheses, executing experimental protocols, and drafting academic manuscripts. A high-profile instantiation of a Level 3 system, the "AI Scientist" architecture, demonstrated the capacity to autonomously generate machine learning research by iteratively modifying training scripts, executing computational runs, and synthesizing the outputs into formal papers.\
+However, rigorous empirical evaluations of these initial autonomous frameworks have exposed profound architectural and methodological vulnerabilities. Systems relying on unstructured code generation frequently exhibit a severe lack of deep methodological rigor, often producing underdeveloped concepts or logically flawed experimental outcomes. Investigations into unstructured LLM-driven experimental execution reveal critical robustness failures; in several controlled studies, up to forty-two percent of proposed experiments failed entirely due to syntax errors, while successful iterations yielded minimal substantive adaptations, averaging a mere eight percent addition of characters per cycle. Furthermore, such architectures exhibit a marked susceptibility to hallucinating empirical results and generating inaccurate citations, demonstrating an inability to critically assess their own outputs or grasp the intellectual lineage requisite for genuine scientific contribution.\
+To transcend the limitations of unstructured text and code generation, the paradigm must shift toward formalized, probabilistically bounded search mechanisms. The proposed "Recursive Scientist" framework represents a critical architectural maturation. By explicitly decoupling the generative creativity of the LLM from the underlying mathematical execution engine, the architecture constrains the LLM's hypotheses within a rigorously defined interface. This structural imposition forces the computational agent to interact exclusively with executable mathematical abstractions\'97such as Ordinary Differential Equations (ODEs), Stochastic Differential Equations (SDEs), and Agent-Based Models (ABMs)\'97rather than generating brittle, monolithic python scripts. When coupled with Simulation-Based Inference (SBI) powered by high-performance compilation frameworks like JAX, this architecture recasts automated scientific discovery not as a stochastic text-generation problem, but as a formal Bayesian inference task over an infinite space of executable mechanistic models.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs36 \cf2 Refinement of the Proposed Architecture\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The foundation of the "Recursive Scientist" relies on a meticulously designed directory structure and a robust discovery loop. The initially proposed architecture provides a strong conceptual baseline but requires significant technical refinement to achieve the stability and scalability necessary for autonomous, closed-loop discovery.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 Enhancing the Directory Structure and Interface Design\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The proposed separation of concerns into \cf3 \cb4 \strokec3 core/\cf2 \cb1 \strokec2 , \cf3 \cb4 \strokec3 backends/\cf2 \cb1 \strokec2 , \cf3 \cb4 \strokec3 agents/\cf2 \cb1 \strokec2 , and \cf3 \cb4 \strokec3 workspace/\cf2 \cb1 \strokec2  directories effectively modularizes the pipeline. However, to achieve true autonomy and prevent the hallucination cascades observed in earlier frameworks , the architecture must be expanded to include explicit mechanisms for knowledge retrieval, provenance tracking, and surrogate modeling.\
+The \cf3 \cb4 \strokec3 core/base_model.py\cf2 \cb1 \strokec2  implementation is the linchpin of the system. The requirement for the \cf3 \cb4 \strokec3 Scientist Agent\cf2 \cb1 \strokec2  to switch seamlessly between ODEs, SDEs, or ABMs necessitates a highly generic yet strictly typed interface. The proposed abstract \cf3 \cb4 \strokec3 BaseModel\cf2 \cb1 \strokec2  class must enforce structural identifiability.\
+\pard\pardeftab720\partightenfactor0
+\cf3 \cb5 \strokec3 Python\cb1 \
+\pard\pardeftab720\qc\partightenfactor0
+
+\fs48 \cf3 \
+\
+\
+\pard\pardeftab720\partightenfactor0
+
+\fs28 \cf6 \cb5 \strokec6 class\cf7 \strokec7  BaseModel:\cf3 \strokec3 \
+    \cf6 \strokec6 def\cf3 \strokec3  \cf7 \strokec7 simulate\cf3 \strokec3 (self, params, time_points):\
+        \cf8 \strokec8 # Must return JAX-compatible arrays (DeviceArrays) for downstream SBI\cf3 \strokec3 \
+        \cf6 \strokec6 pass\cf3 \strokec3 \
+    \cf6 \strokec6 def\cf3 \strokec3  \cf7 \strokec7 get_priors\cf3 \strokec3 (self):\
+        \cf8 \strokec8 # Must return tensorflow_probability or numpyro distribution objects\cf3 \strokec3 \
+        \cf6 \strokec6 pass\cf3 \strokec3 \
+    \cf6 \strokec6 def\cf3 \strokec3  \cf7 \strokec7 get_latex\cf3 \strokec3 (self):\
+        \cf8 \strokec8 # Returns LaTeX representation for LLM reasoning and Critic Agent analysis\cf3 \strokec3 \
+        \cf6 \strokec6 pass\cf3 \strokec3 \
+    \cf6 \strokec6 def\cf3 \strokec3  \cf7 \strokec7 get_summary_statistics\cf3 \strokec3 (self, raw_simulation_data):\
+        \cf8 \strokec8 # Crucial for dimensionality reduction in ABC-SMC\cf3 \strokec3 \
+        \cf6 \strokec6 pass\cf3 \strokec3 \
+\pard\pardeftab720\sa200\partightenfactor0
+
+\fs24 \cf2 \cb1 \strokec2 The addition of the \cf3 \cb4 \strokec3 get_summary_statistics\cf2 \cb1 \strokec2  method is mandatory for the architecture. In high-dimensional biological or physical systems, comparing raw time-series data directly within an Approximate Bayesian Computation (ABC) framework leads to the curse of dimensionality, driving acceptance rates to zero. The \cf3 \cb4 \strokec3 BaseModel\cf2 \cb1 \strokec2  must define how its raw output is compressed into informative statistics (e.g., mean expression levels, oscillation frequencies, or phase-space attractors) before being passed to the \cf3 \cb4 \strokec3 sbi_engine.py\cf2 \cb1 \strokec2 .\
+Furthermore, the \cf3 \cb4 \strokec3 agents/\cf2 \cb1 \strokec2  directory must be expanded beyond the \cf3 \cb4 \strokec3 hypothesis_generator.py\cf2 \cb1 \strokec2  and \cf3 \cb4 \strokec3 critic_agent.py\cf2 \cb1 \strokec2 . A dedicated \cf3 \cb4 \strokec3 retrieval_agent.py\cf2 \cb1 \strokec2  is required to ground the LLM's structural proposals in existing scientific literature. The integration of Retrieval-Augmented Generation (RAG) over curated academic databases ensures that proposed network topologies (e.g., a specific protein-protein interaction) are biologically plausible, thereby drastically reducing the search space of the hypothesis generator.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 Upgrading the Discovery Loop\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The proposed orchestrator loop\'97Initialize, Hypothesize, Fit, Analyze, Refine\'97must be mathematically formalized to support iterative self-improvement without human intervention.\
+During the 
+\f0\b Hypothesize
+\f1\b0  phase, the LLM must not merely output valid Python code; it must output code that conforms to the JAX functional programming paradigm. This requires the LLM to understand concepts such as \cf3 \cb4 \strokec3 vmap\cf2 \cb1 \strokec2  for vectorization and pure functions devoid of side effects, which are prerequisites for the massively parallel simulations required by the SBI Engine. Prompting strategies must leverage "Chain-of-Thought" reasoning that explicitly requests the derivation of the mathematical equations in LaTeX before translating them into JAX primitives.\
+The 
+\f0\b Fit
+\f1\b0  phase, driven by the \cf3 \cb4 \strokec3 sbi_engine.py\cf2 \cb1 \strokec2 , must be robust against model misspecification. The proposed reliance on ABC-SMC with a "Beta step-size" refinement is statistically sound, as it provides asymptotically exact posterior distributions. However, the orchestrator must automatically manage the tolerance schedule ($\\epsilon$) and the perturbation kernels within the Sequential Monte Carlo algorithm. If the tolerance is lowered too rapidly, particle degeneracy will occur, collapsing the simulation. The engine must monitor the effective sample size (ESS) of the particle population and adaptively tune the Beta step-size to maintain inference stability.\
+During the 
+\f0\b Analyze and Refine
+\f1\b0  phases, the \cf3 \cb4 \strokec3 critic_agent.py\cf2 \cb1 \strokec2  must perform multi-dimensional residual analysis. It should not simply compare the best-fit simulation against the ground truth; it must evaluate the entire posterior predictive distribution against the experimental data. If the posterior predictive checks reveal systematic biases, the Critic must diagnose whether the failure stems from parameter "sloppiness" (indicating a lack of practical identifiability) or structural deficiency (indicating missing regulatory edges or incorrect kinetic assumptions). This precise diagnostic feedback is then fed back to the Hypothesis Generator, closing the recursive loop.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs36 \cf2 Resolving Open Question 1: Model Selection Dynamics (BMS vs. AIC/BIC)\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 A fundamental challenge identified in the architectural proposal is the methodology for deciding which competitive model (e.g., model v1 versus model v2) the LLM should continue refining. The choice between simple information-theoretic criteria, such as the Akaike Information Criterion (AIC) or the Bayesian Information Criterion (BIC), and full Bayesian Model Selection (BMS) utilizing Bayes Factors, dictates the philosophical trajectory of the automated discovery process.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 The Information-Theoretic Approach: AIC and BIC\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 Information-theoretic criteria evaluate models by balancing the goodness-of-fit (maximized log-likelihood) against a penalty for model complexity, thereby mitigating the risk of overfitting.\
+The Akaike Information Criterion (AIC) is designed to select the model that minimizes the Kullback-Leibler divergence to the true, unknown data-generating mechanism. Formulated as $\\text\{AIC\} = -2 \\ln(\\hat\{L\}) + 2k$, where $\\hat\{L\}$ is the maximum likelihood and $k$ is the number of estimated parameters, AIC imposes a relatively lenient penalty for complexity. The underlying philosophical assumption of AIC is that the true reality is infinitely complex and cannot be perfectly encapsulated by any finite model in the candidate set; therefore, the primary objective is optimal out-of-sample prediction. In automated pipelines, AIC is highly effective for scenarios where underfitting is detrimental, but it frequently exhibits a liberal tendency, favoring increasingly complex, highly parameterized network topologies.\
+Conversely, the Bayesian Information Criterion (BIC), formulated as $\\text\{BIC\} = -2 \\ln(\\hat\{L\}) + k \\ln(N)$ (where $N$ represents the sample size), introduces a much stricter, sample-size-dependent penalty for complexity. BIC operates under the assumption that the true, finite-dimensional model exists within the evaluated candidate set. Its consistency property guarantees that as the sample size approaches infinity, the probability of selecting the true model converges to one, effectively driving the Type-1 error rate to zero. For an LLM-driven "Recursive Scientist," which inherently possesses the capacity to endlessly append interaction terms or kinetic parameters to an equation, BIC serves as a vital, stringent regularizer. It forces the system toward parsimony, prioritizing simpler, more interpretable mechanistic explanations over dense, over-parameterized constructs.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 The Comprehensive Approach: Bayesian Model Selection (BMS)\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 While AIC and BIC provide computationally efficient point-estimate evaluations, they fundamentally ignore the shape and volume of the posterior parameter space. Full Bayesian Model Selection evaluates models based on their marginal likelihood (the evidence), integrating the likelihood over the entire prior distribution. This approach naturally incorporates an "Occam's Razor" penalty; highly flexible, complex models spread their prior probability mass over vast, low-likelihood regions, reducing their overall marginal likelihood compared to constrained, precise models that fit the data well.\
+Within the context of the proposed ABC-SMC fitting engine, computing exact marginal likelihoods is impossible. However, the ABC-SMC framework naturally facilitates the approximation of Bayes Factors\'97the ratio of marginal likelihoods between two competing models. By utilizing a joint model space formulation, where an overarching categorical parameter dictates the model index, the sequential populations of particles in the ABC-SMC algorithm will naturally gravitate toward the model with the highest evidence. The Bayes Factor can then be approximated by the ratio of the acceptance frequencies or the proportion of particles belonging to each model in the final, tightest-tolerance population.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 A Hybrid Selection Strategy for the Recursive Scientist\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 To optimize the discovery loop, the architecture should deploy a tiered, hybrid model selection strategy rather than relying on a single metric.\
+During the intra-generational mutation phase, where the LLM rapidly prototypes dozens of structural variations (e.g., adding arbitrary inhibitory edges to a Gene Regulatory Network), the \cf3 \cb4 \strokec3 sbi_engine.py\cf2 \cb1 \strokec2  should utilize high-speed optimization (such as JAX-based L-BFGS or Adam) to find the maximum a posteriori (MAP) estimate and compute the BIC. The stringent $k \\ln(N)$ penalty of the BIC will rapidly prune overly complex, spurious topologies generated by LLM hallucinations, ensuring that only mathematically parsimonious architectures survive the initial filter.\
+For inter-generational selection\'97when deciding between highly refined, highly competitive sub-families of models (e.g., a 3-node vs. a 4-node Repressilator)\'97the system must transition to full Bayesian Model Selection. The orchestrator should execute the computationally expensive ABC-SMC algorithm across the finalist models, extracting the approximate Bayes Factors to determine the definitive victor. This hybrid approach balances the need for rapid, automated exploration of the vast combinatorial model space with the rigorous, uncertainty-aware statistical validation required for publishing actionable scientific discoveries.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs36 \cf2 Resolving Open Question 2: The Stochasticity Imperative and JAX Acceleration\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The user's architectural plan tentatively proposes the \cf3 \cb4 \strokec3 stochastic_backend.py\cf2 \cb1 \strokec2  utilizing the Gillespie algorithm as an "(Optional)" implementation. For the framework to achieve game-changing relevance in modern systems biology, physical chemistry, and multi-scale epidemiology, this designation must be upgraded to mandatory. The assumption that macroscopic, continuous, deterministic Ordinary Differential Equations (ODEs) can adequately capture the dynamics of complex biological systems is fundamentally flawed in contexts where low molecule copy numbers govern system behavior.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 The Failure of Determinism and the Necessity of Stochasticity\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 In biological systems, particularly regarding gene expression and regulatory networks, transcription does not occur as a continuous, smooth flow of mRNA production. It occurs in randomly timed, discrete bursts of intense transcriptional activity, separated by long, stochastically variable pauses. This inherent noisiness manifests as massive cell-to-cell heterogeneity, a phenomenon clearly visible in the zero-inflated, over-dispersed count data generated by single-cell RNA sequencing (scRNA-seq) and multiplexed error-robust fluorescence in situ hybridization (MERFISH).\
+Deterministic ODEs describe the mean behavior of an infinite population. When applied to single-cell or low-copy-number data, ODEs average out the critical fluctuations that drive cellular decision-making, state transitions, and phenotypic variability. In many non-linear systems, noise is not an artifact obscuring the signal; noise 
+\f2\i is
+\f1\i0  the signal that qualitatively alters the macroscopic behavior of the system. Therefore, the "Recursive Scientist" must prioritize a stochastic backend to uncover the true mechanistic origins of these phenomena.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 The Differentiable Gillespie Algorithm and JAX $\\tau$-leaping\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 Accurately modeling these discrete, random events requires the Stochastic Simulation Algorithm (SSA), commonly known as the Gillespie algorithm. The standard SSA is an exact method that explicitly simulates every single reaction event as a Markov jump process. However, the traditional SSA presents two catastrophic bottlenecks for an automated, machine-learning-driven discovery pipeline. First, simulating every reaction in a complex network is computationally devastating, rendering the millions of simulations required for ABC-SMC unfeasible. Second, and more critically, the discrete selection of reaction indices and state updates in the traditional SSA is inherently non-differentiable. This discontinuity severs the computational graph, precluding the use of modern gradient-based optimization algorithms and Hamiltonian Monte Carlo (HMC) techniques.\
+To overcome this, the \cf3 \cb4 \strokec3 stochastic_backend.py\cf2 \cb1 \strokec2  must implement continuous approximations tailored for automatic differentiation. The recent development of the Differentiable Gillespie Algorithm (DGA) modifies the traditional SSA by approximating the discrete reaction selection and state update operations with continuous, differentiable functions (e.g., using Gumbel-Softmax relaxations). This profound mathematical modification smooths out abrupt state transitions, preserving the core statistical characteristics of the original master equation while enabling seamless integration with backpropagation engines.\
+Simultaneously, for massive networks where even the DGA is too slow, the backend must leverage highly optimized, JAX-based $\\tau$-leaping algorithms. The $\\tau$-leaping approach approximates the SSA by advancing the system by a fixed time step ($\\tau$) and drawing the number of reaction firings from a Poisson or Binomial distribution, drastically reducing the number of computational steps.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 Hardware Acceleration: M4 Max and Metal Performance Shaders\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The implementation of these advanced stochastic solvers is only viable due to the integration of JAX. JAX provides a functional programming paradigm that allows for Just-In-Time (JIT) compilation via XLA (Accelerated Linear Algebra) and seamless vectorization across batch dimensions (\cf3 \cb4 \strokec3 vmap\cf2 \cb1 \strokec2 ). By utilizing \cf3 \cb4 \strokec3 vmap\cf2 \cb1 \strokec2 , the "Recursive Scientist" can execute thousands of independent Gillespie or $\\tau$-leaping trajectories simultaneously across GPU architectures, generating the vast Monte Carlo ensembles required for robust statistical analysis in milliseconds rather than hours.\
+The architectural mandate to ensure compatibility with Apple Silicon (the M4 Max) is highly strategic. Recent advancements in JAX's PJRT (Portable JAX Runtime) plugins have enabled native offloading of JAX expressions to the Metal Performance Shaders (MPS) Graph. The OpenXLA compiler lowers JAX primitives into the StableHLO format, which the plugin then parses and converts into cached MPSGraph executables, dispatching operations directly to the unified memory architecture of the M4 Max GPU.\
+While raw tensor throughput on Apple Silicon may trail high-end discrete server GPUs, the unified memory architecture permits the processing of exceptionally large batch sizes for stochastic simulations without the latency bottlenecks associated with PCIe data transfers. Furthermore, the unprecedented energy efficiency of the M4 Max allows the "Recursive Scientist" to run continuous, closed-loop ABC-SMC optimization and LLM inference locally, effectively democratizing access to massive-scale automated scientific discovery without the prohibitive cost barriers of continuous cloud compute.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs36 \cf2 Advancing the Integration and Verification Plans\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The execution of the "Recursive Scientist" framework requires a phased integration plan that meticulously validates both the mathematical engine and the LLM's reasoning capabilities before deployment on uncharacterized datasets. The proposed integration timeline requires expansion to ensure robust fail-safes are established.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 Phased Integration Strategy\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\fs24 \cf2 Phase 1: Core Framework and Differentiable Infrastructure
+\f1\b0  The initial phase focuses on establishing the \cf3 \cb4 \strokec3 base_model.py\cf2 \cb1 \strokec2  and the generic \cf3 \cb4 \strokec3 sbi_engine.py\cf2 \cb1 \strokec2 . This phase must secure the compilation pathways for the JAX backend through the PJRT Metal plugin on the M4 Max. Crucially, the implementation of both the deterministic (Diffrax-based ODEs) and the continuous-relaxed stochastic (DGA/$\\tau$-leaping) backends must be finalized here.\
+
+\f0\b Phase 2: Benchmark Recovery and Solver Stability
+\f1\b0  Before introducing the LLM, the SBI engine must prove its capacity for exact parameter recovery. Utilizing the established 2-gene toggle switch model, the system must perform ABC-SMC to recover known kinetic rates from synthetic, noise-injected datasets. This phase calibrates the sequential tolerance schedules ($\\epsilon$) and verifies that the JAX \cf3 \cb4 \strokec3 vmap\cf2 \cb1 \strokec2  implementation scales linearly across the M4 Max GPU cores.\
+
+\f0\b Phase 3: The Recursive Loop and Agentic Orchestration
+\f1\b0  The instantiation of the \cf3 \cb4 \strokec3 ScientistAgent\cf2 \cb1 \strokec2  and \cf3 \cb4 \strokec3 CriticAgent\cf2 \cb1 \strokec2  via local inference endpoints (e.g., \cf3 \cb4 \strokec3 localhost:1234/v1\cf2 \cb1 \strokec2 ) connects the LLM reasoning to the mathematical execution. This phase tests the "Chain-of-Thought" prompting strategy. The system must demonstrate its ability to parse an initial dataset, output a syntactically valid \cf3 \cb4 \strokec3 BaseModel\cf2 \cb1 \strokec2  subclass containing JAX primitives, execute the SBI fit, and critically, allow the \cf3 \cb4 \strokec3 CriticAgent\cf2 \cb1 \strokec2  to read the resulting posterior distributions and propose a structural refinement.\
+
+\f0\b Phase 4: Multi-omic GRN Discovery and Real-World Inference
+\f1\b0  The system transitions from synthetic benchmarks to the 3-node "Repressilator" and subsequently to uncharacterized biological data. The framework ingests real multiomic and single-cell expression snapshots. Here, the mandatory stochastic backend proves its worth, as the system attempts to fit bursty transcription models to zero-inflated scRNA-seq datasets, iteratively uncovering novel regulatory topologies that deterministic ODEs would obscure.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 Comprehensive Verification Protocols\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 To prevent the framework from deteriorating into generating syntactically correct but scientifically nonsensical models, a rigorous verification plan must operate continuously in the background.\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f0\b \cf2 Automated Testing Regimes:
+\f1\b0 \
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa200\partightenfactor0
+\ls1\ilvl0
+\f0\b \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	1	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Syntax and Compilation Validation:
+\f1\b0  Every LLM-generated \cf3 \cb4 \strokec3 BaseModel\cf2 \cb1 \strokec2  subclass must pass through a strict Abstract Syntax Tree (AST) parser and a dry-run JIT compilation check. If the proposed JAX primitives violate dimension matching or type constraints, the error trace is immediately returned to the LLM for correction, preventing the SBI engine from crashing.\
+\ls1\ilvl0
+\f0\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	2	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Inference Recovery Benchmarks:
+\f1\b0  The system utilizes established datasets from the DREAM (Dialogue for Reverse Engineering Assessments and Methods) challenges. By intermittently forcing the pipeline to reconstruct these highly curated in silico network challenges, developers can continuously monitor the algorithmic accuracy of the SBI engine against known ground truths, ensuring that updates to the LLM prompts or JAX compilers do not degrade inferential precision.\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f0\b \cf2 Manual Verification and Interpretability:
+\f1\b0  To ensure human oversight and foster trust in the automated discoveries, the \cf3 \cb4 \strokec3 workspace/\cf2 \cb1 \strokec2  directory must automatically generate an interactive "Model Evolution Tree." This graphical representation tracks the lineage of every hypothesized equation, plotting the reduction in the ABC-SMC distance metric across sequential LLM iterations. By visualizing how specific topological mutations (e.g., the introduction of a feedback loop) correlate with sharp improvements in the BIC or Bayes Factor, researchers can manually audit the AI's scientific intuition and extract mechanistic insights from the intermediate failures.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs36 \cf2 Game-Changing Research Domains for Iterative Discovery\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The "Recursive Scientist" is uniquely positioned to revolutionize fields where observational data is abundant, yet the underlying mechanistic rules remain obscured by high-dimensional complexity or multi-scale interactions. By replacing heuristic statistical curve-fitting with the rigorous discovery of executable mathematical models, the framework can unlock actionable insights across diverse scientific disciplines.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 1. Systems Biology and Gene Regulatory Networks (GRNs)\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The primary application of the framework lies in deciphering the intricate topologies of Gene Regulatory Networks. Current approaches heavily rely on static, machine-learning-based link predictions that infer correlations but fail to capture the dynamic, causal mechanisms of gene expression.\
+The "Recursive Scientist" approaches GRN inference by directly discovering the governing equations. For a given cellular phenotype, the LLM can propose varying topologies of directed graphs with signed edges (representing activation or repression) and translate these into systems of ODEs utilizing highly specific kinetic formulations\'97such as mass-action, Michaelis-Menten, or cooperative Hill functions. The stochastic backend allows the system to seamlessly transition to modeling transcriptional bursting, fitting parameters to the highly variable distributions of single-cell transcriptomics.\
+This capacity to autonomously iterate through complex biophysical constraints allows for the identification of novel master regulators and hidden feedback loops in disease progression, radically accelerating target identification for precision medicine and synthetic biology constructs.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 2. Climate Physics and Earth System Modeling\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 Climate modeling represents a critical frontier where traditional Deep Learning emulators are demonstrating profound limitations. While neural networks can predict weather patterns within the distribution of their training data, they frequently fail catastrophically when forced to extrapolate into novel, unprecedented greenhouse gas forcing regimes.\
+The "Recursive Scientist" avoids this fragility by engaging in equation discovery. By generating candidate systems of Partial Differential Equations (PDEs) or Stochastic Partial Differential Equations (SPDEs), the framework ensures that its predictions strictly adhere to fundamental physical conservation laws (mass, momentum, and energy). The LLM can be deployed to automatically discover subgrid parameterizations for highly complex, non-linear phenomena that cannot be resolved directly by global climate models\'97such as turbulent ocean-eddy dynamics, multi-phase cloud-aerosol interactions, and atmospheric convection processes. By fusing massive satellite datasets with the mathematical rigor of Navier-Stokes derivations, the framework can synthesize continuous, effective macroscopic field theories from chaotic, discrete observations.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 3. Epidemiological Dynamics and Public Health\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The rapid evolution of infectious disease outbreaks requires models capable of adapting to shifting parameters. Classical epidemiological models, such as the standard Susceptible-Exposed-Infectious-Recovered (SEIR) framework, often utilize fixed coefficients for transmission and recovery rates. These static assumptions fail to capture the complex, non-linear realities of viral mutation, waning immunity, and shifting human behavioral responses to public health interventions.\
+The automated discovery pipeline can ingest massive, high-resolution regional datasets encompassing daily infection incidence, hospitalization rates, and mobility tracking. The LLM can hypothesize complex, time-varying parameter adjustments or introduce novel auxiliary compartments to the SEIR differential equations. Through ABC-SMC fitting, the system evaluates the necessity of these complex structural additions against the penalty of the BIC, continuously evolving the mathematical architecture to provide highly accurate, localized predictions of epidemic trajectories and the precise efficacy of specific intervention strategies.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 4. Hierarchical Neuroscience and Systems Pharmacology\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 In cognitive neuroscience and quantitative systems pharmacology, researchers must map complex sub-cellular drug responses or neurological decision-making processes across highly variable patient populations. This necessitates the use of hierarchical mixed-effects models, which account for both fixed population-level dynamics and stochastic individual-level variations.\
+Evaluating the likelihood functions for these mixed-effects stochastic differential equations is notoriously intractable using traditional analytical methods. The "Recursive Scientist" leverages its advanced JAX-based SBI capabilities to bypass this bottleneck. The system can utilize Neural Posterior Estimation (NPE) to train surrogate models that provide amortized, rapid inference across thousands of virtual patients. Concurrently, the LLM iteratively refines the structure of the underlying pharmacokinetic/pharmacodynamic (PK/PD) equations or the drift-diffusion processes governing cognitive choices. This hybrid approach effectively establishes an automated, 
+\f2\i in silico
+\f1\i0  clinical trial environment, capable of exploring massive combinatorial spaces of drug-target interactions to predict efficacy and toxicity profiles prior to physical experimentation.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs36 \cf2 High-Impact Public Datasets and Target Model Topologies\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 To facilitate the iterative development of the "Recursive Scientist," the pipeline must be grounded in high-quality, standardized public datasets that provide the necessary resolution to evaluate competing mathematical architectures.\
+The following tables map the identified game-changing research domains to specific open-source datasets and outline the target model structures the LLM should be prompted to explore.\
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 Systems Biology and Pharmacology\
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrt\brdrnil \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1494\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3631\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2812\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5182\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\fs24 \cf2 Dataset / Repository
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Domain & Data Characteristics
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Target Model Types (LLM Proposals)
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Utility for Automated Discovery Pipeline
+\f1\b0 \cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1494\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3631\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2812\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5182\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Therapeutics Data Commons (TDC)
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Broad pharmacology; 66 AI-ready datasets spanning target identification, drug-target interactions, and clinical outcomes.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Hierarchical mixed-effects models, ODE-based PK/PD dynamics.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Provides standardized benchmarks for evaluating the LLM's ability to discover models that generalize across multi-scale therapeutic tasks.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1494\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3631\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2812\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5182\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 RegNetwork (2025 Update)
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Comprehensive catalog of regulatory interactions (TFs, miRNAs, lncRNAs, circRNAs) in human and mouse models.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Mass-action kinetics, cooperative Hill functions, Boolean network relaxations.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Serves as the structural prior for the LLM; the agent uses this topological knowledge to construct plausible ODE systems for targeted GRN discovery.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1494\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3631\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2812\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5182\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 CellXGene & HTAN (Human Tumor Atlas Network)
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 High-dimensional single-cell transcriptomics and spatial atlases; highly zero-inflated, over-dispersed count data.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Stochastic Differential Equations (SDEs), Differentiable Gillespie Algorithm (DGA) burst models.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 The ultimate testbed for the mandatory stochastic backend. Forces the system to discover the noise-driven parameters governing cellular heterogeneity.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrt\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1494\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3631\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2812\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5182\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 DREAM Challenges Archive
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Anonymized, heavily benchmarked in silico and in vivo temporal expression datasets.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Deterministic ODEs, modular kinetic frameworks.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Essential for Phase 2/3 verification. Allows developers to continuously test the SBI engine's parameter recovery accuracy against established community ground truths.\cell \lastrow\row
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs28 \cf2 Climate Physics, Engineering, and Epidemiology\
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrt\brdrnil \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1280\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3638\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2632\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5568\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\fs24 \cf2 Dataset / Repository
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Domain & Data Characteristics
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Target Model Types (LLM Proposals)
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Utility for Automated Discovery Pipeline
+\f1\b0 \cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1280\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3638\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2632\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5568\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Polymathic AI (Well Collection)
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 115-Terabyte repository of multi-scale physics simulations (fluid dynamics, astrophysics, acoustics).\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Partial Differential Equations (PDEs), Navier-Stokes approximations, symbolic regressions.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Designed explicitly for training scientific foundation models. Allows the framework to discover cross-disciplinary physical conservation laws from massive simulated tensors.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1280\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3638\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2632\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5568\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 CESM-LENS / ClimateNet
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 High-resolution global climate projections and expert-labeled atmospheric extreme events (cyclones, atmospheric rivers).\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Stochastic Partial Differential Equations (SPDEs), effective macroscopic field theories.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Enables the LLM to discover missing subgrid parameterizations and derive formal equations governing the non-linear emergence of extreme weather patterns.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1280\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3638\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2632\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5568\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 Thuringia COVID-19 Repository
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 High-resolution regional epidemiology; >400,000 patient records correlated with vaccination and policy intervention dates.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Time-varying, non-linear SEIR compartmental models, Agent-Based Models (ABMs).\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Allows the system to synthesize sociopolitical text data (policy changes) into dynamic mathematical coefficients, discovering the true mechanisms of pandemic trajectory alterations.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \trcbpat5 \tamarb640 \trbrdrl\brdrnil \trbrdrt\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clcbpat9 \clwWidth1280\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clcbpat9 \clwWidth3638\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clcbpat9 \clwWidth2632\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clcbpat9 \clwWidth5568\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf2 \clbrdrl\brdrs\brdrw20\brdrcf2 \clbrdrb\brdrs\brdrw20\brdrcf2 \clbrdrr\brdrs\brdrw20\brdrcf2 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f0\b \cf2 LLM-SRBench
+\f1\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 239 transformed and purely synthetic physical/biological equations designed to defeat LLM memorization.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Symbolic regression skeletons, generalized non-linear functions.\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Crucial for benchmarking the actual mathematical reasoning capability of the LLM against simple data-retrieval, ensuring the pipeline discovers genuine novel equations.\cell \lastrow\row
+\pard\pardeftab720\sa160\partightenfactor0
+
+\f0\b\fs36 \cf2 Synthesis and Strategic Trajectory\
+\pard\pardeftab720\sa200\partightenfactor0
+
+\f1\b0\fs24 \cf2 The maturation of the "Recursive Scientist" from a conceptual proposal into a fully functional, autonomous discovery engine requires precise architectural constraints and the integration of bleeding-edge computational mathematics. By enforcing a rigid, programmatic structure through the \cf3 \cb4 \strokec3 BaseModel\cf2 \cb1 \strokec2  abstraction, the framework neutralizes the hallucination risks that plague purely text-driven LLM agents. The seamless integration of JAX-accelerated Simulation-Based Inference elevates the evaluation of scientific hypotheses from heuristic guesswork to rigorous, mathematically sound Bayesian analysis.\
+The implementation of a hybrid model selection strategy\'97utilizing the Bayesian Information Criterion for aggressive, high-speed topological pruning, and approximate Bayes Factors via ABC-SMC for nuanced, uncertainty-aware final selection\'97guarantees that the system optimizes for explanatory power and parsimony, ruthlessly rejecting over-parameterized artifacts. Crucially, the mandate to incorporate continuous-relaxed stochastic solvers, such as the Differentiable Gillespie Algorithm, shatters the limitations of deterministic modeling, granting the framework the capacity to decipher the noisy, bursty realities of single-cell biology and quantum-scale interactions.\
+Empowered by the unprecedented local compute capabilities of Apple Silicon and deployed against the vast, high-dimensional datasets of the Therapeutics Data Commons and Polymathic AI, the "Recursive Scientist" ceases to be a mere analytical tool. It emerges as an indefatigable, highly rigorous autonomous researcher, capable of systematically unravelling the complex, multi-scale physical and biological mechanisms that have thus far eluded human intuition.\
+}

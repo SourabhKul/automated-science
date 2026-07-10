@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "seed": 7,
+  "status": "ok",
+  "test_cells": [
+    "B0018"
+  ],
+  "test_cycle_count": 132,
+  "train_cells": [
+    "B0005",
+    "B0006",
+    "B0007"
+  ],
+  "train_cycle_count": 504,
+  "train_fraction": 0.8
+}

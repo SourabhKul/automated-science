@@ -1,0 +1,70 @@
+{
+  "cell_count": 4,
+  "cell_summary": [
+    {
+      "cell_id": "B0005",
+      "cycle_count": 168,
+      "eol_reached": true,
+      "final_capacity_ah": 1.3250793286429356,
+      "final_soh": 0.7137561578838874,
+      "initial_capacity_ah": 1.8564874208181574,
+      "initial_soh": 1.0,
+      "max_cycle_index": 167,
+      "min_cycle_index": 0
+    },
+    {
+      "cell_id": "B0006",
+      "cycle_count": 168,
+      "eol_reached": true,
+      "final_capacity_ah": 1.1856752327929356,
+      "final_soh": 0.582544752296905,
+      "initial_capacity_ah": 2.035337591005598,
+      "initial_soh": 1.0,
+      "max_cycle_index": 167,
+      "min_cycle_index": 0
+    },
+    {
+      "cell_id": "B0007",
+      "cycle_count": 168,
+      "eol_reached": false,
+      "final_capacity_ah": 1.4324552720625434,
+      "final_soh": 0.7574910940083355,
+      "initial_capacity_ah": 1.89105229539079,
+      "initial_soh": 1.0,
+      "max_cycle_index": 167,
+      "min_cycle_index": 0
+    },
+    {
+      "cell_id": "B0018",
+      "cycle_count": 132,
+      "eol_reached": false,
+      "final_capacity_ah": 1.341051440640485,
+      "final_soh": 0.7229370201580871,
+      "initial_capacity_ah": 1.8550045207910817,
+      "initial_soh": 1.0,
+      "max_cycle_index": 131,
+      "min_cycle_index": 0
+    }
+  ],
+  "cells": [
+    "B0005",
+    "B0006",
+    "B0007",
+    "B0018"
+  ],
+  "normalized_csv": "data/real/battery_nasa/cycle_level.csv",
+  "notes": [
+    "Fixture rows are schema/smoke data only, not a scientific NASA battery result.",
+    "First runnable target uses one-cell SOH capacity fade; promotion should require cell-level holdout."
+  ],
+  "raw_path": [
+    "data/real/battery_nasa/raw/B0005.mat",
+    "data/real/battery_nasa/raw/B0006.mat",
+    "data/real/battery_nasa/raw/B0007.mat",
+    "data/real/battery_nasa/raw/B0018.mat"
+  ],
+  "row_count": 636,
+  "schema_version": 1,
+  "source_url": "https://data.nasa.gov/dataset/li-ion-battery-aging-datasets",
+  "target": "cycle-level discharge capacity and state of health"
+}

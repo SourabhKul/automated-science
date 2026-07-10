@@ -1,0 +1,7 @@
+cell_id,cycle_index,elapsed_time_h,ambient_temperature_c,capacity_ah,mean_discharge_current_a,mean_temperature_c,mean_voltage_v,re_ohm,rct_ohm
+BTEST,0,0.0,24.0,2.000,-1.50,25.0,3.80,0.050,0.080
+BTEST,25,3.0,24.0,1.940,-1.50,25.3,3.75,0.052,0.084
+BTEST,50,6.0,24.0,1.850,-1.50,25.6,3.70,0.055,0.091
+BTEST,75,9.0,24.0,1.740,-1.50,26.0,3.64,0.061,0.105
+BTEST,100,12.0,24.0,1.600,-1.50,26.4,3.57,0.070,0.125
+BTEST,125,15.0,24.0,1.420,-1.50,26.8,3.48,0.083,0.155

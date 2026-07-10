@@ -1,0 +1,24 @@
+\section{Introduction}
+\label{sec:intro}
+
+Mechanistic modeling is the cornerstone of the natural sciences. Whether describing planetary motion, drug pharmacokinetics, ecological interactions, or macroeconomic trends, mathematical models provide interpretable, generalizable insights into complex systems. However, deriving these equations traditionally requires years of human expertise, intuition, and trial-and-error.
+
+In the modern era of high-throughput data collection, the bottleneck in scientific discovery has shifted from data acquisition to model formulation. Scientists are inundated with massive, noisy datasets but lack the mathematical scaffolding to extract underlying physical laws. Recently, machine learning has split into two paradigms for scientific modeling, both with significant limitations:
+
+\begin{enumerate}
+    \item \textbf{Black-box models:} Deep neural networks (e.g., Physics-Informed Neural Networks or Neural ODEs) fit the data with near-zero error but offer no structural interpretability. They act as universal approximators that interpolate well but often fail catastrophically when extrapolating outside the training distribution. A neural network predicting planetary motion cannot trivially reveal Kepler's laws.
+    \item \textbf{Symbolic regression:} Classical genetic programming techniques (e.g., PySR, Eureqa) search for readable equations but suffer from mathematical combinatorial explosions. They often output physically meaningless terms that happen to minimize local residuals but violate physical dimensions, conservation laws, or asymptotic behaviors.
+\end{enumerate}
+
+To bridge this gap and study a practical automated-discovery loop, we introduce \textbf{$E^3$}. Our framework treats scientific discovery not as a simple curve-fitting exercise, but as a multi-generational, agentic search loop. A Large Language Model (LLM) agent inspects prior mathematical dynamics and residuals, proposing targeted structural modifications. In the present implementation, these proposals are continuous-time JAX functions ranging from simple harmonics and sigmoidal regime shifts to non-linear damping and saturating compartmental interactions.
+
+These proposed mathematical structures are compiled into high-performance JAX code, and their parameters are rigorously optimized against raw empirical data using a robust, weighted Bayesian framework: Approximate Bayesian Computation Sequential Monte Carlo (ABC-SMC). 
+
+The primary contributions of this paper are fourfold:
+\begin{itemize}
+    \item We introduce the \textbf{Meta-Contemplation Loop}, marrying the semantic reasoning of LLMs with the strict statistical guarantees of Bayesian ABC-SMC parameter estimation.
+    \item We evaluate $E^3$ across 25 distinct synthetic and real-world scientific domains, showing strong improvements in some domains and negligible improvements in others.
+    \item We document the limitations of the current implementation and outline future extensions to stochastic processes, stronger baselines, and resource-constrained mutators.
+\end{itemize}
+
+Crucially, rather than presenting a massive cloud supercomputer setup as a prerequisite, we focus on the core single-machine discovery mechanism and the engineering requirements needed to make its claims reproducible.

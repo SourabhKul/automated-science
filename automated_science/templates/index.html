@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Science Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="background">
+        <div class="blob blob1"></div>
+        <div class="blob blob2"></div>
+    </div>
+    
+    <div class="container">
+        <header>
+            <h1>Automated Science <span>Telemetry</span></h1>
+            <div class="run-badge">RUN <span id="current-run-id">1</span> / 5</div>
+        </header>
+
+        <div class="dashboard-grid">
+            <div class="sidebar glass-panel">
+                <h2>Domain Pipelines</h2>
+                <ul id="domain-list">
+                    <!-- Javascript populates this -->
+                </ul>
+            </div>
+
+            <div class="main-content">
+                <div class="glass-panel spotlight">
+                    <h2>Live Microscope: <span id="active-domain" style="color:var(--accent);">Waiting...</span></h2>
+                    <div class="console-wrapper">
+                        <pre id="console-output">Booting up LLM integrations...</pre>
+                    </div>
+                </div>
+
+                <div class="glass-panel chart-panel">
+                    <h2>Current Active Loss Trajectory</h2>
+                    <div class="canvas-container">
+                    <canvas id="lossChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
