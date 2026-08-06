@@ -1,0 +1,24 @@
+\section{Introduction}
+\label{sec:intro}
+
+Mechanistic modeling is a central practice in the natural sciences. Whether describing planetary motion, drug pharmacokinetics, ecological interactions, or macroeconomic trends, mathematical models can provide interpretable hypotheses about complex systems. Deriving these equations, however, often requires substantial domain expertise and iterative experimentation.
+
+In the modern era of high-throughput data collection, model formulation remains a bottleneck alongside data acquisition. Scientific datasets are often large and noisy, while the mathematical structure needed to describe them may be uncertain. Machine learning offers two common approaches for scientific modeling, each with limitations:
+
+\begin{enumerate}
+    \item \textbf{Black-box models:} Deep neural networks (e.g., Physics-Informed Neural Networks or Neural ODEs) can achieve low training error while offering limited structural interpretability. They may interpolate well but can perform poorly outside the training distribution. A neural network predicting planetary motion does not directly expose Kepler's laws.
+    \item \textbf{Symbolic regression:} Classical genetic programming techniques (e.g., PySR, Eureqa) search for readable equations, but their search spaces can grow rapidly. They can output terms that reduce local residuals while violating physical dimensions, conservation laws, or asymptotic behavior.
+\end{enumerate}
+
+To bridge this gap and study a practical automated-discovery loop, we introduce \textbf{$E^3$}. Our framework treats scientific model search as a multi-generation loop rather than a single curve-fitting step. A Large Language Model (LLM) inspects prior mathematical dynamics and residuals, proposing targeted structural modifications. In the present implementation, these proposals are continuous-time JAX functions ranging from simple harmonics and sigmoidal regime shifts to non-linear damping and saturating compartmental interactions.
+
+These proposed mathematical structures are compiled into JAX code, and their parameters are evaluated against raw empirical data using Approximate Bayesian Computation Sequential Monte Carlo (ABC-SMC).
+
+The primary contributions of this paper are fourfold:
+\begin{itemize}
+    \item We introduce the \textbf{Meta-Contemplation Loop}, combining LLM-based structural proposals with ABC-SMC parameter estimation and explicit evaluation.
+    \item We evaluate $E^3$ across 25 distinct synthetic and real-world scientific domains, with heterogeneous changes across domains and negligible improvements in others.
+    \item We document the limitations of the current implementation and outline future extensions to stochastic processes, stronger baselines, and resource-constrained mutators.
+\end{itemize}
+
+Rather than treating a large cloud-computing setup as a prerequisite, we focus on the core single-machine discovery mechanism and the engineering requirements needed to make its claims reproducible.

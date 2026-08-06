@@ -1,0 +1,17 @@
+{
+  "archive": "data/real/uci_higgs/raw/higgs.zip",
+  "official_url": "https://archive.ics.uci.edu/static/public/280/higgs.zip",
+  "dataset_page": "https://archive.ics.uci.edu/dataset/280/higgs",
+  "doi": "10.24432/C5V312",
+  "license": "CC BY 4.0",
+  "archive_bytes": 2816865137,
+  "archive_sha256": "eca8d41530af41bef24854c4eb0e3e315d41b2c837aaff67d1fde908a29dee0f",
+  "archive_headers": "data/real/uci_higgs/source_provenance/archive.headers",
+  "dataset_page_evidence": "data/real/uci_higgs/source_provenance/dataset_page.html",
+  "published_checksum": null,
+  "members": [
+    "HIGGS.csv.gz"
+  ],
+  "member_compressed_bytes": 2816864963,
+  "member_uncompressed_bytes": 2816407858
+}

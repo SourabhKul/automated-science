@@ -1,0 +1,15 @@
+{
+  "dataset_page": "https://archive.ics.uci.edu/dataset/186/wine+quality",
+  "archive_url": "https://archive.ics.uci.edu/static/public/186/wine%2Bquality.zip",
+  "doi": "10.24432/C56S3T",
+  "license": "CC BY 4.0",
+  "archive_bytes": 91353,
+  "archive_sha256": "3ed56667f4b828242bd732d7d1dd7f2861e54432239d7fa63877014cbb0304d4",
+  "archive_headers": "data/real/uci_wine_quality/source_provenance/archive.headers.txt",
+  "dataset_page_headers": "data/real/uci_wine_quality/source_provenance/dataset_page.headers.txt",
+  "members": [
+    "winequality-red.csv",
+    "winequality-white.csv",
+    "winequality.names"
+  ]
+}

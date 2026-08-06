@@ -1,0 +1,16 @@
+{
+  "archive": "data/real/uci_year_prediction_msd/raw/yearpredictionmsd.zip",
+  "official_url": "https://archive.ics.uci.edu/static/public/203/yearpredictionmsd.zip",
+  "dataset_page": "https://archive.ics.uci.edu/dataset/203/year+prediction+msd",
+  "doi": "10.24432/C50K61",
+  "license": "CC BY 4.0",
+  "archive_bytes": 211011981,
+  "archive_sha256": "06f801af323bb7798e800583acce4ea1ed2697ac12c23f4424aea0a7a3d09e11",
+  "archive_headers": "data/real/uci_year_prediction_msd/source_provenance/archive.headers",
+  "dataset_page_evidence": "data/real/uci_year_prediction_msd/source_provenance/dataset_page.html",
+  "published_checksum": null,
+  "members": [
+    "YearPredictionMSD.txt"
+  ],
+  "member_uncompressed_bytes": 448576698
+}

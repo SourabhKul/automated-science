@@ -1,0 +1,17 @@
+{
+  "archive": "data/real/uci_ujiindoorloc/raw/uci_ujiindoorloc_310.zip",
+  "official_url": "https://archive.ics.uci.edu/static/public/310/ujiindoorloc.zip",
+  "official_page": "https://archive.ics.uci.edu/dataset/310/ujiindoorloc%3B",
+  "doi": "10.24432/C5MS59",
+  "license": "CC-BY-4.0",
+  "archive_bytes": 1463759,
+  "archive_sha256": "893512b82dfd7a7c345d84195b1c8019fbca0fa0d7820ce491ce5aa45ec3782f",
+  "published_checksum": null,
+  "archive_headers_path": "data/real/uci_ujiindoorloc/source_provenance/archive_headers.txt",
+  "page_path": "data/real/uci_ujiindoorloc/source_provenance/dataset_page.html",
+  "members": [
+    "UJIndoorLoc/",
+    "UJIndoorLoc/trainingData.csv",
+    "UJIndoorLoc/validationData.csv"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "source_train_rows": 10500000,
+  "external_rows": 500000,
+  "source_train": "first 10500000 source rows",
+  "external": "final 500000 source rows",
+  "external_boundary": "UCI-documented final 500000 source rows",
+  "selection": "deterministic stratified seed-2062001 80/20 inside source train only after this gate"
+}

@@ -1,0 +1,7 @@
+{
+  "source_train": "all eligible word-label WAVs outside validation_list.txt and testing_list.txt; unavailable to models until a later fixed plan",
+  "selection": "literal validation_list.txt paths only",
+  "external": "literal testing_list.txt paths only",
+  "path_identity": "archive member path is './' plus the creator list relative path",
+  "background_noise": "inventory only; excluded from supervised candidate surface"
+}

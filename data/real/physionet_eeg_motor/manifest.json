@@ -1,0 +1,37 @@
+{
+  "dataset": "EEG Motor Movement/Imagery Dataset",
+  "publisher": "PhysioNet",
+  "version": "1.0.0",
+  "doi": "10.13026/C28G6P",
+  "license": "Open Data Commons Attribution License v1.0",
+  "source_base_url": "https://physionet.org/files/eegmmidb/1.0.0/",
+  "retrieved_at": "2026-07-23T03:00:52Z",
+  "source_gate_status": "blocked_fixed_channel_label_contract_mismatch",
+  "acquired_only": ["official source page", "RECORDS", "SHA256SUMS.txt", "S001/S001R03.edf", "S001/S001R03.edf.event"],
+  "not_acquired": ["S002..S064 R03 pairs", "other runs", "full archive"],
+  "files": {
+    "RECORDS": {
+      "url": "https://physionet.org/files/eegmmidb/1.0.0/RECORDS",
+      "published_sha256": "02d1de9c00511d3b7548a6b59bdf209c819db025518ddcc52b21fd3b2b9de4a8",
+      "local_sha256": "02d1de9c00511d3b7548a6b59bdf209c819db025518ddcc52b21fd3b2b9de4a8"
+    },
+    "SHA256SUMS.txt": {
+      "url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt",
+      "published_sha256": null,
+      "local_sha256": "7f5d16957d8ee7bce86cc7ccba0e5994f63f33781607eb3f838392d49311a208",
+      "note": "The checksum inventory has no self-entry."
+    },
+    "S001/S001R03.edf": {
+      "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R03.edf",
+      "published_sha256": "3427c8d01bff1380bc9ab9f27a35ece2af5dfadf3e291bbc05eb66e4dadbfe2e",
+      "local_sha256": "3427c8d01bff1380bc9ab9f27a35ece2af5dfadf3e291bbc05eb66e4dadbfe2e"
+    },
+    "S001/S001R03.edf.event": {
+      "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R03.edf.event",
+      "published_sha256": "ba934fef5794a278b361c657b30c7a254a5c2d10754a37f484373d779d37bf66",
+      "local_sha256": "ba934fef5794a278b361c657b30c7a254a5c2d10754a37f484373d779d37bf66"
+    }
+  },
+  "provenance": {"response_headers": "source_provenance", "documentation": "source_provenance/physionet_eegmmidb_v1p0p0.html"},
+  "blocked_contract": {"required_exact_channel_label": "C3", "observed_literal_source_label": "C3..", "observed_eeg_channels": 64, "observed_total_edf_signals": 65, "observed_sampling_hz": 160}
+}

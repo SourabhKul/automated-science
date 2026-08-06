@@ -1,0 +1,5 @@
+{
+  "source_train": "pendigits.tra",
+  "external": "pendigits.tes",
+  "writer_design": "UCI documents 30 writers in source train and other 14 writers in source test"
+}

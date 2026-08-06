@@ -1,0 +1,5 @@
+{
+  "source_train": "emnist-balanced-train IDX members",
+  "external": "emnist-balanced-test IDX members",
+  "selection": "duplicate-group-aware seed-2065001 stratified 80/20 inside source train only after this gate"
+}

@@ -1,0 +1,5 @@
+{
+  "train": "sat.trn",
+  "external": "sat.tst",
+  "source_train_selection": "deterministic stratified 80/20 only after this gate"
+}

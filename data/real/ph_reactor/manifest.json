@@ -1,0 +1,93 @@
+{
+  "baseline_results_path": "data/real/ph_reactor/baseline_results.json",
+  "claim_boundary": "Controlled pH-reactor simulator input-output benchmark only; physical units and sampling interval are not documented by the fixed record and are left unknown.",
+  "experiment_split": {
+    "samples_per_experiment": 2000,
+    "test": 1,
+    "train": 15,
+    "validation": 4
+  },
+  "files": {
+    "PH_U_Test.csv": {
+      "finite": true,
+      "local_md5": "6dd0e3f1caa6735aa84e05ba0f8e8f31",
+      "path": "data/real/ph_reactor/raw/PH_U_Test.csv",
+      "published_md5": "6dd0e3f1caa6735aa84e05ba0f8e8f31",
+      "sha256": "2bfb9de082654998a6d769f66a02d01838b86a57bf236905b37bc4b8ce890dab",
+      "shape": [
+        2000,
+        1
+      ],
+      "source_url": "https://zenodo.org/api/records/3956067/files/PH_U_Test.csv/content"
+    },
+    "PH_U_Train.csv": {
+      "finite": true,
+      "local_md5": "f400ecf9eabdd17523c7053b18762b73",
+      "path": "data/real/ph_reactor/raw/PH_U_Train.csv",
+      "published_md5": "f400ecf9eabdd17523c7053b18762b73",
+      "sha256": "28ec8db01bd39bec6d4350ffed684eda4734bad6fd83716f2233cccec99ea07e",
+      "shape": [
+        2000,
+        15
+      ],
+      "source_url": "https://zenodo.org/api/records/3956067/files/PH_U_Train.csv/content"
+    },
+    "PH_U_Val.csv": {
+      "finite": true,
+      "local_md5": "2ec5a28bd23d411741fbd84fcb7d4623",
+      "path": "data/real/ph_reactor/raw/PH_U_Val.csv",
+      "published_md5": "2ec5a28bd23d411741fbd84fcb7d4623",
+      "sha256": "9fea93b4bad260899c0d4c10915ad6f7f58368d3d472cfb14b4ce11b018dc5d3",
+      "shape": [
+        2000,
+        4
+      ],
+      "source_url": "https://zenodo.org/api/records/3956067/files/PH_U_Val.csv/content"
+    },
+    "PH_Y_Test.csv": {
+      "finite": true,
+      "local_md5": "3844b19937eabe4d16e5b2506c485eee",
+      "path": "data/real/ph_reactor/raw/PH_Y_Test.csv",
+      "published_md5": "3844b19937eabe4d16e5b2506c485eee",
+      "sha256": "0dc7b73c22abac597db3371c86a7a30d61b352eeac0998671dd256a224851b2a",
+      "shape": [
+        2000,
+        1
+      ],
+      "source_url": "https://zenodo.org/api/records/3956067/files/PH_Y_Test.csv/content"
+    },
+    "PH_Y_Train.csv": {
+      "finite": true,
+      "local_md5": "fcfd813786954a6991bf8823afaee3f5",
+      "path": "data/real/ph_reactor/raw/PH_Y_Train.csv",
+      "published_md5": "fcfd813786954a6991bf8823afaee3f5",
+      "sha256": "b86c9332ecb3bdc6a92ab1bda6223968fd3a2ba50daed3660f75caa181367859",
+      "shape": [
+        2000,
+        15
+      ],
+      "source_url": "https://zenodo.org/api/records/3956067/files/PH_Y_Train.csv/content"
+    },
+    "PH_Y_Val.csv": {
+      "finite": true,
+      "local_md5": "6c1ded12aabbbd4ba4857508fe8a7618",
+      "path": "data/real/ph_reactor/raw/PH_Y_Val.csv",
+      "published_md5": "6c1ded12aabbbd4ba4857508fe8a7618",
+      "sha256": "ebea43770bc84be5d2a581c615c05275457de10c39e784a9f6cce4d0d4b4304b",
+      "shape": [
+        2000,
+        4
+      ],
+      "source_url": "https://zenodo.org/api/records/3956067/files/PH_Y_Val.csv/content"
+    }
+  },
+  "input_units": "unknown_in_fixed_record",
+  "license": "CC-BY-4.0",
+  "output_units": "pH-reactor output; numeric unit/scaling not separately documented in fixed record",
+  "raw_root": "data/real/ph_reactor/raw",
+  "sampling_interval": "unknown_in_fixed_record",
+  "source_doi": "10.5281/zenodo.3956067",
+  "source_record": "https://zenodo.org/records/3956067",
+  "source_version": "1",
+  "status": "ok"
+}

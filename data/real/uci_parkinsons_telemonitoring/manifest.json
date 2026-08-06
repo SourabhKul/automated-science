@@ -1,0 +1,36 @@
+{
+  "dataset": "Parkinsons Telemonitoring",
+  "publisher": "UCI Machine Learning Repository",
+  "dataset_id": 189,
+  "doi": "10.24432/C5ZS3N",
+  "license": "CC-BY-4.0",
+  "source_url": "https://archive.ics.uci.edu/static/public/189/parkinsons+telemonitoring.zip",
+  "source_record_url": "https://archive.ics.uci.edu/dataset/189/parkinson",
+  "retrieved_at": "2026-07-23T07:00:53Z",
+  "archive": {
+    "filename": "uci_dataset_189.zip",
+    "bytes": 292221,
+    "published_checksum": null,
+    "local_sha256": "2f82bb0ef96fa7d8d7edf4d97b89173e07c2cca7723440a64bc38918a83345df",
+    "response_headers": "source_provenance/archive_response_headers.txt",
+    "inventory": "source_provenance/archive_inventory.txt",
+    "members": {
+      "parkinsons_updrs.data": {"bytes": 911261, "local_sha256": "f2c7d5025dec4e92e7feae367a5f7ccf58789a10ac6b54bdf15976c599f9dd39"},
+      "parkinsons_updrs.names": {"bytes": 4423, "local_sha256": "744dc2835eab5c0fc744c638e5e6b05e656788f60f8aa2aba9d48e21c629f7c2"}
+    }
+  },
+  "raw_schema": {
+    "rows": 5875,
+    "columns": 22,
+    "literal_subject_ids": [1, 42],
+    "subject_count": 42,
+    "subject_row_count_range": [101, 168],
+    "finite_values": true,
+    "duplicate_rows": 0,
+    "subjects_with_time_ties": 0,
+    "all_source_row_order_nondecreasing_test_time": false,
+    "documented_target_status": "motor_UPDRS and total_UPDRS are linearly interpolated"
+  },
+  "source_gate_status": "blocked_interpolated_target_and_raw_time_order_contract_failed",
+  "prohibited": ["total_UPDRS fitting", "subject split construction", "ABC_SMC", "LLM_discovery", "daily_campaign"]
+}

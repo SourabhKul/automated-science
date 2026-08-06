@@ -1,0 +1,17 @@
+\section{Implementation Details and Reproducibility}
+\label{sec:reproducibility}
+
+A central requirement for empirical machine learning is reproducibility. The current artifact set preserves run histories and generated models, but the original runs were not fully configured with persisted random seeds. New runs should record explicit seeds and full run configurations.
+
+\subsection{Hyperparameter Standardization}
+Across all 25 domains, we enforced the following hyperparameter limits:
+\begin{itemize}
+    \item \textbf{LLM Sampling:} The active orchestrators use temperature $\tau = 0.2$ and local OpenAI-compatible endpoints.
+    \item \textbf{ABC-SMC Configuration:} The Qwen runs use 15 generations, 150,000 initial particles, and 500 accepted particles for structural validation.
+    \item \textbf{Diffrax Solvers:} Continuous ODEs use the \texttt{Tsit5} solver with bounded \texttt{max\_steps}; explicit tolerance settings should be added to future standardized runners.
+\end{itemize}
+
+\subsection{Software Infrastructure and Open Source Availability}
+All simulations were written in JAX to use XLA (Accelerated Linear Algebra) compilation where available. The ABC-SMC engine batches over the particle dimension via \texttt{jax.vmap}.
+
+The cleaned repository includes a frozen local dependency snapshot (\texttt{requirements-freeze.txt}) and preserved generated artifacts under \texttt{artifacts/}. It does not yet include a Docker image or cross-platform lockfile. Those should be added before making strong open-science reproducibility claims.

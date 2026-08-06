@@ -1,0 +1,63 @@
+{
+  "dataset": "Gas sensor array under flow modulation",
+  "publisher": "UCI Machine Learning Repository",
+  "dataset_id": 308,
+  "doi": "10.24432/C5BG7G",
+  "license": "CC-BY-4.0",
+  "source_url": "https://archive.ics.uci.edu/static/public/308/gas+sensor+array+under+flow+modulation.zip",
+  "source_record_url": "https://archive.ics.uci.edu/dataset/308/gas%2Bsensor%2Barray%2Bunder%2Bflow%2Bmodulation",
+  "retrieved_at": "2026-07-22T19:08:25Z",
+  "archive": {
+    "filename": "uci_dataset_308.zip",
+    "bytes": 4790478,
+    "published_checksum": null,
+    "local_sha256": "7b062960dbef1a9e8aefc62bc7dbac09bdadb8cbb40793cf2b8e122da1862f90",
+    "response_headers": "source_provenance/archive_response_headers.txt",
+    "inventory": "source_provenance/archive_inventory.txt",
+    "members": {
+      "rawdata.csv.gz": {
+        "compressed_bytes": 4721757,
+        "uncompressed_bytes": 4759977,
+        "local_sha256": "ed2aae124aa733fd475af0ede16431252103e15644fb43d519bb322800c3925d",
+        "used_for_source_quality_only": true
+      },
+      "features.csv": {
+        "compressed_bytes": 68391,
+        "uncompressed_bytes": 206294,
+        "extracted": false,
+        "used": false,
+        "policy": "inventory only"
+      }
+    }
+  },
+  "raw_schema": {
+    "rows": 928,
+    "trials": 58,
+    "batches": 5,
+    "sensors_per_trial": 16,
+    "sensor_ids_exact_1_to_16": true,
+    "trace_columns": 7500,
+    "trace_columns_exact_dR_t1_to_dR_t7500": true,
+    "field_count": 7509,
+    "required_concentration_units": "vol.%",
+    "source_normalization": "(R(t)-R0)/R0",
+    "sampling_hz": 25,
+    "protocol_seconds": 300,
+    "exposure_seconds": 180,
+    "recovery_seconds": 120,
+    "missing_cells_checked": 0,
+    "nonfinite_cells_checked": 0,
+    "duplicate_sample_sensor_rows": 0,
+    "sample_metadata_consistent_across_sensors": true,
+    "source_response_range": [-0.15177, 6.09739]
+  },
+  "frozen_split": "source_batch_split.json",
+  "source_gate_status": "passed_to_adapter_plan_only",
+  "prohibited": [
+    "precomputed_feature_use",
+    "measured_response_transformation_or_fitting",
+    "ABC_SMC",
+    "LLM_discovery",
+    "daily_campaign"
+  ]
+}

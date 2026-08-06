@@ -1,0 +1,8 @@
+{
+  "source_train_rows": 463715,
+  "external_rows": 51630,
+  "source_train": "first 463715 source rows",
+  "external": "last 51630 source rows",
+  "external_boundary": "UCI-documented artist-disjoint partition",
+  "selection": "deterministic target-binned 80/20 inside source train only after this gate"
+}

@@ -1,0 +1,5 @@
+{
+  "source_train": "adult.data",
+  "external": "adult.test",
+  "selection": "duplicate-group-aware seed-2069001 stratified 80/20 inside adult.data only after a later plan"
+}

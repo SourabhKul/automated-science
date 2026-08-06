@@ -1,0 +1,8 @@
+\subsection{Physical and Chemical Sciences}
+
+The laws of physics and chemistry provide useful constrained testbeds for automated model search. The engine evaluated synthetic datasets generated from fundamental physical relationships.
+
+\paragraph{Astro (Orbital Mechanics):} We tasked the engine with proposing continuous multi-body orbital-decay equations from noisy trajectory data. The accepted proposals included inverse-square-law terms and angular-momentum conservation terms, but these outputs should not be treated as independent physical derivations.
+\paragraph{Fluid Dynamics:} Approximating Navier-Stokes turbulence is notoriously difficult. Instead of deriving the full partial differential equations, the engine approximated turbulence regimes using simplified deterministic dampening terms coupled with high-frequency harmonic oscillators.
+\paragraph{Belousov-Zhabotinsky (BZ) Reaction:} The BZ reaction is a classic example of non-equilibrium thermodynamics exhibiting a non-linear limit cycle. Starting from a naive linear reaction network, the engine recovered the non-linear limit cycle by correctly deducing the polynomial stoichiometric coefficients required to sustain oscillation.
+\paragraph{Chemical Kinetics, Thermodynamics, and Materials:} The engine returned Arrhenius-like reaction rates with exponential temperature dependencies $e^{-E_a/RT}$. For thermal systems, it returned structures consistent with Newton's law of cooling and localized thermal dissipation constants. In materials science datasets, it returned power-law stress-strain relations associated with the synthetic material benchmark.

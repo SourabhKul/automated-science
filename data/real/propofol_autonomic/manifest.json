@@ -1,0 +1,46 @@
+{
+  "dataset": "Behavioral and autonomic dynamics during propofol-induced unconsciousness",
+  "source_url": "https://physionet.org/content/propofol-anesthesia-dynamics/1.0/",
+  "doi": "10.13026/2rbc-1r03",
+  "version": "1.0",
+  "license": "PhysioNet Contributor Review Health Data License 1.5.0",
+  "downloaded_on": "2026-07-14",
+  "fixture_mode": false,
+  "archive_gate_status": "blocked_unmeasured_cointervention_for_causal_input_claim",
+  "local_provenance": {
+    "checksum_manifest": {
+      "file": "raw/SHA256SUMS.txt",
+      "sha256": "2074f46b770672544927ae6b4b33f248736b0cb55b85bb9f96707d2630fa9c57",
+      "source_url": "https://physionet.org/files/propofol-anesthesia-dynamics/1.0/SHA256SUMS.txt",
+      "response_headers": "raw/SHA256SUMS.headers.txt"
+    },
+    "license": {
+      "file": "raw/LICENSE.txt",
+      "sha256": "92905d58fa4b1d55f2ad00ece3a8282073565d228ce888a18274ca6e556e7361"
+    },
+    "readme": {
+      "file": "raw/README.txt",
+      "sha256": "46f5df58aebb7bf21b8836807c50266087f88eed9e9fbc515deafc31b86063dc"
+    },
+    "event_files": {
+      "count": 9,
+      "published_sha256_verified": true,
+      "all_finite": true,
+      "events_per_subject": 10,
+      "strictly_increasing": true
+    },
+    "outcome_endpoints": {
+      "checked": ["S1..S9_muHR.csv", "S1..S9_t_HRV.csv"],
+      "range_status": "HTTP 206 for all 18 endpoints",
+      "full_traces_retained": false,
+      "reason": "The causal source contract failed before full acquisition; incomplete S1_muHR data were removed."
+    }
+  },
+  "schema": {
+    "events": "S#_events.csv: ten stage-start timestamps per subject",
+    "candidate_outcome": "S#_muHR.csv with S#_t_HRV.csv",
+    "published_target_stages_mg_per_kg_per_hour": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 3.75, 2.5, 1.25, 0.0],
+    "cointervention_annotations": []
+  },
+  "scientific_blocker": "The source documents safety interventions such as phenylephrine but does not release subject-level timing/dose, so the propofol stage input cannot sustain the planned causal input-output claim."
+}

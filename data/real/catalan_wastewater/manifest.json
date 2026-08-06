@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "dataset": "Catalan Surveillance Network of SARS-CoV-2 in Sewage",
+  "status": "acquired_contract_failed_for_phase20",
+  "fixture_mode": false,
+  "source": {
+    "doi": "10.5281/zenodo.16266942",
+    "record_url": "https://zenodo.org/records/16266942",
+    "release_version": "1.139",
+    "file": "icra/sars-aigues-1.139.zip",
+    "download_url": "https://zenodo.org/api/records/16266942/files/icra/sars-aigues-1.139.zip/content",
+    "license": "other-open",
+    "downloaded_on": "2026-07-12"
+  },
+  "archive": {
+    "path": "data/real/catalan_wastewater/raw/sars-aigues-1.139.zip",
+    "zenodo_md5": "de14539ec8265e7d2de69e8781ea8612",
+    "verified_md5": "de14539ec8265e7d2de69e8781ea8612",
+    "sha256": "268898a3674e77034c2b638c363dd79db5ff94d05175414afee0cb6c349fc087"
+  },
+  "schema_observed": {
+    "rows": 6593,
+    "site_labels": 59,
+    "date_range": ["2020-07-06", "2025-06-16"],
+    "viral_targets": ["N1(CG/L)", "N2(CG/L)", "IP4(CG/L)", "E(CG/L)"],
+    "n1_missing_rows": 15,
+    "flow_missing_rows": 513,
+    "rain_missing_rows": 901,
+    "sites_with_complete_flow": 3,
+    "sites_with_complete_rain": 3,
+    "sites_with_method_change_notes": 34,
+    "structured_laboratory_or_method_identifier": false
+  },
+  "phase20_contract": {
+    "minimum_qualifying_sites": 8,
+    "requires_aligned_flow_and_rain": true,
+    "requires_structured_method_tracking": true,
+    "passes": false,
+    "failure_reason": "Only three sites have complete flow and rain; method-change notes are not paired with structured laboratory or assay-method identifiers."
+  }
+}

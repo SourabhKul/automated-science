@@ -1,0 +1,70 @@
+{
+  "fixture_mode": false,
+  "normalized_csv": "data/real/pkpd/warfarin_normalized.csv",
+  "observation_mask_path": "data/real_warfarin_pkpd_observation_mask.npy",
+  "provenance_json": "data/real/pkpd/provenance.json",
+  "raw_candidates": [
+    "data/real/pkpd/raw/warfarin_data.txt",
+    "data/real/pkpd/raw/warfarin_data.csv",
+    "data/real/pkpd/raw/warfarin.csv"
+  ],
+  "raw_path": "data/real/pkpd/raw/warfarin_data.txt",
+  "raw_path_source": "auto",
+  "status": "ok",
+  "subject_holdout": {
+    "schema_version": 1,
+    "seed": 0,
+    "status": "ok",
+    "test_observation_count": 87,
+    "test_subjects": [
+      "100",
+      "18",
+      "23",
+      "31",
+      "6",
+      "9"
+    ],
+    "train_fraction": 0.8,
+    "train_observation_count": 396,
+    "train_subjects": [
+      "1",
+      "11",
+      "12",
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "19",
+      "2",
+      "20",
+      "21",
+      "22",
+      "24",
+      "25",
+      "26",
+      "27",
+      "28",
+      "29",
+      "3",
+      "30",
+      "32",
+      "4",
+      "5",
+      "7",
+      "8"
+    ]
+  },
+  "subject_holdout_json": "data/real/pkpd/subject_holdout.json",
+  "target": {
+    "domain": "real_warfarin_pkpd",
+    "ground_truth_path": "data/real_warfarin_pkpd_ground_truth.npy",
+    "observation_mask_path": "data/real_warfarin_pkpd_observation_mask.npy",
+    "observed_values": 22,
+    "state_count": 2,
+    "subject_id": null,
+    "time_points": 16,
+    "time_points_path": "data/real_warfarin_pkpd_time_points.npy"
+  },
+  "warning": null
+}

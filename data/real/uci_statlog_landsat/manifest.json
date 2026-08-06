@@ -1,0 +1,18 @@
+{
+  "archive": "data/real/uci_statlog_landsat/raw/uci_statlog_landsat_146.zip",
+  "official_url": "https://archive.ics.uci.edu/static/public/146/statlog%2Blandsat%2Bsatellite.zip",
+  "official_page": "https://archive.ics.uci.edu/dataset/146/statlog%2Blandsat%2Bsatellite",
+  "doi": "10.24432/C55887",
+  "license": "CC-BY-4.0",
+  "archive_bytes": 103388,
+  "archive_sha256": "7c54e0e11c872a1b0b647da370d596dcb06746159cce4121d92ccd70b7d7ce3c",
+  "published_checksum": null,
+  "archive_headers_path": "data/real/uci_statlog_landsat/source_provenance/archive_headers.txt",
+  "page_path": "data/real/uci_statlog_landsat/source_provenance/dataset_page.html",
+  "members": [
+    "Index",
+    "sat.doc",
+    "sat.trn",
+    "sat.tst"
+  ]
+}

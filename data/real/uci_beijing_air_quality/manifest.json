@@ -1,0 +1,46 @@
+{
+  "phase": 35,
+  "status": "blocked_source_quality_complete_episode_contract_failed",
+  "source": {
+    "dataset_page": "https://archive.ics.uci.edu/dataset/501/beijing%2Bmulti%2Bsite%2Bair%2Bquality%2Bdata",
+    "archive_url": "https://archive.ics.uci.edu/static/public/501/beijing%2Bmulti%2Bsite%2Bair%2Bquality%2Bdata.zip",
+    "doi": "10.24432/C5RK5G",
+    "license": "CC-BY-4.0",
+    "outer_archive_bytes": 8192212,
+    "outer_archive_sha256": "b04da438b2f331ac0ffd45aebdfec0d20d2367feb5f6948c4b1f7ce1191e33c4",
+    "raw_package_bytes": 7959991,
+    "raw_package_sha256": "d1b9261c54132f04c374f762f1e5e512af19f95c95fd6bfa1e8ac7e927e3b0b8",
+    "published_checksum": null,
+    "outer_archive_members": 4,
+    "raw_package_members": 13,
+    "excluded_outer_members": [
+      "data.csv",
+      "test.csv"
+    ]
+  },
+  "station_members": [
+    "PRSA_Data_20130301-20170228/PRSA_Data_Aotizhongxin_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Changping_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Dingling_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Dongsi_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Guanyuan_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Gucheng_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Huairou_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Nongzhanguan_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Shunyi_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Tiantan_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Wanliu_20130301-20170228.csv",
+    "PRSA_Data_20130301-20170228/PRSA_Data_Wanshouxigong_20130301-20170228.csv"
+  ],
+  "contract_checks": {
+    "exact_twelve_station_members": true,
+    "exact_rows_per_member": true,
+    "exact_header_per_member": true,
+    "strict_duplicate_free_hourly_calendar": true,
+    "unique_finite_row_counter": true,
+    "station_field_matches_member_name": true,
+    "minimum_eight_complete_720h_episodes": false
+  },
+  "fixed_split": null,
+  "measured_PM2.5_transformation_or_fitting": false
+}

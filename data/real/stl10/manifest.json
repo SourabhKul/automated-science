@@ -1,0 +1,19 @@
+{
+  "dataset_page": "https://cs.stanford.edu/~acoates/stl10/",
+  "archive_url": "http://ai.stanford.edu/~acoates/stl10/stl10_binary.tar.gz",
+  "terms": "Preserved creator-page terms and citation; no separate license statement is asserted.",
+  "archive_bytes": 2640397119,
+  "archive_sha256": "f31fd99273a1acb8609c8db427cebb1de3f71de77758cdc0e22956e1289b9866",
+  "archive_headers": "data/real/stl10/source_provenance/archive.headers",
+  "members": [
+    "stl10_binary",
+    "stl10_binary/test_X.bin",
+    "stl10_binary/test_y.bin",
+    "stl10_binary/train_X.bin",
+    "stl10_binary/train_y.bin",
+    "stl10_binary/unlabeled_X.bin",
+    "stl10_binary/class_names.txt",
+    "stl10_binary/fold_indices.txt"
+  ],
+  "excluded_member": "stl10_binary/unlabeled_X.bin (inventory only; no content read)"
+}

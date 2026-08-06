@@ -1,0 +1,5 @@
+{
+  "source_train": "winequality-red.csv",
+  "external": "winequality-white.csv",
+  "selection": "No selection split is constructed at the source gate; a later fixed plan must prescribe a train-only split inside winequality-red.csv."
+}

@@ -1,0 +1,440 @@
+{
+  "phase": 38,
+  "status": "passed_official_source_gate_only",
+  "source": {
+    "dataset_page": "https://archive.ics.uci.edu/dataset/551/gas%2Bturbine%2Bco%2Band%2Bnox%2Bemission%2Bdata%2Bset",
+    "archive_url": "https://archive.ics.uci.edu/static/public/551/gas%2Bturbine%2Bco%2Band%2Bnox%2Bemission%2Bdata%2Bset.zip",
+    "doi": "10.24432/C5WC95",
+    "license": "CC-BY-4.0",
+    "archive_bytes": 1090294,
+    "archive_sha256": "55fdb1acc25f05bd9c77aac285c424e9154ffb0dbf1bbadb56b69a1142231295",
+    "published_checksum": null,
+    "response_headers_sha256": "f89d0ca52ac32164d0521dd4ce088ce6dbb224834dd55d19b2bbbf48c72b75f0",
+    "page_sha256": "7e46ef412f958abcbdaf89597c5a92d40cbd1dc3da2c3c613a0e03d87154bbf0",
+    "members": [
+      "gt_2011.csv",
+      "gt_2012.csv",
+      "gt_2013.csv",
+      "gt_2014.csv",
+      "gt_2015.csv"
+    ]
+  },
+  "checks": {
+    "official_member_inventory": true,
+    "total_rows": true,
+    "nonempty_annual_members": true,
+    "fixed_headers": true,
+    "finite_numeric_schema": true,
+    "frozen_year_split": true
+  },
+  "annual_members": {
+    "gt_2011.csv": {
+      "rows": 7411,
+      "headers": [
+        "AT",
+        "AP",
+        "AH",
+        "AFDP",
+        "GTEP",
+        "TIT",
+        "TAT",
+        "TEY",
+        "CDP",
+        "CO",
+        "NOX"
+      ],
+      "malformed_rows": 0,
+      "nonfinite_cells": 0,
+      "duplicate_complete_rows": 0,
+      "unique_complete_rows": 7411,
+      "observed_range_ledger": {
+        "AT": {
+          "min": 2.1163,
+          "max": 34.532
+        },
+        "AP": {
+          "min": 995.79,
+          "max": 1034.2
+        },
+        "AH": {
+          "min": 34.493,
+          "max": 100.17
+        },
+        "AFDP": {
+          "min": 2.7584,
+          "max": 7.3189
+        },
+        "GTEP": {
+          "min": 17.878,
+          "max": 36.003
+        },
+        "TIT": {
+          "min": 1000.8,
+          "max": 1100.6
+        },
+        "TAT": {
+          "min": 512.45,
+          "max": 550.61
+        },
+        "TEY": {
+          "min": 100.17,
+          "max": 170.0
+        },
+        "CDP": {
+          "min": 9.9044,
+          "max": 14.851
+        },
+        "CO": {
+          "min": 0.00038751,
+          "max": 43.622
+        },
+        "NOX": {
+          "min": 27.765,
+          "max": 119.32
+        }
+      }
+    },
+    "gt_2012.csv": {
+      "rows": 7628,
+      "headers": [
+        "AT",
+        "AP",
+        "AH",
+        "AFDP",
+        "GTEP",
+        "TIT",
+        "TAT",
+        "TEY",
+        "CDP",
+        "CO",
+        "NOX"
+      ],
+      "malformed_rows": 0,
+      "nonfinite_cells": 0,
+      "duplicate_complete_rows": 0,
+      "unique_complete_rows": 7628,
+      "observed_range_ledger": {
+        "AT": {
+          "min": 0.5223,
+          "max": 34.929
+        },
+        "AP": {
+          "min": 985.85,
+          "max": 1031.8
+        },
+        "AH": {
+          "min": 30.344,
+          "max": 100.2
+        },
+        "AFDP": {
+          "min": 2.0874,
+          "max": 7.6106
+        },
+        "GTEP": {
+          "min": 18.1,
+          "max": 37.402
+        },
+        "TIT": {
+          "min": 1024.6,
+          "max": 1100.8
+        },
+        "TAT": {
+          "min": 513.06,
+          "max": 550.53
+        },
+        "TEY": {
+          "min": 101.15,
+          "max": 174.61
+        },
+        "CDP": {
+          "min": 9.9286,
+          "max": 15.081
+        },
+        "CO": {
+          "min": 0.007505,
+          "max": 44.103
+        },
+        "NOX": {
+          "min": 41.777,
+          "max": 119.89
+        }
+      }
+    },
+    "gt_2013.csv": {
+      "rows": 7152,
+      "headers": [
+        "AT",
+        "AP",
+        "AH",
+        "AFDP",
+        "GTEP",
+        "TIT",
+        "TAT",
+        "TEY",
+        "CDP",
+        "CO",
+        "NOX"
+      ],
+      "malformed_rows": 0,
+      "nonfinite_cells": 0,
+      "duplicate_complete_rows": 0,
+      "unique_complete_rows": 7152,
+      "observed_range_ledger": {
+        "AT": {
+          "min": 0.28985,
+          "max": 33.873
+        },
+        "AP": {
+          "min": 989.38,
+          "max": 1029.7
+        },
+        "AH": {
+          "min": 27.504,
+          "max": 100.19
+        },
+        "AFDP": {
+          "min": 2.3295,
+          "max": 6.9779
+        },
+        "GTEP": {
+          "min": 18.104,
+          "max": 36.95
+        },
+        "TIT": {
+          "min": 1022.1,
+          "max": 1100.5
+        },
+        "TAT": {
+          "min": 518.32,
+          "max": 550.53
+        },
+        "TEY": {
+          "min": 101.48,
+          "max": 172.96
+        },
+        "CDP": {
+          "min": 9.8754,
+          "max": 14.867
+        },
+        "CO": {
+          "min": 0.0050334,
+          "max": 35.045
+        },
+        "NOX": {
+          "min": 43.198,
+          "max": 119.91
+        }
+      }
+    },
+    "gt_2014.csv": {
+      "rows": 7158,
+      "headers": [
+        "AT",
+        "AP",
+        "AH",
+        "AFDP",
+        "GTEP",
+        "TIT",
+        "TAT",
+        "TEY",
+        "CDP",
+        "CO",
+        "NOX"
+      ],
+      "malformed_rows": 0,
+      "nonfinite_cells": 0,
+      "duplicate_complete_rows": 7,
+      "unique_complete_rows": 7151,
+      "observed_range_ledger": {
+        "AT": {
+          "min": 1.1444,
+          "max": 34.189
+        },
+        "AP": {
+          "min": 994.84,
+          "max": 1031.4
+        },
+        "AH": {
+          "min": 25.987,
+          "max": 100.1
+        },
+        "AFDP": {
+          "min": 2.1517,
+          "max": 6.7386
+        },
+        "GTEP": {
+          "min": 17.939,
+          "max": 36.216
+        },
+        "TIT": {
+          "min": 1002.9,
+          "max": 1100.9
+        },
+        "TAT": {
+          "min": 511.04,
+          "max": 550.6
+        },
+        "TEY": {
+          "min": 100.03,
+          "max": 168.63
+        },
+        "CDP": {
+          "min": 9.8518,
+          "max": 14.617
+        },
+        "CO": {
+          "min": 0.0016398,
+          "max": 34.82
+        },
+        "NOX": {
+          "min": 27.183,
+          "max": 118.47
+        }
+      }
+    },
+    "gt_2015.csv": {
+      "rows": 7384,
+      "headers": [
+        "AT",
+        "AP",
+        "AH",
+        "AFDP",
+        "GTEP",
+        "TIT",
+        "TAT",
+        "TEY",
+        "CDP",
+        "CO",
+        "NOX"
+      ],
+      "malformed_rows": 0,
+      "nonfinite_cells": 0,
+      "duplicate_complete_rows": 0,
+      "unique_complete_rows": 7384,
+      "observed_range_ledger": {
+        "AT": {
+          "min": -6.2348,
+          "max": 37.103
+        },
+        "AP": {
+          "min": 989.4,
+          "max": 1036.6
+        },
+        "AH": {
+          "min": 24.085,
+          "max": 96.666
+        },
+        "AFDP": {
+          "min": 2.3688,
+          "max": 5.2395
+        },
+        "GTEP": {
+          "min": 17.698,
+          "max": 40.716
+        },
+        "TIT": {
+          "min": 1016.0,
+          "max": 1100.4
+        },
+        "TAT": {
+          "min": 516.04,
+          "max": 550.59
+        },
+        "TEY": {
+          "min": 100.02,
+          "max": 179.5
+        },
+        "CDP": {
+          "min": 9.8708,
+          "max": 15.159
+        },
+        "CO": {
+          "min": 0.2128,
+          "max": 41.097
+        },
+        "NOX": {
+          "min": 25.905,
+          "max": 119.68
+        }
+      }
+    }
+  },
+  "source_units_and_documented_ranges": {
+    "AT": {
+      "unit": "C",
+      "min": -6.23,
+      "max": 37.1
+    },
+    "AP": {
+      "unit": "mbar",
+      "min": 985.85,
+      "max": 1036.56
+    },
+    "AH": {
+      "unit": "%",
+      "min": 24.08,
+      "max": 100.2
+    },
+    "AFDP": {
+      "unit": "mbar",
+      "min": 2.09,
+      "max": 7.61
+    },
+    "GTEP": {
+      "unit": "mbar",
+      "min": 17.7,
+      "max": 40.72
+    },
+    "TIT": {
+      "unit": "C",
+      "min": 1000.85,
+      "max": 1100.89
+    },
+    "TAT": {
+      "unit": "C",
+      "min": 511.04,
+      "max": 550.61
+    },
+    "TEY": {
+      "unit": "MWH",
+      "min": 100.02,
+      "max": 179.5
+    },
+    "CDP": {
+      "unit": "mbar",
+      "min": 9.85,
+      "max": 15.16
+    },
+    "CO": {
+      "unit": "mg/m3",
+      "min": 0.0,
+      "max": 44.1
+    },
+    "NOX": {
+      "unit": "mg/m3",
+      "min": 25.9,
+      "max": 119.91
+    }
+  },
+  "source_limitations": {
+    "aggregation": "hourly averages or sums documented by UCI",
+    "row_timestamps": "not provided in source rows",
+    "source_order": "UCI documents rows as chronologically sorted",
+    "claim": "annual member holdout only; no short-horizon forecast or causal inference"
+  },
+  "source_year_split": {
+    "train_years": [
+      2011,
+      2012,
+      2013
+    ],
+    "selection_year": 2014,
+    "external_year": 2015
+  },
+  "isolation": {
+    "measurement_transformation_or_fitting": false,
+    "abc_smc_calls": 0,
+    "llm_calls": 0
+  },
+  "next_gate": "Write a fixed source-normalized adapter, train-only baseline, and output-isolated control plan."
+}

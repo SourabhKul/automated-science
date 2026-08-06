@@ -1,0 +1,39 @@
+{
+  "dataset": "NASA C-MAPSS Turbofan Engine Degradation Simulation",
+  "subset": "FD002",
+  "source": {
+    "catalog": "https://data.nasa.gov/dataset/cmapss-jet-engine-simulated-data",
+    "repository": "https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/",
+    "direct_archive_url": "https://phm-datasets.s3.amazonaws.com/NASA/6.+Turbofan+Engine+Degradation+Simulation+Data+Set.zip",
+    "archive_response_headers": "raw/official_response_headers.txt",
+    "outer_archive": "raw/C-MAPSS_Turbofan_Engine_Degradation_Simulation.zip",
+    "outer_archive_bytes": 12429152,
+    "outer_archive_md5": "a83e8f128c59fc5614a4ca2e42a2e30c",
+    "outer_archive_sha256": "c9c5dec12a945a82e8bb4446589d7fb3cc057b5e5d81fa1a12e25ee9912ad3b2",
+    "inner_archive": "raw/CMAPSSData.zip",
+    "inner_archive_sha256": "74bef434a34db25c7bf72e668ea4cd52afe5f2cf8e44367c55a82bfd91a5a34f",
+    "license_or_terms": "not specified in bundled README; NASA catalog terms were not inferred"
+  },
+  "schema": {
+    "source_members": ["readme.txt", "train_FD002.txt", "test_FD002.txt", "RUL_FD002.txt"],
+    "row_columns": 26,
+    "row_layout": ["unit_id", "cycle", "setting_1", "setting_2", "setting_3", "sensor_1_through_sensor_21"],
+    "measurement_units": "not documented in bundled README; retained as unknown simulator measurements",
+    "source_train_units": 260,
+    "official_test_units": 259,
+    "source_train_rows": 53759,
+    "official_test_rows": 33991,
+    "all_raw_values_finite": true,
+    "all_unit_cycles_strict_one_based": true,
+    "constant_or_near_constant_train_settings_or_sensors": []
+  },
+  "split": {
+    "source_train_split": "source_train_split.json",
+    "seed": 20260715,
+    "counts": {"train": 180, "selection": 40, "holdout": 40},
+    "official_test_role": "untouched external endpoint fleet; its RUL labels are forbidden for selection"
+  },
+  "claim_boundary": "Simulator-based unit-disjoint conditional RUL forecasting only; not physical turbofan mechanism discovery, maintenance advice, causal operating-setting evidence, or deployment.",
+  "gate_status": "passed_source_provenance_schema_quality_and_selection_baseline_only",
+  "prohibited": ["official-test RUL selection or scoring before synthetic controls", "C-MAPSS ABC-SMC", "C-MAPSS LLM discovery", "C-MAPSS daily campaign"]
+}

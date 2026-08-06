@@ -1,0 +1,37 @@
+{
+  "status": "source_contract_failed",
+  "source": {
+    "doi": "10.4121/12960104.v1",
+    "record": "https://data.4tu.nl/articles/dataset/Cascaded_Tanks_Benchmark_Combining_Soft_and_Hard_Nonlinearities/12960104",
+    "version": "1",
+    "license": "CC-BY-SA-4.0",
+    "archive_url": "https://ndownloader.figshare.com/files/24686327",
+    "archive_name": "CascadedTanksFiles.zip",
+    "published_md5": "f832776ed1efdca4572338f467b7baec",
+    "local_md5": "f832776ed1efdca4572338f467b7baec",
+    "local_sha256": "eb0fa05851e8a7136846c2e3b61fbef87def78d0852c86ab91b02ac5db541b51",
+    "downloaded_bytes": 7520592
+  },
+  "archive_members": [
+    "CascadedTanksFiles/dataBenchmark.csv",
+    "CascadedTanksFiles/dataBenchmark.mat",
+    "CascadedTanksFiles/TanksBenchmark.pdf",
+    "CascadedTanksFiles/PicsVideo/CascadedTanksOverflow.MOV",
+    "CascadedTanksFiles/PicsVideo/CascadedTanksSetup1.JPG",
+    "CascadedTanksFiles/PicsVideo/CascadedTanksSetup2.JPG"
+  ],
+  "csv_schema": {
+    "rows": 1024,
+    "columns": ["uEst", "uVal", "yEst", "yVal", "Ts"],
+    "sample_interval": 4.0,
+    "estimation_input": "uEst",
+    "estimation_output": "yEst",
+    "validation_input": "uVal",
+    "validation_output": "yVal",
+    "independent_estimation_records": 1,
+    "independent_validation_records": 1,
+    "test_record": "not separately present in the fixed CSV archive"
+  },
+  "blocker": "The fixed archive contains one estimation and one validation trajectory only, with no native repeated test records or documented multi-record external protocol. It fails the Phase 23 external-repeat contract.",
+  "prohibited": ["cascaded-tanks adapter", "cascaded-tanks inference", "cascaded-tanks ABC-SMC", "cascaded-tanks LLM discovery", "cascaded-tanks daily campaign"]
+}

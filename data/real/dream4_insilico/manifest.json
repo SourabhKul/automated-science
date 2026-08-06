@@ -1,0 +1,16 @@
+{
+  "archive_path": "data/real/dream4_insilico/raw/DREAM4_0.99.17.tar.gz",
+  "archive_sha256": "b86ecd617efa65947ecb40a374d95cbee69b69ec7a8880c338375b9d4508443d",
+  "baselines_path": "data/real/dream4_insilico/baseline_results.json",
+  "claim_boundary": "DREAM4 in-silico recovery-dynamics benchmark only; no unseen-intervention or biological claim.",
+  "gold_edge_policy": "Evaluation-only. The loader can omit gold edges; fitting never receives them.",
+  "metric_time_start": 550.0,
+  "network_count": 5,
+  "recovery_start_time": 500.0,
+  "source_root": "data/real/dream4_insilico/extracted/source_tables/lightlyProcessedDownloadedData",
+  "source_url": "https://bioconductor.org/packages/2.12/data/experiment/src/contrib/DREAM4_0.99.17.tar.gz",
+  "splits_path": "data/real/dream4_insilico/recovery_splits.json",
+  "status": "ok",
+  "time_points_per_trajectory": 21,
+  "trajectory_count_per_network": 5
+}

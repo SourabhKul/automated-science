@@ -1,0 +1,41 @@
+{
+  "baseline_results_path": "data/real/parallel_wiener_hammerstein/baseline_results.json",
+  "claim_boundary": "Controlled physical electronic-circuit identification benchmark only; u/y physical units are not specified by the CSV README.",
+  "license": "CC-BY-SA-4.0",
+  "raw_archive": {
+    "local_md5": "5836dc66b0296b43ba4b8613a032408b",
+    "members": [
+      "ParWHFiles/",
+      "ParWHFiles/ParallelWH.png",
+      "ParWHFiles/ParWHData.mat",
+      "ParWHFiles/ParWHData_Estimation_Level1.csv",
+      "ParWHFiles/ParWHData_Estimation_Level2.csv",
+      "ParWHFiles/ParWHData_Estimation_Level3.csv",
+      "ParWHFiles/ParWHData_Estimation_Level4.csv",
+      "ParWHFiles/ParWHData_Estimation_Level5.csv",
+      "ParWHFiles/ParWHData_ValidationArrow.csv",
+      "ParWHFiles/ParWHData_Validation_Level1.csv",
+      "ParWHFiles/ParWHData_Validation_Level2.csv",
+      "ParWHFiles/ParWHData_Validation_Level3.csv",
+      "ParWHFiles/ParWHData_Validation_Level4.csv",
+      "ParWHFiles/ParWHData_Validation_Level5.csv",
+      "ParWHFiles/README_CSV.txt",
+      "ParWHFiles/README_MAT.m"
+    ],
+    "path": "data/real/parallel_wiener_hammerstein/raw/ParWHFiles.zip",
+    "published_md5": "5836dc66b0296b43ba4b8613a032408b",
+    "sha256": "9d01efe9264a921f83b326ee72fdd1ba0e87063cb67265b750efb8e04a4b385d"
+  },
+  "record_split": {
+    "official_validation": 6,
+    "policy": "16/4 deterministic realization split per estimation amplitude; official validation is untouched for external scoring",
+    "selection": 20,
+    "train": 80
+  },
+  "sample_rate_hz": 78125,
+  "samples_per_record": 32768,
+  "source_doi": "10.4121/12950081",
+  "source_record": "https://data.4tu.nl/articles/dataset/Parallel_Wiener-Hammerstein_Time_Series/12950081",
+  "source_version": "1",
+  "status": "ok"
+}

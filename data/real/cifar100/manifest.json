@@ -1,0 +1,15 @@
+{
+  "archive": "data/real/cifar100/raw/cifar-100-python.tar.gz",
+  "official_url": "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz",
+  "archive_bytes": 169001437,
+  "archive_sha256": "85cd44d02ba6437773c5bbd22e183051d648de2e7d6b014e1ef29b855ba677a7",
+  "published_checksum": null,
+  "archive_headers": "data/real/cifar100/source_provenance/archive.headers",
+  "members": [
+    "cifar-100-python",
+    "cifar-100-python/file.txt~",
+    "cifar-100-python/train",
+    "cifar-100-python/test",
+    "cifar-100-python/meta"
+  ]
+}

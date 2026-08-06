@@ -1,0 +1,5 @@
+{
+  "source_train": "stl10_binary/train_X.bin and train_y.bin",
+  "external": "stl10_binary/test_X.bin and test_y.bin",
+  "selection": "duplicate-group-aware seed-2067001 stratified 80/20 inside source train only after this gate"
+}

@@ -1,27 +1,57 @@
-# Build/Packages
-node_modules/
+# Local environments
+.venv
 .venvs/
-__pycache__/
-*.pyc
+.env
+*.env
 
-# OS Files
+# Python/runtime cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .DS_Store
 
-# Data/Artifacts
-*.npy
+# Generated data and binary artifacts
+data/*.npy
+data/sensitivity_results.json
 *.pkl
 *.h5
 *.zip
 *.pptx
-*.log
-*.out
-infrastructure/*_state.json
 
-# Specialized Storage (Local Only - IGNORE FROM GIT)
-experiments/
-openclaw_state/
-thesis_project/
+# Downloaded public datasets and local provenance are reproducible inputs,
+# not source files. Keep manifests and small schema fixtures reviewable.
+data/real/**/raw/
+data/real/**/source_provenance/
+data/real/**/extracted/
+data/real/**/downloads/
+data/real/**/*.mat
+data/real/**/*.npz
+data/real/**/*.npy
+data/real/**/*.h5
+data/real/**/*.tar.gz
+data/real/**/*.parquet
 
-# Secrets
-.env
-*.env
+# Runtime outputs
+models/
+logs/
+*_run.log
+*_run_history.csv
+batch_execution_circuit.out
+
+# Preserved research artifacts live here locally but are not source.
+artifacts/*
+!artifacts/README.md
+
+# Compatibility symlink to artifacts/runs/qwen36_27b.
+scheduler_logs
+
+# Generated paper outputs
+paper/main.pdf
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.toc

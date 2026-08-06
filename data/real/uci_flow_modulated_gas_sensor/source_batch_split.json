@@ -1,0 +1,577 @@
+{
+  "policy": "Sort literal source batch labels; first three train, fourth selection, fifth external. Uses batch/sample metadata only and was locked before any fit.",
+  "ordered_source_batches": [
+    "day-1-morning",
+    "day-2-afternoon",
+    "day-2-morning",
+    "day-3-morning",
+    "day-4-afternoon"
+  ],
+  "roles": {
+    "train": [
+      {
+        "batch": "day-1-morning",
+        "samples": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "sample_count": 19
+      },
+      {
+        "batch": "day-2-afternoon",
+        "samples": [
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39
+        ],
+        "sample_count": 10
+      },
+      {
+        "batch": "day-2-morning",
+        "samples": [
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29
+        ],
+        "sample_count": 10
+      }
+    ],
+    "selection": [
+      {
+        "batch": "day-3-morning",
+        "samples": [
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50
+        ],
+        "sample_count": 11
+      }
+    ],
+    "external": [
+      {
+        "batch": "day-4-afternoon",
+        "samples": [
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58
+        ],
+        "sample_count": 8
+      }
+    ]
+  },
+  "trial_counts": {
+    "train": 39,
+    "selection": 11,
+    "external": 8
+  },
+  "sample_metadata_ledger": {
+    "1": {
+      "exp": 100,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "2": {
+      "exp": 101,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "ethanol",
+      "lab": "eth-0.1"
+    },
+    "3": {
+      "exp": 102,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "ethanol",
+      "lab": "eth-1"
+    },
+    "4": {
+      "exp": 103,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.3"
+    },
+    "5": {
+      "exp": 104,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.3-eth-0.1"
+    },
+    "6": {
+      "exp": 105,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "ethanol",
+      "lab": "eth-0.3"
+    },
+    "7": {
+      "exp": 106,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 1.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-1"
+    },
+    "8": {
+      "exp": 107,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.3"
+    },
+    "9": {
+      "exp": 108,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.1"
+    },
+    "10": {
+      "exp": 112,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.3"
+    },
+    "11": {
+      "exp": 113,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "12": {
+      "exp": 115,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "ethanol",
+      "lab": "eth-0.1"
+    },
+    "13": {
+      "exp": 117,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.1"
+    },
+    "14": {
+      "exp": 118,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "ethanol",
+      "lab": "eth-0.3"
+    },
+    "15": {
+      "exp": 120,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.3-eth-0.1"
+    },
+    "16": {
+      "exp": 121,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.3"
+    },
+    "17": {
+      "exp": 123,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.1"
+    },
+    "18": {
+      "exp": 124,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "ethanol",
+      "lab": "eth-1"
+    },
+    "19": {
+      "exp": 125,
+      "batch": "day-1-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "20": {
+      "exp": 126,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "21": {
+      "exp": 127,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.3"
+    },
+    "22": {
+      "exp": 128,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.1"
+    },
+    "23": {
+      "exp": 129,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "ethanol",
+      "lab": "eth-0.3"
+    },
+    "24": {
+      "exp": 131,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "ethanol",
+      "lab": "eth-0.1"
+    },
+    "25": {
+      "exp": 132,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.3-eth-0.1"
+    },
+    "26": {
+      "exp": 133,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.1"
+    },
+    "27": {
+      "exp": 134,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "ethanol",
+      "lab": "eth-1"
+    },
+    "28": {
+      "exp": 137,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 1.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-1"
+    },
+    "29": {
+      "exp": 138,
+      "batch": "day-2-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "30": {
+      "exp": 139,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "31": {
+      "exp": 140,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "32": {
+      "exp": 141,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "ethanol",
+      "lab": "eth-0.1"
+    },
+    "33": {
+      "exp": 142,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.3"
+    },
+    "34": {
+      "exp": 144,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.1"
+    },
+    "35": {
+      "exp": 145,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.3"
+    },
+    "36": {
+      "exp": 146,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.3-eth-0.1"
+    },
+    "37": {
+      "exp": 147,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-1"
+    },
+    "38": {
+      "exp": 148,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.1"
+    },
+    "39": {
+      "exp": 149,
+      "batch": "day-2-afternoon",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "ethanol",
+      "lab": "eth-1"
+    },
+    "40": {
+      "exp": 153,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "air",
+      "lab": "air"
+    },
+    "41": {
+      "exp": 154,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.1"
+    },
+    "42": {
+      "exp": 155,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "ethanol",
+      "lab": "eth-0.3"
+    },
+    "43": {
+      "exp": 156,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.3-eth-0.1"
+    },
+    "44": {
+      "exp": 157,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.3"
+    },
+    "45": {
+      "exp": 158,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "ethanol",
+      "lab": "eth-0.1"
+    },
+    "46": {
+      "exp": 159,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.1"
+    },
+    "47": {
+      "exp": 160,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.3"
+    },
+    "48": {
+      "exp": 162,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 1.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-1-eth-0.1"
+    },
+    "49": {
+      "exp": 163,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "ethanol",
+      "lab": "eth-1"
+    },
+    "50": {
+      "exp": 164,
+      "batch": "day-3-morning",
+      "ace_conc_vol_percent": 1.0,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-1"
+    },
+    "51": {
+      "exp": 167,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 0.3,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.3"
+    },
+    "52": {
+      "exp": 168,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 0.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "ethanol",
+      "lab": "eth-0.1"
+    },
+    "53": {
+      "exp": 169,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.3,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-0.3"
+    },
+    "54": {
+      "exp": 171,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 0.0,
+      "gas": "acetone",
+      "lab": "ace-0.1"
+    },
+    "55": {
+      "exp": 172,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 1.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-1-eth-0.1"
+    },
+    "56": {
+      "exp": 178,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 1.0,
+      "eth_conc_vol_percent": 0.1,
+      "gas": "mixture",
+      "lab": "ace-1-eth-0.1"
+    },
+    "57": {
+      "exp": 179,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-1"
+    },
+    "58": {
+      "exp": 181,
+      "batch": "day-4-afternoon",
+      "ace_conc_vol_percent": 0.1,
+      "eth_conc_vol_percent": 1.0,
+      "gas": "mixture",
+      "lab": "ace-0.1-eth-1"
+    }
+  }
+}

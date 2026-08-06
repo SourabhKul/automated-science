@@ -1,0 +1,5 @@
+{
+  "source_train": "k49-train-imgs.npz",
+  "external": "k49-test-imgs.npz",
+  "future_selection": "duplicate-group-aware seed-2071001 stratified 80/20 inside source train"
+}

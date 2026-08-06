@@ -1,0 +1,1086 @@
+{
+  "schema_version": 1,
+  "source_gate_only": true,
+  "candidate_definition": {
+    "ane_type": "General",
+    "departments": [
+      "Thoracic surgery",
+      "General surgery"
+    ],
+    "required_tracks": [
+      "Solar8000/ART_MBP",
+      "Orchestra/PPF20_RATE",
+      "Orchestra/RFTN20_RATE",
+      "Orchestra/PHEN_RATE"
+    ],
+    "coverage_rule": "at least 30 total common finite minutes and at least 10 contiguous common finite minutes on the official API 10-second grid; one earliest case per subject"
+  },
+  "screened": {
+    "case_count": 56,
+    "subject_count": 56,
+    "coverage_pass_count": 53,
+    "coverage_pass_by_department": {
+      "Thoracic surgery": 39,
+      "General surgery": 14
+    }
+  },
+  "selected": [
+    {
+      "caseid": 20,
+      "subjectid": 2419,
+      "samples": 2648,
+      "common_samples": 2274,
+      "common_minutes": 379.0,
+      "longest_common_minutes": 379.0,
+      "per_track_samples": [
+        2588,
+        2602,
+        2602,
+        2274
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Major resection",
+      "opname": "Lung lobectomy",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 28,
+      "subjectid": 2782,
+      "samples": 2691,
+      "common_samples": 1967,
+      "common_minutes": 327.8333333333333,
+      "longest_common_minutes": 327.8333333333333,
+      "per_track_samples": [
+        2622,
+        2651,
+        2651,
+        1980
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Thymectomy",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 241,
+      "subjectid": 2281,
+      "samples": 3566,
+      "common_samples": 1439,
+      "common_minutes": 239.83333333333334,
+      "longest_common_minutes": 162.16666666666666,
+      "per_track_samples": [
+        3532,
+        2884,
+        2882,
+        1439
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Esophagectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 293,
+      "subjectid": 1885,
+      "samples": 1220,
+      "common_samples": 666,
+      "common_minutes": 111.0,
+      "longest_common_minutes": 111.0,
+      "per_track_samples": [
+        1182,
+        1070,
+        1070,
+        666
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Major resection",
+      "opname": "Lung lobectomy",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 354,
+      "subjectid": 5379,
+      "samples": 1532,
+      "common_samples": 648,
+      "common_minutes": 108.0,
+      "longest_common_minutes": 99.5,
+      "per_track_samples": [
+        1483,
+        1439,
+        1437,
+        648
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Lung wedge resection",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 513,
+      "subjectid": 6044,
+      "samples": 1233,
+      "common_samples": 548,
+      "common_minutes": 91.33333333333333,
+      "longest_common_minutes": 91.33333333333333,
+      "per_track_samples": [
+        1210,
+        1071,
+        1071,
+        616
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Resection of rib",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 603,
+      "subjectid": 3185,
+      "samples": 4589,
+      "common_samples": 3000,
+      "common_minutes": 500.0,
+      "longest_common_minutes": 300.0,
+      "per_track_samples": [
+        4586,
+        4398,
+        4398,
+        3001
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Esophagectomy",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 746,
+      "subjectid": 2938,
+      "samples": 1169,
+      "common_samples": 629,
+      "common_minutes": 104.83333333333333,
+      "longest_common_minutes": 104.83333333333333,
+      "per_track_samples": [
+        1129,
+        1124,
+        1124,
+        630
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Lung sgmentectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 1004,
+      "subjectid": 466,
+      "samples": 1960,
+      "common_samples": 569,
+      "common_minutes": 94.83333333333333,
+      "longest_common_minutes": 94.83333333333333,
+      "per_track_samples": [
+        1910,
+        1910,
+        1910,
+        569
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Decortication",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 1297,
+      "subjectid": 2291,
+      "samples": 550,
+      "common_samples": 229,
+      "common_minutes": 38.166666666666664,
+      "longest_common_minutes": 38.166666666666664,
+      "per_track_samples": [
+        489,
+        507,
+        507,
+        229
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Debridement of wound",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 1375,
+      "subjectid": 564,
+      "samples": 1358,
+      "common_samples": 687,
+      "common_minutes": 114.5,
+      "longest_common_minutes": 114.5,
+      "per_track_samples": [
+        1306,
+        1192,
+        1158,
+        687
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Lung wedge resection",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 1520,
+      "subjectid": 2471,
+      "samples": 1868,
+      "common_samples": 605,
+      "common_minutes": 100.83333333333333,
+      "longest_common_minutes": 100.83333333333333,
+      "per_track_samples": [
+        1838,
+        1684,
+        1684,
+        605
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Metastasectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 1814,
+      "subjectid": 747,
+      "samples": 873,
+      "common_samples": 602,
+      "common_minutes": 100.33333333333333,
+      "longest_common_minutes": 100.33333333333333,
+      "per_track_samples": [
+        862,
+        871,
+        848,
+        613
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Bleeding control",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 1936,
+      "subjectid": 4663,
+      "samples": 4499,
+      "common_samples": 1285,
+      "common_minutes": 214.16666666666666,
+      "longest_common_minutes": 123.0,
+      "per_track_samples": [
+        4429,
+        4499,
+        4499,
+        1322
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Total esophagectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 3538,
+      "subjectid": 1714,
+      "samples": 491,
+      "common_samples": 256,
+      "common_minutes": 42.666666666666664,
+      "longest_common_minutes": 42.666666666666664,
+      "per_track_samples": [
+        431,
+        390,
+        390,
+        256
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Pericardial window operation",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 3585,
+      "subjectid": 4574,
+      "samples": 643,
+      "common_samples": 206,
+      "common_minutes": 34.333333333333336,
+      "longest_common_minutes": 34.333333333333336,
+      "per_track_samples": [
+        610,
+        602,
+        602,
+        206
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Lung wedge resection",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 3803,
+      "subjectid": 3101,
+      "samples": 1278,
+      "common_samples": 729,
+      "common_minutes": 121.5,
+      "longest_common_minutes": 121.5,
+      "per_track_samples": [
+        1149,
+        1200,
+        1194,
+        751
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Metastasectomy",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4149,
+      "subjectid": 1479,
+      "samples": 1334,
+      "common_samples": 886,
+      "common_minutes": 147.66666666666666,
+      "longest_common_minutes": 147.66666666666666,
+      "per_track_samples": [
+        1308,
+        1304,
+        1304,
+        886
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Major resection",
+      "opname": "Lung lobectomy",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4317,
+      "subjectid": 4021,
+      "samples": 1111,
+      "common_samples": 637,
+      "common_minutes": 106.16666666666667,
+      "longest_common_minutes": 54.833333333333336,
+      "per_track_samples": [
+        1064,
+        1097,
+        1096,
+        637
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Major resection",
+      "opname": "Lung lobectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4337,
+      "subjectid": 4603,
+      "samples": 708,
+      "common_samples": 523,
+      "common_minutes": 87.16666666666667,
+      "longest_common_minutes": 87.16666666666667,
+      "per_track_samples": [
+        708,
+        647,
+        647,
+        523
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Closure of wound",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4388,
+      "subjectid": 444,
+      "samples": 956,
+      "common_samples": 377,
+      "common_minutes": 62.833333333333336,
+      "longest_common_minutes": 62.833333333333336,
+      "per_track_samples": [
+        924,
+        916,
+        916,
+        377
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Lung wedge resection",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4541,
+      "subjectid": 4686,
+      "samples": 982,
+      "common_samples": 480,
+      "common_minutes": 80.0,
+      "longest_common_minutes": 78.0,
+      "per_track_samples": [
+        939,
+        950,
+        949,
+        493
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Minor resection",
+      "opname": "Lung sgmentectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4618,
+      "subjectid": 2559,
+      "samples": 1568,
+      "common_samples": 727,
+      "common_minutes": 121.16666666666667,
+      "longest_common_minutes": 121.16666666666667,
+      "per_track_samples": [
+        1524,
+        1463,
+        1463,
+        727
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Thymectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4749,
+      "subjectid": 5484,
+      "samples": 2582,
+      "common_samples": 1030,
+      "common_minutes": 171.66666666666666,
+      "longest_common_minutes": 161.5,
+      "per_track_samples": [
+        2517,
+        2482,
+        2482,
+        1030
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Ivor Lewis operation",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4871,
+      "subjectid": 2003,
+      "samples": 3128,
+      "common_samples": 2355,
+      "common_minutes": 392.5,
+      "longest_common_minutes": 291.1666666666667,
+      "per_track_samples": [
+        3125,
+        2603,
+        2603,
+        2425
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Esophagectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4953,
+      "subjectid": 4779,
+      "samples": 2417,
+      "common_samples": 572,
+      "common_minutes": 95.33333333333333,
+      "longest_common_minutes": 94.33333333333333,
+      "per_track_samples": [
+        2373,
+        909,
+        909,
+        572
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Cervical esophagostomy",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 5204,
+      "subjectid": 3003,
+      "samples": 1301,
+      "common_samples": 683,
+      "common_minutes": 113.83333333333333,
+      "longest_common_minutes": 87.83333333333333,
+      "per_track_samples": [
+        1097,
+        1048,
+        1046,
+        684
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Major resection",
+      "opname": "Lung lobectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 5302,
+      "subjectid": 684,
+      "samples": 714,
+      "common_samples": 256,
+      "common_minutes": 42.666666666666664,
+      "longest_common_minutes": 23.333333333333332,
+      "per_track_samples": [
+        651,
+        569,
+        568,
+        256
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Thymectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 5368,
+      "subjectid": 4599,
+      "samples": 1097,
+      "common_samples": 683,
+      "common_minutes": 113.83333333333333,
+      "longest_common_minutes": 113.83333333333333,
+      "per_track_samples": [
+        1027,
+        1066,
+        1066,
+        722
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Biopsy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 5416,
+      "subjectid": 1796,
+      "samples": 3275,
+      "common_samples": 2161,
+      "common_minutes": 360.1666666666667,
+      "longest_common_minutes": 158.0,
+      "per_track_samples": [
+        3229,
+        3158,
+        3157,
+        2161
+      ],
+      "department": "Thoracic surgery",
+      "optype": "Others",
+      "opname": "Esophagectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 853,
+      "subjectid": 944,
+      "samples": 1157,
+      "common_samples": 925,
+      "common_minutes": 154.16666666666666,
+      "longest_common_minutes": 123.0,
+      "per_track_samples": [
+        1127,
+        1114,
+        1104,
+        925
+      ],
+      "department": "General surgery",
+      "optype": "Vascular",
+      "opname": "Ligation and stripping",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 1367,
+      "subjectid": 647,
+      "samples": 1375,
+      "common_samples": 924,
+      "common_minutes": 154.0,
+      "longest_common_minutes": 86.5,
+      "per_track_samples": [
+        1268,
+        1290,
+        1290,
+        924
+      ],
+      "department": "General surgery",
+      "optype": "Colorectal",
+      "opname": "subtotal colectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 2134,
+      "subjectid": 6090,
+      "samples": 1924,
+      "common_samples": 1550,
+      "common_minutes": 258.3333333333333,
+      "longest_common_minutes": 148.0,
+      "per_track_samples": [
+        1870,
+        1781,
+        1781,
+        1550
+      ],
+      "department": "General surgery",
+      "optype": "Vascular",
+      "opname": "Endovascular aneurysmal repair",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 3840,
+      "subjectid": 1713,
+      "samples": 1130,
+      "common_samples": 248,
+      "common_minutes": 41.333333333333336,
+      "longest_common_minutes": 41.333333333333336,
+      "per_track_samples": [
+        1035,
+        1076,
+        1076,
+        248
+      ],
+      "department": "General surgery",
+      "optype": "Others",
+      "opname": "Exploratory laparotomy",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 3857,
+      "subjectid": 1665,
+      "samples": 1253,
+      "common_samples": 720,
+      "common_minutes": 120.0,
+      "longest_common_minutes": 120.0,
+      "per_track_samples": [
+        1232,
+        1252,
+        1252,
+        720
+      ],
+      "department": "General surgery",
+      "optype": "Others",
+      "opname": "Debulking surgery",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4024,
+      "subjectid": 568,
+      "samples": 1111,
+      "common_samples": 773,
+      "common_minutes": 128.83333333333334,
+      "longest_common_minutes": 128.83333333333334,
+      "per_track_samples": [
+        1111,
+        954,
+        980,
+        930
+      ],
+      "department": "General surgery",
+      "optype": "Thyroid",
+      "opname": "Total thyroidectomy",
+      "split": "external",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4333,
+      "subjectid": 4562,
+      "samples": 1224,
+      "common_samples": 525,
+      "common_minutes": 87.5,
+      "longest_common_minutes": 84.66666666666667,
+      "per_track_samples": [
+        1163,
+        1128,
+        1127,
+        525
+      ],
+      "department": "General surgery",
+      "optype": "Colorectal",
+      "opname": "Total colectomy",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 4729,
+      "subjectid": 2061,
+      "samples": 1470,
+      "common_samples": 676,
+      "common_minutes": 112.66666666666667,
+      "longest_common_minutes": 112.66666666666667,
+      "per_track_samples": [
+        1428,
+        1375,
+        1371,
+        676
+      ],
+      "department": "General surgery",
+      "optype": "Colorectal",
+      "opname": "Anterior resection",
+      "split": "selection",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 5142,
+      "subjectid": 4814,
+      "samples": 1346,
+      "common_samples": 730,
+      "common_minutes": 121.66666666666667,
+      "longest_common_minutes": 121.66666666666667,
+      "per_track_samples": [
+        1316,
+        1307,
+        1307,
+        730
+      ],
+      "department": "General surgery",
+      "optype": "Vascular",
+      "opname": "Aortoiliac bypass",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    },
+    {
+      "caseid": 5497,
+      "subjectid": 3868,
+      "samples": 2647,
+      "common_samples": 520,
+      "common_minutes": 86.66666666666667,
+      "longest_common_minutes": 86.66666666666667,
+      "per_track_samples": [
+        2589,
+        2373,
+        2509,
+        520
+      ],
+      "department": "General surgery",
+      "optype": "Hepatic",
+      "opname": "Extended hemihepatectomy",
+      "split": "train",
+      "required_tracks": [
+        "Solar8000/ART_MBP",
+        "Orchestra/PPF20_RATE",
+        "Orchestra/RFTN20_RATE",
+        "Orchestra/PHEN_RATE"
+      ],
+      "coverage_grid_seconds": 10,
+      "source_gate_only": true
+    }
+  ],
+  "split_counts": {
+    "train": 24,
+    "selection": 8,
+    "external": 8
+  },
+  "department_split_counts": {
+    "Thoracic surgery": {
+      "train": 18,
+      "selection": 6,
+      "external": 6
+    },
+    "General surgery": {
+      "train": 6,
+      "selection": 2,
+      "external": 2
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "phase": 42,
+  "status": "passed_official_source_gate_only",
+  "source": {
+    "dataset_page": "https://archive.ics.uci.edu/dataset/81/pen-based%2Brecognition%2Bof%2Bhandwritten%2Bdigits",
+    "archive_url": "https://archive.ics.uci.edu/static/public/81/pen%2Bbased%2Brecognition%2Bof%2Bhandwritten%2Bdigits.zip",
+    "doi": "10.24432/C5MG6K",
+    "license": "CC-BY-4.0",
+    "archive_bytes": 1668118,
+    "archive_sha256": "1e02bea023613c2b11c9492f6f34caf975420455934f3527d270cee9a1f03b64",
+    "published_checksum": null,
+    "archive_headers_sha256": "b91b9f8fffcaf7b006ce922f56b99fa304ed9f50e7a33484ca857ee371edb95b",
+    "page_headers_sha256": "621b92191742af5c6a36edc19b281050c1567d8552304af89bb0e690962df61c",
+    "page_sha256": "a272099d21f991169d630a0973c1a4da4b958fc961d7eb6a9eaf556e4bc46154",
+    "pendigits_names_sha256": "a90a76e1edac6f1b50f4b44db80587d7b92601fcbb153c83c2c3210c21b34f60",
+    "members": [
+      "pendigits-orig.names",
+      "pendigits-orig.tes.Z",
+      "pendigits-orig.tra.Z",
+      "pendigits.names",
+      "pendigits.tes",
+      "pendigits.tra"
+    ]
+  },
+  "checks": {
+    "exact_official_member_inventory": true,
+    "fixed_rows": {
+      "pendigits.tra": true,
+      "pendigits.tes": true
+    },
+    "finite_integer_17_field_schema": {
+      "pendigits.tra": true,
+      "pendigits.tes": true
+    },
+    "feature_range_0_to_100": {
+      "pendigits.tra": true,
+      "pendigits.tes": true
+    },
+    "labels_0_to_9": {
+      "pendigits.tra": true,
+      "pendigits.tes": true
+    },
+    "frozen_writer_file_boundary": true
+  },
+  "member_ledgers": {
+    "pendigits.tra": {
+      "rows": 7494,
+      "blank_rows": 0,
+      "fields": 17,
+      "width_mismatches": 0,
+      "nonfinite_cells": 0,
+      "noninteger_rows": 0,
+      "out_of_feature_range_rows": 0,
+      "invalid_labels": 0,
+      "class_counts": {
+        "0": 780,
+        "1": 779,
+        "2": 780,
+        "3": 719,
+        "4": 780,
+        "5": 720,
+        "6": 720,
+        "7": 778,
+        "8": 719,
+        "9": 719
+      },
+      "complete_row_duplicates": 0,
+      "unique_complete_rows": 7494,
+      "first_line_is_header": false
+    },
+    "pendigits.tes": {
+      "rows": 3498,
+      "blank_rows": 0,
+      "fields": 17,
+      "width_mismatches": 0,
+      "nonfinite_cells": 0,
+      "noninteger_rows": 0,
+      "out_of_feature_range_rows": 0,
+      "invalid_labels": 0,
+      "class_counts": {
+        "0": 363,
+        "1": 364,
+        "2": 364,
+        "3": 336,
+        "4": 364,
+        "5": 335,
+        "6": 336,
+        "7": 364,
+        "8": 336,
+        "9": 336
+      },
+      "complete_row_duplicates": 0,
+      "unique_complete_rows": 3498,
+      "first_line_is_header": false
+    }
+  },
+  "source_limitations": {
+    "feature_process": "UCI documents source-owned normalization and spatial resampling to eight coordinate pairs",
+    "raw_pressure": "UCI states pressure values were ignored",
+    "writer_ids": "individual writer IDs are unavailable within the two release files"
+  },
+  "source_file_split": {
+    "source_train": "pendigits.tra",
+    "external": "pendigits.tes",
+    "writer_design": "UCI documents 30 writers in source train and other 14 writers in source test"
+  },
+  "isolation": {
+    "observed_coordinate_or_label_fitting": false,
+    "external_outcome_scoring": false,
+    "abc_smc_calls": 0,
+    "llm_calls": 0
+  },
+  "next_gate": "Write the fixed raw-vector adapter, baseline, and output-isolated controls before observed fitting."
+}

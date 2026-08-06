@@ -1,0 +1,5 @@
+{
+  "source_train": "isolet1+2+3+4.data.Z",
+  "external": "isolet5.data.Z",
+  "selection_design": "stratified_80_20_seed_2041054_inside_source_train"
+}

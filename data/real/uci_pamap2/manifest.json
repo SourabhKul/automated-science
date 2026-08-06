@@ -1,0 +1,39 @@
+{
+  "phase": 34,
+  "status": "blocked_source_quality_contract_failed",
+  "source": {
+    "dataset_page": "https://archive.ics.uci.edu/dataset/231/pamap2%2Bphysical%2Bactivity%2Bmonitoring",
+    "archive_url": "https://archive.ics.uci.edu/static/public/231/pamap2%2Bphysical%2Bactivity%2Bmonitoring.zip",
+    "doi": "10.24432/C5NW2H",
+    "license": "CC-BY-4.0",
+    "outer_archive_bytes": 688226940,
+    "outer_archive_sha256": "76b3580bd5a804121f507717cb498c66a312ef5c774f4a78ac470e6558add352",
+    "raw_package_bytes": 688167640,
+    "raw_package_sha256": "6c2282b5b52775cd0588d450d10a315260c94fa3228b9fe453f48c47fda106f4",
+    "published_checksum": null,
+    "outer_archive_members": 2,
+    "raw_package_members": 22
+  },
+  "protocol_members": [
+    "PAMAP2_Dataset/Protocol/subject101.dat",
+    "PAMAP2_Dataset/Protocol/subject102.dat",
+    "PAMAP2_Dataset/Protocol/subject103.dat",
+    "PAMAP2_Dataset/Protocol/subject104.dat",
+    "PAMAP2_Dataset/Protocol/subject105.dat",
+    "PAMAP2_Dataset/Protocol/subject106.dat",
+    "PAMAP2_Dataset/Protocol/subject107.dat",
+    "PAMAP2_Dataset/Protocol/subject108.dat",
+    "PAMAP2_Dataset/Protocol/subject109.dat"
+  ],
+  "contract_checks": {
+    "exact_nine_protocol_files": true,
+    "exact_54_columns": true,
+    "finite_timestamp_and_integer_activity": true,
+    "strictly_increasing_timestamps": true,
+    "minimum_20_minutes_per_person": false,
+    "finite_selected_accelerometer": false,
+    "minimum_four_nonzero_activity_ids": false
+  },
+  "fixed_split": null,
+  "raw_measurement_fitting": false
+}

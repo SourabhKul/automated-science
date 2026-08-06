@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "dataset": "Tennessee Eastman Process",
+  "status": "acquired_contract_failed_for_phase19_daily_campaign",
+  "fixture_mode": false,
+  "source": {
+    "citation": "Shen, Shuchen; Shang, Liangliang (2026), The Tennessee Eastman process (TEP), Mendeley Data, V1",
+    "doi": "10.17632/g2st27k8ww.1",
+    "landing_page": "https://data.mendeley.com/datasets/g2st27k8ww/1",
+    "download_url": "https://data.mendeley.com/public-api/zip/g2st27k8ww/download/1",
+    "license": "CC BY 4.0",
+    "downloaded_on": "2026-07-11"
+  },
+  "archives": [
+    {
+      "path": "data/real/tennessee_eastman/raw/TEdata_v1.zip",
+      "sha256": "949331c92c2125c2e221bfbb0b9bbec70efc8a27cd0fff54562afa1a768489b6",
+      "role": "downloaded outer archive"
+    },
+    {
+      "path": "data/real/tennessee_eastman/raw/TEdata_source.zip",
+      "sha256": "0ff82bbdef0f5f52746c8a03b2a9645f656dbee3cd57587d15a4963087d233db",
+      "role": "nested source archive"
+    }
+  ],
+  "schema_observed": {
+    "training_shape": [480, 52],
+    "test_shape": [960, 52],
+    "column_contract": "XMEAS(1..41), XMV(1..11)",
+    "d04_training_finite": true,
+    "d04_test_finite": true
+  },
+  "phase19_contract": {
+    "required_independent_fault4_batches": 5,
+    "available_fault4_trajectories": 2,
+    "verified_human_readable_variable_dictionary": false,
+    "verified_fault_onset_sidecar": false,
+    "passes": false,
+    "failure_reason": "The citable source has one training and one test trajectory per fault, not five independent fault-4 batches, and lacks the required metadata contract for the input-driven daily campaign."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "train_years": [
+    2011,
+    2012,
+    2013
+  ],
+  "selection_year": 2014,
+  "external_year": 2015
+}

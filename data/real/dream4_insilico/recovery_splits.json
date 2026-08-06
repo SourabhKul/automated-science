@@ -1,0 +1,62 @@
+{
+  "insilico_size10_1": {
+    "external_trajectory_id": 5,
+    "metric_time_start": 550.0,
+    "network_id": "insilico_size10_1",
+    "recovery_start_time": 500.0,
+    "train_trajectory_ids": [
+      1,
+      2,
+      3
+    ],
+    "validation_trajectory_id": 4
+  },
+  "insilico_size10_2": {
+    "external_trajectory_id": 5,
+    "metric_time_start": 550.0,
+    "network_id": "insilico_size10_2",
+    "recovery_start_time": 500.0,
+    "train_trajectory_ids": [
+      1,
+      2,
+      3
+    ],
+    "validation_trajectory_id": 4
+  },
+  "insilico_size10_3": {
+    "external_trajectory_id": 5,
+    "metric_time_start": 550.0,
+    "network_id": "insilico_size10_3",
+    "recovery_start_time": 500.0,
+    "train_trajectory_ids": [
+      1,
+      2,
+      3
+    ],
+    "validation_trajectory_id": 4
+  },
+  "insilico_size10_4": {
+    "external_trajectory_id": 5,
+    "metric_time_start": 550.0,
+    "network_id": "insilico_size10_4",
+    "recovery_start_time": 500.0,
+    "train_trajectory_ids": [
+      1,
+      2,
+      3
+    ],
+    "validation_trajectory_id": 4
+  },
+  "insilico_size10_5": {
+    "external_trajectory_id": 5,
+    "metric_time_start": 550.0,
+    "network_id": "insilico_size10_5",
+    "recovery_start_time": 500.0,
+    "train_trajectory_ids": [
+      1,
+      2,
+      3
+    ],
+    "validation_trajectory_id": 4
+  }
+}

@@ -1,0 +1,88 @@
+\section{The $E^3$ Core Architecture}
+\label{sec:architecture}
+
+$E^3$ operates as an asynchronous, multi-generational evolutionary system. By isolating hypothesis generation (LLM) from hypothesis validation (ABC-SMC), the system creates a feedback loop for exploring alternative model structures.
+
+\subsection{The Meta-Contemplation Loop}
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=2cm and 1.5cm,
+    box/.style={rectangle, draw, rounded corners, align=center, fill=blue!10, text width=3.5cm, minimum height=1.5cm},
+    llm/.style={rectangle, draw, rounded corners, align=center, fill=green!10, text width=3.5cm, minimum height=1.5cm},
+    engine/.style={rectangle, draw, rounded corners, align=center, fill=red!10, text width=3.5cm, minimum height=1.5cm},
+    arrow/.style={thick, ->, >=stealth}
+]
+
+% Nodes
+\node[llm] (director) {Senior Research\\Director (LLM)};
+\node[box, below right=of director] (compiler) {JAX/Diffrax\\JIT Compiler};
+\node[engine, below left=of compiler] (sbi) {ABC-SMC\\Parameter Engine};
+\node[box, left=of director] (database) {Empirical\\Data Store};
+
+% Connections
+\draw[arrow] (director) -| node[above, sloped] {Proposes Python Code} (compiler);
+\draw[arrow] (compiler) -- node[right] {Compiled Binary} (sbi);
+\draw[arrow] (sbi) -| node[below, sloped] {Posterior MSE \& Parameters} (director);
+\draw[arrow] (database) |- (sbi);
+
+\end{tikzpicture}
+\caption{The $E^3$ Meta-Contemplation Loop. The LLM acts as the mutator, while the JAX-backed ABC-SMC engine evaluates the proposed structures.}
+\label{fig:architecture}
+\end{figure}
+
+The system operates in a strict ``Propose-Simulate-Evaluate'' loop, as illustrated in Figure~\ref{fig:architecture}:
+\begin{enumerate}
+    \item \textbf{Proposal (Meta-Contemplation):} The LLM inspects the best existing equation discovered so far, along with its empirical distance. Based on domain knowledge, it writes a modified JAX Python function.
+    \item \textbf{Simulation:} The generated raw code is extracted and compiled into a Diffrax/JAX simulation module. The current source tree still executes generated code locally, so stricter validation and sandboxing are required before any distributed deployment.
+    \item \textbf{Evaluation:} The ABC-SMC engine draws particles from a prior distribution and simulates them in parallel. It attempts to find a parameter manifold that fits the empirical data. If successful and the new structure's optimized distance is lower than the baseline, the structural mutation is accepted, and the new code becomes the seed for the next generation.
+\end{enumerate}
+
+\subsection{Weighted ABC-SMC with Covariate Regularization}
+A common numerical failure mode of Sequential Monte Carlo is population degeneracy, where the covariance matrix of proposed particles collapses and becomes singular. The ABC-SMC implementation therefore uses a Covariate-Proportional transition kernel during particle perturbation:
+\begin{equation}
+    K_{cov} = 2.0 \cdot \Sigma_{emp} + \lambda_{noise} \cdot \text{diag}(\text{diag}(\Sigma_{emp})) + 10^{-9} \mathbf{I}
+\end{equation}
+where $\Sigma_{emp}$ is the empirical covariance of the previous generation, and $\lambda_{noise}$ controls diagonal covariance regularization.
+
+\textbf{Numerical Motivation:} In high-dimensional symbolic search spaces, some proposed parameters may be structurally inactive (e.g., a damping parameter multiplied by $0$). This can make the empirical covariance $\Sigma_{emp}^{(t)}$ singular. The diagonal regularization term and the $10^{-9} \cdot \mathbf{I}$ nugget are intended to improve numerical conditioning and preserve proposal variance in inactive dimensions. Positive-definite regularization is useful for sampling, but this expression alone does not establish posterior convergence, full-rank diversity under every numerical condition, or completion of all generations.
+
+\subsection{ABC-SMC Hyperparameters and Tolerances}
+For each structural hypothesis proposed by the LLM, the ABC-SMC engine executes a rigorous evaluation protocol to determine parameter identifiability and fit quality:
+\begin{itemize}
+    \item \textbf{Generations and Particles:} The Qwen run circuit uses $15$ generations. The initial prior generation $g_0$ draws $150,000$ particles; subsequent generations resample and perturb from the accepted population.
+    \item \textbf{Tolerance Schedule ($\epsilon$):} The current implementation keeps the top \texttt{target\_samples} particles by distance each generation, so the reported epsilon is the largest retained distance.
+    \item \textbf{Distance Metrics:} The current engine computes Euclidean distance over raw trajectories or over summary-statistic features (mean, standard deviation, lag-1 autocorrelation, and FFT peak power). It does not yet implement MMD.
+\end{itemize}
+
+\begin{algorithm}
+\caption{$E^3$ Meta-Contemplation Loop}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Dataset $\mathcal{D}$, Initial Model $\mathcal{M}_0$
+\State $k \gets 0$, $MSE_{best} \gets \text{EvaluateABC}(\mathcal{M}_0, \mathcal{D})$
+\While{Not Converged or Max Iterations}
+    \State \textit{// Structural Mutation Phase}
+    \State $\mathcal{M}_{cand} \gets \text{LLM\_Mutate}(\mathcal{M}_k, MSE_{best})$
+    \State \textit{// Compilation and Pruning}
+    \If{$\text{Compile}(\mathcal{M}_{cand})$ fails or Unidentifiable}
+        \State \textbf{continue}
+    \EndIf
+    \State \textit{// ABC-SMC Parameter Inference (15 Generations)}
+    \State $MSE_{cand}, \Theta_{posterior} \gets \text{EvaluateABC}(\mathcal{M}_{cand}, \mathcal{D})$
+    \State \textit{// Evaluation and Replacement}
+    \If{$MSE_{cand} < MSE_{best}$}
+        \State $\mathcal{M}_{k+1} \gets \mathcal{M}_{cand}$
+        \State $MSE_{best} \gets MSE_{cand}$
+        \State $k \gets k + 1$
+    \EndIf
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{System Requirements and Model Profiles}
+The architecture is inherently scalable, requiring only standard accelerator hardware:
+\begin{itemize}
+    \item \textbf{High-Fidelity Profile:} Requires enough unified memory or VRAM to host the selected local LLM plus JAX simulations. The preserved Qwen runs used a local OpenAI-compatible endpoint.
+    \item \textbf{Standard Profile:} Smaller local models may run on lower-memory systems, but this repository does not yet contain a completed alignment or distillation pipeline for them.
+\end{itemize}

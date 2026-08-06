@@ -1,0 +1,5 @@
+{
+  "source_train": "train_32x32.mat",
+  "external": "test_32x32.mat",
+  "source_train_selection": "deterministic stratified 80/20 only after this gate"
+}

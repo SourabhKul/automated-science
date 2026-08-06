@@ -1,0 +1,6 @@
+{
+  "official_validation": 6,
+  "policy": "16/4 deterministic realization split per estimation amplitude; official validation is untouched for external scoring",
+  "selection": 20,
+  "train": 80
+}

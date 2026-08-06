@@ -1,0 +1,22 @@
+{
+  "official_page": "http://ufldl.stanford.edu/housenumbers/",
+  "terms": "non-commercial use only",
+  "files": [
+    {
+      "member": "train_32x32.mat",
+      "url": "http://ufldl.stanford.edu/housenumbers/train_32x32.mat",
+      "bytes": 182040794,
+      "sha256": "435e94d69a87fde4fd4d7f3dd208dfc32cb6ae8af2240d066de1df7508d083b8",
+      "headers": "data/real/svhn/source_provenance/train.headers"
+    },
+    {
+      "member": "test_32x32.mat",
+      "url": "http://ufldl.stanford.edu/housenumbers/test_32x32.mat",
+      "bytes": 64275384,
+      "sha256": "cdce80dfb2a2c4c6160906d0bd7c68ec5a99d7ca4831afa54f09182025b6a75b",
+      "headers": "data/real/svhn/source_provenance/test.headers"
+    }
+  ],
+  "documentation": "data/real/svhn/source_provenance/documentation.html",
+  "published_checksum": null
+}

@@ -1,0 +1,932 @@
+{
+  "fixed_parallel_wiener_hammerstein": {
+    "official_validation": {
+      "aggregate": {
+        "mse": 0.03610677689996345,
+        "nrmse": 0.12461762266096679,
+        "rmse": 0.1883392376072973
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.0015490321268617434,
+          "nrmse": 0.14265738319411764,
+          "record_id": "validation_level1",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.039357745449425115
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.010550806724683252,
+          "nrmse": 0.11512919884790777,
+          "record_id": "validation_level2",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.10271711992011484
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.026613967552889726,
+          "nrmse": 0.1229030933078585,
+          "record_id": "validation_level3",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.16313787896405213
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.04782136013935242,
+          "nrmse": 0.12633215201407508,
+          "record_id": "validation_level4",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.21868095513636393
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.07183275750932601,
+          "nrmse": 0.1368596396617473,
+          "record_id": "validation_level5",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2680163381387896
+        },
+        {
+          "amplitude": null,
+          "mse": 0.04559958624703718,
+          "nrmse": 0.1062132098396622,
+          "record_id": "validation_growing_amplitude",
+          "regime": "growing_amplitude_gaussian_noise",
+          "rmse": 0.21354059625054245
+        }
+      ]
+    },
+    "parameters": {
+      "beta_linear": 0.03453672889610053,
+      "beta_nonlinear": 0.011303243262084447,
+      "input_scale": 0.6133367623872339,
+      "intercept": 0.0259484021848211,
+      "linear_alpha": 0.9,
+      "nonlinear_alpha": 0.995
+    },
+    "selection": {
+      "aggregate": {
+        "mse": 0.026301508625849304,
+        "nrmse": 0.13300253014108177,
+        "rmse": 0.16217728605912773
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.0015481125416253751,
+          "nrmse": 0.13264356714728648,
+          "record_id": "estimation_level1_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.03934606132289959
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0015387874518653873,
+          "nrmse": 0.13896620874537238,
+          "record_id": "estimation_level1_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.03922738140464371
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0015194361982503923,
+          "nrmse": 0.12810551499848474,
+          "record_id": "estimation_level1_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.038979946103738936
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0015429654046384556,
+          "nrmse": 0.14614948961314758,
+          "record_id": "estimation_level1_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.03928059832332567
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.010576639365128447,
+          "nrmse": 0.11999065391398889,
+          "record_id": "estimation_level2_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.10284278956314073
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.010418667223646146,
+          "nrmse": 0.12240448120621317,
+          "record_id": "estimation_level2_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.1020718728330491
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.010533208088995948,
+          "nrmse": 0.11555249907122173,
+          "record_id": "estimation_level2_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.10263141862507771
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.010388313219621385,
+          "nrmse": 0.11705339712270539,
+          "record_id": "estimation_level2_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.10192307501062449
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.026363486958453135,
+          "nrmse": 0.14069683465499888,
+          "record_id": "estimation_level3_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.16236836809690838
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.026119902798520712,
+          "nrmse": 0.11686276543832373,
+          "record_id": "estimation_level3_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.16161653009058422
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.026562590211255503,
+          "nrmse": 0.13085745004763585,
+          "record_id": "estimation_level3_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.16298033688532954
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.026239530293245474,
+          "nrmse": 0.13336149313487705,
+          "record_id": "estimation_level3_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.16198620402134706
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.04759927568763959,
+          "nrmse": 0.14783543776597402,
+          "record_id": "estimation_level4_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.21817258234626913
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.04846647555502136,
+          "nrmse": 0.1399019000683325,
+          "record_id": "estimation_level4_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2201510289665287
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.04803989000854787,
+          "nrmse": 0.12459499537793733,
+          "record_id": "estimation_level4_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.21918004016914466
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.04726122361352398,
+          "nrmse": 0.13620137733765836,
+          "record_id": "estimation_level4_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.21739646642373003
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.07108082244097018,
+          "nrmse": 0.1407543591381498,
+          "record_id": "estimation_level5_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2666098693615264
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.07270605148680037,
+          "nrmse": 0.15304748916276445,
+          "record_id": "estimation_level5_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.26964059688185005
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.07135068986749524,
+          "nrmse": 0.13590275153527837,
+          "record_id": "estimation_level5_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.26711549911507426
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.07129187191488323,
+          "nrmse": 0.12559048827074074,
+          "record_id": "estimation_level5_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.26700537806359487
+        }
+      ]
+    }
+  },
+  "persistence": {
+    "official_validation": {
+      "aggregate": {
+        "mse": 0.07096373251128966,
+        "nrmse": 0.24187407812092615,
+        "rmse": 0.26173411344245295
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.00715730958781972,
+          "nrmse": 0.3066471567804183,
+          "record_id": "validation_level1",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.08460088408414962
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.016062488389891896,
+          "nrmse": 0.14205255915527926,
+          "record_id": "validation_level2",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.12673787275274861
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.04500590231233123,
+          "nrmse": 0.15982427340032931,
+          "record_id": "validation_level3",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.21214594578339513
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.0969215627102481,
+          "nrmse": 0.17985111559879308,
+          "record_id": "validation_level4",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.3113222811015108
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.7013061081541503,
+          "nrmse": 0.4276297721473187,
+          "record_id": "validation_level5",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.8374402116892586
+        },
+        {
+          "amplitude": null,
+          "mse": 0.3732989569636878,
+          "nrmse": 0.3038970406430592,
+          "record_id": "validation_growing_amplitude",
+          "regime": "growing_amplitude_gaussian_noise",
+          "rmse": 0.6109819612424641
+        }
+      ]
+    },
+    "parameters": {},
+    "selection": {
+      "aggregate": {
+        "mse": 0.065208857543785,
+        "nrmse": 0.19476253596051285,
+        "rmse": 0.25520329309215134
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.0040569590503168225,
+          "nrmse": 0.2147262997773274,
+          "record_id": "estimation_level1_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.06369426230294863
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0019642699981799816,
+          "nrmse": 0.15700753053513042,
+          "record_id": "estimation_level1_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.04432008571945661
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.002225645391922876,
+          "nrmse": 0.1550438619198218,
+          "record_id": "estimation_level1_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.04717674630496338
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0016715746198835014,
+          "nrmse": 0.15211852053520256,
+          "record_id": "estimation_level1_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.040884894764246386
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.06977797267975813,
+          "nrmse": 0.30820007894701434,
+          "record_id": "estimation_level2_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2641552056646965
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.01715300428279758,
+          "nrmse": 0.15705845907711638,
+          "record_id": "estimation_level2_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.13096947843981657
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.03913034836249852,
+          "nrmse": 0.22271828185837525,
+          "record_id": "estimation_level2_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.19781392358097172
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.01697410946376051,
+          "nrmse": 0.14962528952236648,
+          "record_id": "estimation_level2_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.13028472459870538
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.04492000305836357,
+          "nrmse": 0.18365501406624735,
+          "record_id": "estimation_level3_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.21194339588287145
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.04171749918957753,
+          "nrmse": 0.14768946391975366,
+          "record_id": "estimation_level3_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.20424862102246255
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.06063974240781188,
+          "nrmse": 0.19771604563670725,
+          "record_id": "estimation_level3_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.24625138051960618
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.18912349533890419,
+          "nrmse": 0.3580347364858409,
+          "record_id": "estimation_level3_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.43488331232516175
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.20098877453629596,
+          "nrmse": 0.30378356940966256,
+          "record_id": "estimation_level4_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.44831771606339177
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.4068205679760044,
+          "nrmse": 0.4053258891956387,
+          "record_id": "estimation_level4_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.637824872497149
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.2748215223653223,
+          "nrmse": 0.29800597150747327,
+          "record_id": "estimation_level4_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.5242342247176565
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.09373030797287388,
+          "nrmse": 0.19180902628431842,
+          "record_id": "estimation_level4_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.306154059213452
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.14053477772652312,
+          "nrmse": 0.19791446523993256,
+          "record_id": "estimation_level5_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.37487968433421825
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.11392325026121759,
+          "nrmse": 0.19157865185946343,
+          "record_id": "estimation_level5_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.3375251846325213
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.13789337854364267,
+          "nrmse": 0.18892997523978333,
+          "record_id": "estimation_level5_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.37133997703404176
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.38477931614452143,
+          "nrmse": 0.2917713192333703,
+          "record_id": "estimation_level5_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.6203058246901454
+        }
+      ]
+    }
+  },
+  "regularized_arx": {
+    "official_validation": {
+      "aggregate": {
+        "mse": 0.0034681321025307756,
+        "nrmse": 0.03957629703164048,
+        "rmse": 0.058431537704839914
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.0006613557563380532,
+          "nrmse": 0.09321409979560019,
+          "record_id": "validation_level1",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.025716837992608137
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.0013161359493376638,
+          "nrmse": 0.04066240153828828,
+          "record_id": "validation_level2",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.03627858802844543
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.0026102623702554074,
+          "nrmse": 0.038490192524992674,
+          "record_id": "validation_level3",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.051090726851899526
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.004326001834806144,
+          "nrmse": 0.037996735157585386,
+          "record_id": "validation_level4",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.0657723485577803
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.006683920112271796,
+          "nrmse": 0.041747430293529675,
+          "record_id": "validation_level5",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.08175524516672797
+        },
+        {
+          "amplitude": null,
+          "mse": 0.0047762138559613075,
+          "nrmse": 0.034374782963747755,
+          "record_id": "validation_growing_amplitude",
+          "regime": "growing_amplitude_gaussian_noise",
+          "rmse": 0.06911015740078522
+        }
+      ]
+    },
+    "parameters": {
+      "order": 4,
+      "ridge": 0.0001
+    },
+    "selection": {
+      "aggregate": {
+        "mse": 0.00257975940827022,
+        "nrmse": 0.04248271893517504,
+        "rmse": 0.05079019598409796
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.0006647464087965732,
+          "nrmse": 0.08691864115252484,
+          "record_id": "estimation_level1_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.025782676525073444
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0006643013229721587,
+          "nrmse": 0.09130665860090342,
+          "record_id": "estimation_level1_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.025774043589863016
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0006479055782693871,
+          "nrmse": 0.08365317943080666,
+          "record_id": "estimation_level1_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.02545398943720585
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0006535764994511713,
+          "nrmse": 0.09511903215851211,
+          "record_id": "estimation_level1_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.025565142273243295
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.0013661894467517075,
+          "nrmse": 0.043124992751313714,
+          "record_id": "estimation_level2_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.03696200003722347
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.0013146569445003818,
+          "nrmse": 0.04348079279931715,
+          "record_id": "estimation_level2_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.03625819830742258
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.001365051823235462,
+          "nrmse": 0.04159810819485795,
+          "record_id": "estimation_level2_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.03694660773650894
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.0012831033430525187,
+          "nrmse": 0.04113791938079729,
+          "record_id": "estimation_level2_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.035820431921635434
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.002614266877009398,
+          "nrmse": 0.04430552237388446,
+          "record_id": "estimation_level3_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.05112990198513388
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.0025452519395310425,
+          "nrmse": 0.03648007894882139,
+          "record_id": "estimation_level3_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.050450489983062036
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.0026379543346763796,
+          "nrmse": 0.04123793204480351,
+          "record_id": "estimation_level3_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.05136101960316189
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.0024988625907738987,
+          "nrmse": 0.04115509501889026,
+          "record_id": "estimation_level3_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.04998862461374486
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.004304226372485365,
+          "nrmse": 0.04445554426574121,
+          "record_id": "estimation_level4_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.06560660311649556
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.004334977081961891,
+          "nrmse": 0.041840445119036354,
+          "record_id": "estimation_level4_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.0658405428437668
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.004199512201045722,
+          "nrmse": 0.03683825245526812,
+          "record_id": "estimation_level4_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.06480364342416035
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.0041158154594883156,
+          "nrmse": 0.04019360550923254,
+          "record_id": "estimation_level4_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.06415462149750643
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.006742643019704455,
+          "nrmse": 0.04335115923398,
+          "record_id": "estimation_level5_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.08211359826304322
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.0064587706726718,
+          "nrmse": 0.045615859425337676,
+          "record_id": "estimation_level5_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.08036647729415418
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.006606293389440716,
+          "nrmse": 0.041353101746537606,
+          "record_id": "estimation_level5_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.0812791079518022
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.006512692763094877,
+          "nrmse": 0.03795919862048057,
+          "record_id": "estimation_level5_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.0807012562671417
+        }
+      ]
+    }
+  },
+  "stable_first_order": {
+    "official_validation": {
+      "aggregate": {
+        "mse": 0.05323473515639039,
+        "nrmse": 0.15323766487450857,
+        "rmse": 0.22907511147012816
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.0021517517896368237,
+          "nrmse": 0.1681357739123308,
+          "record_id": "validation_level1",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.04638697866467295
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.015649952652763262,
+          "nrmse": 0.1402165130680769,
+          "record_id": "validation_level2",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.12509977079420753
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.04060998647392098,
+          "nrmse": 0.15181840503504912,
+          "record_id": "validation_level3",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.20151919629137313
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.07166925270243267,
+          "nrmse": 0.15465692471396805,
+          "record_id": "validation_level4",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.26771113667987867
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.10783308411217547,
+          "nrmse": 0.16768342509608966,
+          "record_id": "validation_level5",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.3283794818684253
+        },
+        {
+          "amplitude": null,
+          "mse": 0.06585948383885981,
+          "nrmse": 0.12764601000198122,
+          "record_id": "validation_growing_amplitude",
+          "regime": "growing_amplitude_gaussian_noise",
+          "rmse": 0.2566310266488832
+        }
+      ]
+    },
+    "parameters": {
+      "alpha": 0.995,
+      "beta": 0.0008480786395728959,
+      "intercept": 0.0001041205232756457
+    },
+    "selection": {
+      "aggregate": {
+        "mse": 0.040203904169906976,
+        "nrmse": 0.16242643688046593,
+        "rmse": 0.200509103504132
+      },
+      "per_record": [
+        {
+          "amplitude": 0.1,
+          "mse": 0.0021415826057072014,
+          "nrmse": 0.15600996651165386,
+          "record_id": "estimation_level1_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.046277236366351886
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.002140814800587339,
+          "nrmse": 0.16391150599431925,
+          "record_id": "estimation_level1_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.04626893991207643
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.0021256497163700204,
+          "nrmse": 0.15152086535875256,
+          "record_id": "estimation_level1_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.04610476891136123
+        },
+        {
+          "amplitude": 0.1,
+          "mse": 0.002124402446158564,
+          "nrmse": 0.1714895280326548,
+          "record_id": "estimation_level1_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.04609124044933662
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.016162905163682885,
+          "nrmse": 0.14833146439646036,
+          "record_id": "estimation_level2_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.12713341481956222
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.01566020029371254,
+          "nrmse": 0.1500686205184921,
+          "record_id": "estimation_level2_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.12514072196416537
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.015806325359598757,
+          "nrmse": 0.14155149779499843,
+          "record_id": "estimation_level2_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.1257232093115617
+        },
+        {
+          "amplitude": 0.325,
+          "mse": 0.01567464967561003,
+          "nrmse": 0.14378395524131385,
+          "record_id": "estimation_level2_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.1251984411868216
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.040227904619620856,
+          "nrmse": 0.17379873337981097,
+          "record_id": "estimation_level3_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2005689522823033
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.03984478484259048,
+          "nrmse": 0.14433648474347102,
+          "record_id": "estimation_level3_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.19961158494083073
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.04017990372019309,
+          "nrmse": 0.16094136776661264,
+          "record_id": "estimation_level3_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.20044925472596073
+        },
+        {
+          "amplitude": 0.55,
+          "mse": 0.04022948997328227,
+          "nrmse": 0.16512950700176257,
+          "record_id": "estimation_level3_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2005729043846209
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.07279426572232398,
+          "nrmse": 0.1828213722450894,
+          "record_id": "estimation_level4_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.269804124731858
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.07422740205208152,
+          "nrmse": 0.17313506068438672,
+          "record_id": "estimation_level4_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2724470628435578
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.07138346328161226,
+          "nrmse": 0.15187923585915386,
+          "record_id": "estimation_level4_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.2671768389692719
+        },
+        {
+          "amplitude": 0.775,
+          "mse": 0.07213302261521858,
+          "nrmse": 0.1682658889104308,
+          "record_id": "estimation_level4_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.268575915925495
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.10511197338423635,
+          "nrmse": 0.1711637238679694,
+          "record_id": "estimation_level5_realization17",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.32420976756451425
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.1066595855611696,
+          "nrmse": 0.1853706083553942,
+          "record_id": "estimation_level5_realization18",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.3265877915066171
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.10589833386093073,
+          "nrmse": 0.16556697919340288,
+          "record_id": "estimation_level5_realization19",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.3254202419348414
+        },
+        {
+          "amplitude": 1.0,
+          "mse": 0.10595444136281908,
+          "nrmse": 0.1531074498032317,
+          "record_id": "estimation_level5_realization20",
+          "regime": "fixed_amplitude_multisine",
+          "rmse": 0.3255064382816707
+        }
+      ]
+    }
+  }
+}

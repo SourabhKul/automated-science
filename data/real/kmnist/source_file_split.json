@@ -1,0 +1,5 @@
+{
+  "source_train": "train-images-idx3-ubyte.gz",
+  "external": "t10k-images-idx3-ubyte.gz",
+  "future_selection": "duplicate-group-aware seed-2070001 stratified 80/20 inside source train only"
+}

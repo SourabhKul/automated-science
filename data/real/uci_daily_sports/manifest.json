@@ -1,0 +1,11 @@
+{
+  "archive": "data/real/uci_daily_sports/raw/uci_daily_sports_256.zip",
+  "official_url": "https://archive.ics.uci.edu/static/public/256/daily%2Band%2Bsports%2Bactivities.zip",
+  "doi": "10.24432/C5C59F",
+  "license": "CC-BY-4.0",
+  "archive_bytes": 170800010,
+  "archive_sha256": "f42ad7744ecf14151c9fa3a86dfb5b24de9d7cb7ffe956ef5de242983459c77e",
+  "http_headers_path": "artifacts/evaluations/phase45_uci_daily_sports_subject_prefix_classification_source_access_20260726/headers.txt",
+  "member_count": 9292,
+  "raw_member_count": 9120
+}

@@ -1,0 +1,61 @@
+{
+  "source": {
+    "doi": "10.5065/D6MW2F4D",
+    "zenodo_record": 15529996,
+    "version": "1.2",
+    "license": "CC-BY-4.0",
+    "source_url": "https://zenodo.org/records/15529996",
+    "archive_url": "https://zenodo.org/api/records/15529996/files/basin_timeseries_v1p2_metForcing_obsFlow.zip/content",
+    "archive_size_bytes": 3406626583,
+    "archive_md5": "8e9a466710e8270b58f01d332a87184f",
+    "archive_sha256": "bb90fca29a5bab8f0b300787a5ab5a669a366f40ba95b6877b631a81133f7e5d",
+    "readme_md5": "b37d64950e9d4c5c10a8b4ef82bc6219",
+    "attributes_md5": "714c68bd5bb3314ca39b14f9467bd609",
+    "published_archive_md5": "8e9a466710e8270b58f01d332a87184f",
+    "human_impact_scope": "Official record documents 671 HCDN-2009 CONUS basins; this gate applies no additional impact filter."
+  },
+  "raw_schema": {
+    "forcing": {
+      "header": "Year Mnth Day Hr dayl(s) prcp(mm/day) srad(W/m2) swe(mm) tmax(C) tmin(C) vp(Pa)",
+      "date_columns": [
+        "Year",
+        "Mnth",
+        "Day"
+      ],
+      "precipitation": "prcp(mm/day)",
+      "temperature": [
+        "tmax(C)",
+        "tmin(C)"
+      ]
+    },
+    "streamflow": {
+      "columns": [
+        "GAGEID",
+        "Year",
+        "Month",
+        "Day",
+        "Streamflow(cubic feet per second)",
+        "QC_flag"
+      ],
+      "missing_value": -999.0,
+      "qc_flags": [
+        "A",
+        "A:e",
+        "M",
+        "A:<"
+      ],
+      "readme_qc_flags": [
+        "A",
+        "A:e",
+        "M"
+      ],
+      "source_schema_note": "135 finite observations across four basin files use A:<, an undocumented additional source QC token retained in the audit ledger."
+    },
+    "drainage_area": {
+      "source_member": "basin_dataset_public_v1p2/basin_metadata/gauge_information.txt",
+      "units": "km^2"
+    },
+    "calendar": "daily Gregorian dates; forcing is 1980-01-01 through 2014-12-31 where source flow coverage permits alignment"
+  },
+  "eligible_basin_count": 563
+}

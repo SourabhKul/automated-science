@@ -1,0 +1,6 @@
+{
+  "samples_per_experiment": 2000,
+  "test": 1,
+  "train": 15,
+  "validation": 4
+}

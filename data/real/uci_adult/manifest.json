@@ -1,0 +1,16 @@
+{
+  "dataset_page": "https://archive.ics.uci.edu/dataset/2/adult",
+  "archive_url": "https://archive.ics.uci.edu/static/public/2/adult.zip",
+  "doi": "10.24432/C5XW20",
+  "license": "CC BY 4.0",
+  "archive_bytes": 620237,
+  "archive_sha256": "7537312dd56c2b98035880805ce99e68183a30ee468aa5329d6df0fbb3cc21bb",
+  "archive_headers": "data/real/uci_adult/source_provenance/archive.headers",
+  "members": [
+    "Index",
+    "adult.data",
+    "adult.names",
+    "adult.test",
+    "old.adult.names"
+  ]
+}

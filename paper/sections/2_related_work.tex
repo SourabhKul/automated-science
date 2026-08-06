@@ -1,0 +1,22 @@
+\section{Related Work}
+\label{sec:related}
+
+Our work sits at the intersection of symbolic regression, simulation-based inference, and LLM-driven code generation, building on prior work in automated science.
+
+\subsection{Classical and Neural Symbolic Regression}
+Symbolic regression seeks to find mathematical expressions that best fit a given dataset while remaining as simple and interpretable as possible. Classical methods rely heavily on Genetic Programming (GP). Algorithms like Eureqa and modern implementations like PySR represent equations as expression trees and evolve them through crossover and mutation. While effective in some physics environments with clean data, GP can face rapid search-space growth in high-dimensional biological or macroeconomic systems. The resulting candidate set can contain many weakly motivated combinations (e.g., adding a temperature to a logarithmic currency value), and evaluating all candidates can be expensive.
+
+An alternative approach is Sparse Identification of Non-linear Dynamics (SINDy), which assumes a predefined library of basis functions (e.g., $\sin(x), x^2, e^x$) and uses sparse regression (like LASSO) to select the active terms. SINDy is computationally efficient, but its result depends on the library and can be limited when the relevant mechanism requires a boundary condition or stochastic event not represented in that library.
+
+\subsection{Neural Differential Equations and Black-Box Modeling}
+To avoid the search-space constraints of symbolic regression, Neural Ordinary Differential Equations (Neural ODEs) and Physics-Informed Neural Networks (PINNs) parameterize the derivative function using a deep neural network. These methods can interpolate accurately and can incorporate physical constraints, but their learned derivative functions are not necessarily readable formulas. A Neural ODE does not directly identify whether a biological process is driven by Michaelis-Menten kinetics or simple mass-action. They can also overfit noisy data and struggle with stiff systems where local gradients vanish.
+
+\subsection{Simulation-Based Inference (SBI) and ABC-SMC}
+Simulation-Based Inference (SBI) bypasses the need for explicit likelihood functions by comparing simulated data directly to observations. This is critical for complex dynamical systems where the likelihood is intractable. Approximate Bayesian Computation Sequential Monte Carlo (ABC-SMC) is a classical SBI algorithm that approximates the posterior distribution of parameters by simulating candidate systems, applying a distance metric, and sequentially filtering particles through decreasing tolerance thresholds.
+
+While traditional SBI focuses on parameter estimation for a \textit{static} model structure, $E^3$ uses ABC-SMC to evaluate \textit{dynamically generated} model architectures. The engine treats the LLM as a structural mutator and uses ABC-SMC metrics to update the proposal context.
+
+\subsection{Large Language Models in Code Generation and Discovery}
+Recent advances have utilized LLMs to generate hypotheses, write Python scripts, or assist in theorem proving. Systems like AlphaCode demonstrate strong syntactic performance in competitive programming. More recently, DeepMind's FunSearch \citep{romera2023mathematical} and AlphaGeometry \citep{trinh2024solving} have shown that LLMs, when coupled with an automated evaluator, can search for mathematical bounds and assist with formal proofs.
+
+However, these breakthroughs have largely been confined to discrete mathematics, combinatorics, and formal geometry. In the realm of physical sciences, LLMs can propose equations that appear plausible but are physically incorrect or numerically unstable. $E^3$ studies this gap by coupling the LLM with a continuous dynamical simulator (JAX/Diffrax) and an empirical ABC-SMC evaluator. This subjects the proposed continuous dynamical hypotheses to iterative evaluation against empirical data.

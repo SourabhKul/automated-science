@@ -1,0 +1,35 @@
+\appendix
+\section{Reproducibility Details and System Configuration}
+\label{sec:appendix_repro}
+
+\subsection{Hardware and Runtimes}
+All local runs of the $E^3$ system were conducted on the following hardware:
+\begin{itemize}
+    \item \textbf{Processor:} Apple M2 Ultra (24-core CPU, 60-core GPU).
+    \item \textbf{Memory:} 192GB Unified LPDDR5 RAM.
+    \item \textbf{Software Stack:} The current cleaned checkout records Python 3.14, JAX 0.9.2, Diffrax 0.7.2, and related packages in \texttt{requirements-freeze.txt}. Historical runs may have used earlier local environment states.
+\end{itemize}
+
+Average wall-clock runtime per domain was approximately $2.14$ hours for 60 structural mutation iterations, where each iteration comprised 15 parameter-fitting generations of ABC-SMC.
+
+\subsection{Sensitivity Analysis of ABC-SMC}
+To evaluate the stability and correctness of our parameter inference scheme, we conducted sensitivity experiments on the synthetic Ecology domain. We measured the effect of varying the covariate noise annealing factor $\lambda_{noise}$ and the initial prior particle count $N_{particles}$ on the convergence rate (final Median MSE) and runtime. The results are summarized in Table~\ref{tab:sensitivity}.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Experiment Type} & \textbf{Value} & \textbf{Median MSE} & \textbf{Wall-Clock Time (s)} \\
+\midrule
+$\lambda_{noise}$ (Prior Nugget) & 0.001 & 65.89 & 2.98 \\
+$\lambda_{noise}$ (Prior Nugget) & 0.010 & 79.72 & 0.97 \\
+$\lambda_{noise}$ (Prior Nugget) & 0.100 & 78.14 & 1.02 \\
+\midrule
+$N_{particles}$ (Prior size)     & 1,000  & 274.11 & 1.59 \\
+$N_{particles}$ (Prior size)     & 5,000  & 72.90  & 0.99 \\
+$N_{particles}$ (Prior size)     & 10,000 & 48.86  & 1.84 \\
+\bottomrule
+\end{tabular}
+\caption{Sensitivity analysis of the ABC-SMC engine on the Lotka-Volterra Ecology dataset. These small tests suggest that initial particle count materially affects fit quality, but they should be treated as a smoke test rather than a full sampler study.}
+\label{tab:sensitivity}
+\end{table}

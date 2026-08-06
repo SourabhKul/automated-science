@@ -1,0 +1,48 @@
+{
+  "dataset": "NIST AM Bench 2022 AMB2022-03",
+  "doi": "10.18434/mds2-2716",
+  "planned_required_version": "1.0.0",
+  "official_resolved_version": "1.3.1",
+  "official_record_modified": "2024-09-17",
+  "source_gate_status": "blocked_fixed_version_contract_mismatch",
+  "retrieved_at": "2026-07-22T19:02:03Z",
+  "source_urls": {
+    "doi_metadata": "https://doi.org/10.18434/mds2-2716",
+    "readme": "https://data.nist.gov/od/ds/mds2-2716/2716_README.txt",
+    "raw_hdf5": "https://data.nist.gov/od/ds/mds2-2716/Thermography/AMB2022-03-718-AMMT-StaringCamera_Signal.h5"
+  },
+  "terms": "NIST public-service terms in 2716_README.txt; NIST employee work is not subject to U.S. copyright, with attribution and modification-notice requirements for derivative works.",
+  "retrieved_metadata": {
+    "doi_metadata": {
+      "bytes": 15433,
+      "sha256": "1a340657648a217bd537886d9e845dab7fdcfbd9940657faa80c791f6619fa80",
+      "response_headers": "source_provenance/doi_response_headers.txt"
+    },
+    "readme": {
+      "bytes": 12573,
+      "published_sha256": "ba44076ed51b69c0e4ca80ff0e2568eed2dc6459e85c9ad83b85860bee5760f2",
+      "local_sha256": "ba44076ed51b69c0e4ca80ff0e2568eed2dc6459e85c9ad83b85860bee5760f2",
+      "response_headers": "source_provenance/readme_response_headers.txt"
+    }
+  },
+  "raw_hdf5": {
+    "filename": "AMB2022-03-718-AMMT-StaringCamera_Signal.h5",
+    "published_bytes": 549979044,
+    "published_sha256": "f6fe21ec911707f72e7efda2932c77eae2b75d84765848878fe5beb6b728cd43",
+    "head_response_headers": "source_provenance/raw_hdf5_head_headers.txt",
+    "downloaded": false,
+    "local_sha256": null,
+    "reason_not_downloaded": "The fixed Phase 29 plan requires NIST Version 1.0.0, but the official DOI metadata resolves to Version 1.3.1. The source gate stops before raw measurement acquisition rather than silently substituting the newer record."
+  },
+  "excluded_components": [
+    "SamplePhotos microscopy TIFF files",
+    "ScanStrategy pad HDF5",
+    "all ex-situ geometry data",
+    "all pad outcomes"
+  ],
+  "gate_failure": {
+    "requirement": "The exact fixed Version 1.0.0 record must resolve to the direct source downloads before any raw measurement acquisition.",
+    "observed": "The official DOI metadata reports version 1.3.1 while the retrieved 2716_README.txt declares Version 1.0.0. No historical Version 1.0.0 distribution URL or immutable record was supplied by the fixed source path.",
+    "action": "Block Phase 29. Do not download or inspect the raw HDF5, transform measured signals, or relax/substitute the fixed source version. Return to source-backed selection."
+  }
+}

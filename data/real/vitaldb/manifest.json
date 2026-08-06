@@ -1,0 +1,50 @@
+{
+  "dataset": "VitalDB, a high-fidelity multi-parameter vital signs database in surgical patients",
+  "source_url": "https://physionet.org/content/vitaldb/1.0.0/",
+  "doi": "10.13026/czw8-9p62",
+  "version": "1.0.0",
+  "license": "CC BY 4.0",
+  "downloaded_on": "2026-07-14",
+  "fixture_mode": false,
+  "archive_gate_status": "passed_for_narrow_non_llm_adapter_baseline_gate",
+  "raw_files": {
+    "clinical_data.csv": {"sha256": "7d6edb471e5eee3fde75e417084240c97bdbf6eff41cbd61e5dace44f1585ecf", "published_sha256_verified": true},
+    "clinical_parameters.csv": {"sha256": "3fd13678a26629df5f1352c2a3fa2951e731d3760b8fa47c06c9ac3fbcef2e35", "published_sha256_verified": true},
+    "track_names.csv": {"sha256": "31c431642f91153461724375c05309d251ea63f206f3aeaed782ea4b9817400c", "published_sha256_verified": true},
+    "LICENSE.txt": {"sha256": "9a78e7f22742dde9f66ae235ec793ba2212019dc4d0ced75c4da09ced0b35fb2", "published_sha256_verified": true},
+    "SHA256SUMS.txt": {"sha256": "874732d0548b5ba4de2efe851375c4f25f45488a2a19c771e2f9ab0288a5de1d"}
+  },
+  "api_metadata": {
+    "cases": {"endpoint": "https://api.vitaldb.net/cases", "file": "raw/vitaldb_api_cases.csv", "sha256": "04888ad649112488f17539214d54f9b6bd1f28cd74f5e43704b22993320de484"},
+    "track_index": {"endpoint": "https://api.vitaldb.net/trks?caseid=1", "file": "raw/vitaldb_api_track_index.csv", "sha256": "6bfda7ac524f2f219673b893e7d62e526c45e8f2daa02c47fc4442e613efd0bd"},
+    "reader": "vitaldb 1.7.2"
+  },
+  "locked_source_gate": {
+    "candidate_split": "candidate_split.json",
+    "required_tracks": ["Solar8000/ART_MBP", "Orchestra/PPF20_RATE", "Orchestra/RFTN20_RATE", "Orchestra/PHEN_RATE"],
+    "split_counts": {"train": 24, "selection": 8, "external": 8},
+    "subject_disjoint": true,
+    "claim_boundary": "Observational conditional prediction only; no causal drug-effect or clinical decision claim."
+  },
+  "adapter_assessment": {
+    "date": "2026-07-14",
+    "artifact": "artifacts/evaluations/phase26_vitaldb_adapter_assessment_20260715/assessment.json",
+    "status": "passed_source_quality_only",
+    "cases_assessed": 40,
+    "cases_eligible": 40,
+    "reader": "vitaldb 1.7.2 load_case with locked tracks at 10-second interval",
+    "policy": "longest jointly finite contiguous segment; no interpolation, replacement, pruning, normalization, or fitting"
+  },
+  "synthetic_controls": {
+    "artifact": "artifacts/evaluations/phase26_vitaldb_synthetic_controls_20260715/result.json",
+    "status": "passed_output_isolated_native_grid_controls",
+    "measured_map_accessible_to_generator_or_fitter": false,
+    "controls": ["planted_recovery", "record_pairing", "medication_time_order", "phenylephrine_ablation", "reset", "target_isolation", "subject_leakage"]
+  },
+  "baseline_gate": {
+    "artifact": "artifacts/evaluations/phase26_vitaldb_baseline_gate_decision_20260715.json",
+    "status": "closed_negative_selection_prediction_bound_violation",
+    "reason": "Locked selection case 20 has observed retained initial MAP -6 mmHg, violating the predeclared 20..250 mmHg free-run bound for every comparator.",
+    "external_scoring_executed": false
+  }
+}

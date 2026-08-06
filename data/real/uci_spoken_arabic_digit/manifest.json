@@ -1,0 +1,15 @@
+{
+  "archive": "data/real/uci_spoken_arabic_digit/raw/uci_spoken_arabic_digit_195.zip",
+  "official_url": "https://archive.ics.uci.edu/static/public/195/spoken%2Barabic%2Bdigit.zip",
+  "doi": "10.24432/C52C9Q",
+  "license": "CC-BY-4.0",
+  "archive_bytes": 14646679,
+  "archive_sha256": "3c8c83404289c49631605421830872be337d92d887e61798385aacbe9423010d",
+  "http_headers_path": "artifacts/evaluations/phase46_uci_spoken_arabic_digit_speaker_prefix_classification_source_access_20260727/headers.txt",
+  "members": [
+    "Test_Arabic_Digit.txt",
+    "Train_Arabic_Digit.txt",
+    "documentation.html",
+    "graphic.jpg"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "source_train": "train",
+  "external": "test",
+  "source_train_selection": "deterministic stratified 80/20 only after this gate"
+}

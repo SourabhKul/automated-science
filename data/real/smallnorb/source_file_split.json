@@ -1,0 +1,5 @@
+{
+  "train": "creator training files; instances 4,6,7,8,9",
+  "external": "creator testing files; instances 0,1,2,3,5",
+  "selection": "duplicate-group-aware seed-2064001 stratified 80/20 inside source train only after this gate"
+}

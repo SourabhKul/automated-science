@@ -1,0 +1,22 @@
+{
+  "phase": 33,
+  "status": "blocked_raw_run_inventory_contract_failed",
+  "source": {
+    "dataset_page": "https://archive.ics.uci.edu/dataset/245/daphnet%2Bfreezing%2Bof%2Bgait",
+    "archive_url": "https://archive.ics.uci.edu/static/public/245/daphnet%2Bfreezing%2Bof%2Bgait.zip",
+    "doi": "10.24432/C56K78",
+    "license": "CC-BY-4.0",
+    "archive_path": "data/real/uci_daphnet_fog/raw/uci_dataset_245.zip",
+    "archive_bytes": 21443961,
+    "archive_sha256": "27c6173b3acee75a69284903756b9011a00766c1bbb743c37fc884c5dbc39399",
+    "published_checksum": null
+  },
+  "inventory": {
+    "archive_members": 34,
+    "raw_run_pattern": "dataset_fog_release/dataset/S??R??.txt",
+    "raw_run_count": 17,
+    "required_raw_run_count": 29,
+    "person_ids": ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"]
+  },
+  "source_gate": {"passed": false, "reason": "fixed required 29 raw runs; observed 17", "raw_measurement_rows_opened": false}
+}
