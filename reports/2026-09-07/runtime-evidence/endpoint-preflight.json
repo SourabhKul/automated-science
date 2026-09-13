@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-07T13:17:46-07:00/2026-09-07T13:21:00-07:00",
+  "endpoint": {
+    "base_url": "http://127.0.0.1:8000/v1",
+    "chat_endpoint": "http://127.0.0.1:8000/v1/chat/completions",
+    "server_header": "uvicorn",
+    "requested_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed"
+  },
+  "models_probe": {
+    "method": "GET",
+    "path": "/v1/models",
+    "status_code": 200,
+    "advertised_models": [
+      "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "mlx-community--Qwen3.5-35B-A3B-4bit",
+      "nightmedia--Qwen3.5-122B-A10B-Text-mxfp4-mlx"
+    ],
+    "requested_model_metadata": {
+      "owned_by": "omlx",
+      "max_model_len": 262144
+    }
+  },
+  "tiny_completion_probe": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "request": {
+      "model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with exactly OK."
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 8,
+      "stream": false
+    },
+    "status_code": 200,
+    "elapsed_seconds": 0.84,
+    "response": {
+      "finish_reason": "length",
+      "content_prefix": "We need to respond to user: \"",
+      "usage": {
+        "prompt_tokens": 57,
+        "completion_tokens": 8,
+        "total_tokens": 65
+      }
+    },
+    "interpretation": "Transport and model selection worked; default thinking consumed the bounded output, so the probe did not return the requested literal OK."
+  },
+  "preflight_probe_without_thinking_override": {
+    "runner": "scripts.run_model_matrix.preflight_model",
+    "endpoint_base_url": "http://127.0.0.1:8000/v1",
+    "timeout_seconds": 20,
+    "request": {
+      "model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a deterministic code generator. Return only Python for a tiny valid module."
+        },
+        {
+          "role": "user",
+          "content": "Write the smallest valid Python module for this scientific runner. Define exactly one function `dynamics(t, y, args)` that returns a single-state `jnp.array`, and define `metadata` as a list with one dict: `{'name': 'k', 'range': (0.01, 1.0)}`. No prose."
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 192
+    },
+    "first_response": {
+      "status_code": 200,
+      "finish_reason": "length",
+      "category": "invalid_code",
+      "detail": "syntax error: invalid syntax (<unknown>, line 1)",
+      "repair_attempted": true
+    },
+    "repair_request": {
+      "temperature": 0,
+      "max_tokens": 256,
+      "chat_template_kwargs": null
+    },
+    "final_response": {
+      "status_code": 200,
+      "finish_reason": "length",
+      "category": "invalid_code",
+      "detail": "syntax error: unterminated string literal (detected at line 1) (<unknown>, line 1)",
+      "ok": false
+    }
+  },
+  "preflight_probe_with_omlx_thinking_disabled": {
+    "injection": {
+      "field": "chat_template_kwargs",
+      "value": {
+        "enable_thinking": false
+      },
+      "location": "top-level JSON body on both the initial and repair POST requests"
+    },
+    "initial_request_delta": "The request above was otherwise unchanged; the same field/value was added to the initial payload.",
+    "initial_response": {
+      "status_code": 200,
+      "finish_reason": "stop",
+      "category": "invalid_code",
+      "detail": "args must be indexed positionally, not by parameter name",
+      "normalization_applied": true,
+      "content": "```python\nimport jax.numpy as jnp\n\ndef dynamics(t, y, args):\n    k = args['k']\n    return jnp.array([-k * y[0]])\n\nmetadata = [{'name': 'k', 'range': (0.01, 1.0)}]\n```"
+    },
+    "repair_request": {
+      "model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "temperature": 0,
+      "max_tokens": 256,
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "repair_response": {
+      "status_code": 200,
+      "finish_reason": "stop",
+      "category": null,
+      "detail": "validated dynamics(t, y, args) and metadata preflight module",
+      "ok": true,
+      "content": "```python\ndef dynamics(t, y, args):\n    k = args[0]\n    return [-k * y[0]]\n\nmetadata = [{'name': 'k', 'range': (0.01, 1.0)}]\n```"
+    },
+    "interpretation": "Disabling thinking made the response code-shaped, but the first code response still required the repository's existing repair step before validation succeeded."
+  },
+  "residency_and_native_api_probes": [
+    {
+      "method": "GET",
+      "path": "/v1/models/status",
+      "status_code": 200,
+      "model_count": 3,
+      "loaded_count": 1,
+      "requested_model_loaded": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/models",
+      "status_code": 404
+    },
+    {
+      "method": "GET",
+      "path": "/admin/api/models",
+      "status_code": 401,
+      "detail": "Admin authentication required"
+    }
+  ],
+  "reproduction": {
+    "venv_setup": [
+      "audit_venv=/tmp/automated_science_runtime_audit_venv",
+      "if [ ! -x \"$audit_venv/bin/python\" ]; then python3 -m venv --system-site-packages \"$audit_venv\"; fi",
+      "\"$audit_venv/bin/python\" -m pip install --disable-pip-version-check --quiet 'pytest>=8' 'jax==0.9.2' 'diffrax==0.7.2'"
+    ],
+    "pytest": "\"$audit_venv/bin/python\" -m pytest -q tests/test_run_domain_config.py tests/test_run_model_matrix_preflight.py tests/test_generated_code.py tests/test_sandbox_eval.py tests/test_sbi_engine.py",
+    "pytest_result": "6 passed in 8.10s",
+    "compile_and_dependency_light_checks": [
+      "python3 -m compileall -q core scripts tests",
+      "python3 -m tests.test_run_domain_config",
+      "python3 -m tests.test_run_model_matrix_preflight",
+      "python3 -m tests.test_generated_code"
+    ]
+  },
+  "mutations": {
+    "scientific_code_changed": false,
+    "model_load_or_unload_requested": false,
+    "model_load_or_unload_performed": false,
+    "experiments_launched": false,
+    "secrets_recorded": false
+  }
+}
