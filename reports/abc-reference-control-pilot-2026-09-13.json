@@ -1,0 +1,608 @@
+{
+  "status": "completed",
+  "reference_path": "gaussian_abc_smc_reference_opt_in",
+  "canonical_runner_integrated": false,
+  "control_definition": {
+    "theta_support": [
+      0.0,
+      1.0
+    ],
+    "sigma": 0.1,
+    "observations": [
+      0.1,
+      0.5,
+      0.9
+    ],
+    "epsilons": [
+      0.1,
+      0.025
+    ],
+    "quadrature": "independent fixed Gauss-Legendre quadrature on [0, 1]",
+    "diagnostic_note": "ESS-scaled errors are descriptive pilot diagnostics; no formal weighted-SMC confidence claim is made."
+  },
+  "pilot_budget": {
+    "seeds": [
+      11,
+      29,
+      47
+    ],
+    "target_samples_per_cell": 400,
+    "max_attempts_per_cell": 50000,
+    "wall_budget_seconds": 480.0,
+    "elapsed_seconds": 1.2288024169392884
+  },
+  "model_preflight": {
+    "status": "ok",
+    "http_status": 200,
+    "endpoint": "http://127.0.0.1:8000/v1/models",
+    "advertised_models": [
+      "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "mlx-community--Qwen3.5-35B-A3B-4bit",
+      "nightmedia--Qwen3.5-122B-A10B-Text-mxfp4-mlx"
+    ],
+    "requested_model_advertised": true,
+    "generation_requested": false
+  },
+  "cells": [
+    {
+      "y": 0.1,
+      "epsilon": 0.1,
+      "seed": 11,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2442,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.16095484222153977,
+      "target_mean": 0.13961155847363577,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.14144041803082874,
+      "mean_error": 0.0018288595571929744,
+      "mean_mc_se": 0.004499648246169524,
+      "mean_error_over_mc_se": 0.4064450057290261,
+      "quantile_errors": [
+        -0.0015363587415787236,
+        -0.0016893476159574594,
+        0.003928889628174392
+      ],
+      "quantile_error_over_mc_se": [
+        0.05887433030024961,
+        0.044787154106100846,
+        0.06865566985912246
+      ],
+      "cdf_max_abs_error": 0.02532752566622609,
+      "cdf_max_error_over_mc_se": 2.911596079891351
+    },
+    {
+      "y": 0.1,
+      "epsilon": 0.1,
+      "seed": 29,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2638,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.16095484222153977,
+      "target_mean": 0.13961155847363577,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.13645863933640867,
+      "mean_error": -0.003152919137227095,
+      "mean_mc_se": 0.004298931355455865,
+      "mean_error_over_mc_se": 0.7334192794741089,
+      "quantile_errors": [
+        -0.003160685349637281,
+        -0.0033122058566728563,
+        -0.0020355230637533195
+      ],
+      "quantile_error_over_mc_se": [
+        0.12111965012708603,
+        0.08781157455853808,
+        0.03556989701454506
+      ],
+      "cdf_max_abs_error": 0.0522467237435047,
+      "cdf_max_error_over_mc_se": 2.1558488521413013
+    },
+    {
+      "y": 0.1,
+      "epsilon": 0.1,
+      "seed": 47,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2450,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.16095484222153977,
+      "target_mean": 0.13961155847363577,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.14293478275540947,
+      "mean_error": 0.003323224281773701,
+      "mean_mc_se": 0.004571302890957051,
+      "mean_error_over_mc_se": 0.7269752980813635,
+      "quantile_errors": [
+        -0.0053771497654228825,
+        0.005592118517475153,
+        0.00460286516592745
+      ],
+      "quantile_error_over_mc_se": [
+        0.20605610056809445,
+        0.14825549901983393,
+        0.08043310480697041
+      ],
+      "cdf_max_abs_error": 0.030638373937056318,
+      "cdf_max_error_over_mc_se": 1.93957977403604
+    },
+    {
+      "y": 0.1,
+      "epsilon": 0.025,
+      "seed": 11,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 8995,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.04194199504332995,
+      "target_mean": 0.12944496018440954,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.1333768431827033,
+      "mean_error": 0.003931882998293751,
+      "mean_mc_se": 0.00411129825238589,
+      "mean_error_over_mc_se": 0.9563604382172906,
+      "quantile_errors": [
+        0.0005371342952895236,
+        0.0013883701220564482,
+        0.00691258118501803
+      ],
+      "quantile_error_over_mc_se": [
+        0.0055711605868632675,
+        0.010738896490528406,
+        0.03513941540199033
+      ],
+      "cdf_max_abs_error": 0.0329136828813128,
+      "cdf_max_error_over_mc_se": 2.0493699913179384
+    },
+    {
+      "y": 0.1,
+      "epsilon": 0.025,
+      "seed": 29,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 10303,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.04194199504332995,
+      "target_mean": 0.12944496018440954,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.1306530327344817,
+      "mean_error": 0.001208072550072159,
+      "mean_mc_se": 0.004128140251166234,
+      "mean_error_over_mc_se": 0.29264329130553846,
+      "quantile_errors": [
+        -0.004738303861668666,
+        0.006367814739685562,
+        0.010111335091857021
+      ],
+      "quantile_error_over_mc_se": [
+        0.04914572008194273,
+        0.049254375525638126,
+        0.05139996110737312
+      ],
+      "cdf_max_abs_error": 0.03746372141608861,
+      "cdf_max_error_over_mc_se": 1.7219200204846639
+    },
+    {
+      "y": 0.1,
+      "epsilon": 0.025,
+      "seed": 47,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 9708,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.04194199504332995,
+      "target_mean": 0.12944496018440954,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.13761255305860323,
+      "mean_error": 0.008167592874193691,
+      "mean_mc_se": 0.00413527783921267,
+      "mean_error_over_mc_se": 1.9751013575786112,
+      "quantile_errors": [
+        0.011556678257677658,
+        0.007198111895588777,
+        0.010030173386919583
+      ],
+      "quantile_error_over_mc_se": [
+        0.1198659459819623,
+        0.055676636471744985,
+        0.05098738369407465
+      ],
+      "cdf_max_abs_error": 0.05512420502292914,
+      "cdf_max_error_over_mc_se": 2.8631013681785222
+    },
+    {
+      "y": 0.5,
+      "epsilon": 0.1,
+      "seed": 11,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2099,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.19999857097958446,
+      "target_mean": 0.49999999999999994,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.5032172062176425,
+      "mean_error": 0.0032172062176425986,
+      "mean_mc_se": 0.005875758965330593,
+      "mean_error_over_mc_se": 0.5475388348340096,
+      "quantile_errors": [
+        -0.0024589014174634105,
+        0.011458445885420332,
+        -0.0018061730776507412
+      ],
+      "quantile_error_over_mc_se": [
+        0.050320116213592725,
+        0.3129024240879154,
+        0.03696237617488835
+      ],
+      "cdf_max_abs_error": 0.041594430060613696,
+      "cdf_max_error_over_mc_se": 1.6676587935205343
+    },
+    {
+      "y": 0.5,
+      "epsilon": 0.1,
+      "seed": 29,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2031,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.19999857097958446,
+      "target_mean": 0.49999999999999994,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.50634551682862,
+      "mean_error": 0.0063455168286200014,
+      "mean_mc_se": 0.00572515941610477,
+      "mean_error_over_mc_se": 1.1083563561165086,
+      "quantile_errors": [
+        -0.0008163553519193734,
+        0.009727656528323747,
+        0.00900615997464449
+      ],
+      "quantile_error_over_mc_se": [
+        0.016706280247114676,
+        0.2656387558002138,
+        0.18430629765947779
+      ],
+      "cdf_max_abs_error": 0.04850133733252393,
+      "cdf_max_error_over_mc_se": 2.013715914109108
+    },
+    {
+      "y": 0.5,
+      "epsilon": 0.1,
+      "seed": 47,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2012,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.19999857097958446,
+      "target_mean": 0.49999999999999994,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.5028333334780721,
+      "mean_error": 0.0028333334780721864,
+      "mean_mc_se": 0.005828501085876008,
+      "mean_error_over_mc_se": 0.4861170026952725,
+      "quantile_errors": [
+        -0.0008794223415119484,
+        0.002157437266101625,
+        -0.001949531771206603
+      ],
+      "quantile_error_over_mc_se": [
+        0.017996912812943047,
+        0.05891439006050164,
+        0.039896135970513516
+      ],
+      "cdf_max_abs_error": 0.04256151102786887,
+      "cdf_max_error_over_mc_se": 2.0550954142447546
+    },
+    {
+      "y": 0.5,
+      "epsilon": 0.025,
+      "seed": 11,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 7745,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.049999963044957005,
+      "target_mean": 0.5,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.49544211495589285,
+      "mean_error": -0.004557885044107146,
+      "mean_mc_se": 0.005334204361580663,
+      "mean_error_over_mc_se": 0.8544638966094141,
+      "quantile_errors": [
+        -0.02014086535252768,
+        -0.0011600320879150416,
+        -0.003455361053269823
+      ],
+      "quantile_error_over_mc_se": [
+        0.11661960138182223,
+        0.009160200405790733,
+        0.020007225191644107
+      ],
+      "cdf_max_abs_error": 0.036851896294484016,
+      "cdf_max_error_over_mc_se": 3.0308287046378775
+    },
+    {
+      "y": 0.5,
+      "epsilon": 0.025,
+      "seed": 29,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 8376,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.049999963044957005,
+      "target_mean": 0.5,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.5091940728450495,
+      "mean_error": 0.009194072845049472,
+      "mean_mc_se": 0.005039369452726172,
+      "mean_error_over_mc_se": 1.8244490568310507,
+      "quantile_errors": [
+        0.00408061597538889,
+        0.008101450160716284,
+        0.011808410412168735
+      ],
+      "quantile_error_over_mc_se": [
+        0.02362757508740433,
+        0.06397315024541093,
+        0.0683730361688389
+      ],
+      "cdf_max_abs_error": 0.053900919509659695,
+      "cdf_max_error_over_mc_se": 2.2890958153846133
+    },
+    {
+      "y": 0.5,
+      "epsilon": 0.025,
+      "seed": 47,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 7975,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.049999963044957005,
+      "target_mean": 0.5,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.4947142755124863,
+      "mean_error": -0.005285724487513688,
+      "mean_mc_se": 0.00530906422876503,
+      "mean_error_over_mc_se": 0.9956037937674806,
+      "quantile_errors": [
+        -0.019441576072332434,
+        0.0019608686696780397,
+        0.005727474655196407
+      ],
+      "quantile_error_over_mc_se": [
+        0.11257057788260517,
+        0.015484011322454565,
+        0.033163213174933155
+      ],
+      "cdf_max_abs_error": 0.040015089787708166,
+      "cdf_max_error_over_mc_se": 2.4854308048363816
+    },
+    {
+      "y": 0.9,
+      "epsilon": 0.1,
+      "seed": 11,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2568,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.16095484222153975,
+      "target_mean": 0.860388441526364,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.8512231033193058,
+      "mean_error": -0.009165338207058116,
+      "mean_mc_se": 0.004660793132181692,
+      "mean_error_over_mc_se": 1.9664760797413618,
+      "quantile_errors": [
+        -0.014755355360289935,
+        -0.009434044545704179,
+        -0.00096332469999727
+      ],
+      "quantile_error_over_mc_se": [
+        0.2578435390512147,
+        0.25011075454284276,
+        0.03691526922660603
+      ],
+      "cdf_max_abs_error": 0.057415451193953,
+      "cdf_max_error_over_mc_se": 2.678922376113299
+    },
+    {
+      "y": 0.9,
+      "epsilon": 0.1,
+      "seed": 29,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2540,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.16095484222153975,
+      "target_mean": 0.860388441526364,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.8575382046284515,
+      "mean_error": -0.002850236897912417,
+      "mean_mc_se": 0.0046963101811395855,
+      "mean_error_over_mc_se": 0.6069098479395565,
+      "quantile_errors": [
+        4.630581484899032e-05,
+        -0.000792698908474665,
+        -0.002158821435556124
+      ],
+      "quantile_error_over_mc_se": [
+        0.0008091743565489666,
+        0.02101564404994947,
+        0.08272753154356811
+      ],
+      "cdf_max_abs_error": 0.036737681911472475,
+      "cdf_max_error_over_mc_se": 3.445196817904056
+    },
+    {
+      "y": 0.9,
+      "epsilon": 0.1,
+      "seed": 47,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 2222,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.16095484222153975,
+      "target_mean": 0.860388441526364,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.8674239787608322,
+      "mean_error": 0.007035537234468259,
+      "mean_mc_se": 0.004492078259667808,
+      "mean_error_over_mc_se": 1.5662098538302271,
+      "quantile_errors": [
+        0.0009287757620252135,
+        0.006113828018661005,
+        0.005092957841208001
+      ],
+      "quantile_error_over_mc_se": [
+        0.016229960147897394,
+        0.16208680502667047,
+        0.19516566934127239
+      ],
+      "cdf_max_abs_error": 0.04532752566623016,
+      "cdf_max_error_over_mc_se": 2.0568008403144526
+    },
+    {
+      "y": 0.9,
+      "epsilon": 0.025,
+      "seed": 11,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 10434,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.04194199504332999,
+      "target_mean": 0.8705550398155905,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.8720194228808976,
+      "mean_error": 0.0014643830653071621,
+      "mean_mc_se": 0.004088954616284965,
+      "mean_error_over_mc_se": 0.35813140587939146,
+      "quantile_errors": [
+        -0.01184689503056302,
+        0.005451638136136028,
+        0.0043436058859189774
+      ],
+      "quantile_error_over_mc_se": [
+        0.06022250655152924,
+        0.04216784610797151,
+        0.04505190997617383
+      ],
+      "cdf_max_abs_error": 0.04259266980635623,
+      "cdf_max_error_over_mc_se": 1.7303518607954642
+    },
+    {
+      "y": 0.9,
+      "epsilon": 0.025,
+      "seed": 29,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 10614,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.04194199504332999,
+      "target_mean": 0.8705550398155905,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.8738288496058706,
+      "mean_error": 0.0032738097902801355,
+      "mean_mc_se": 0.003925107593948794,
+      "mean_error_over_mc_se": 0.8340688024265265,
+      "quantile_errors": [
+        0.004549074617157034,
+        0.006335919515570776,
+        -0.0013542416888634445
+      ],
+      "quantile_error_over_mc_se": [
+        0.02312476604446753,
+        0.0490076693304604,
+        0.014046204065254269
+      ],
+      "cdf_max_abs_error": 0.039069994636904304,
+      "cdf_max_error_over_mc_se": 2.0548365858483826
+    },
+    {
+      "y": 0.9,
+      "epsilon": 0.025,
+      "seed": 47,
+      "status": "complete",
+      "termination_reason": "completed",
+      "accepted": 400,
+      "target_samples": 400,
+      "attempts": 9674,
+      "out_of_support": 0,
+      "failed_simulations": 0,
+      "normalizer": 0.04194199504332999,
+      "target_mean": 0.8705550398155905,
+      "effective_sample_size": 399.99999999999994,
+      "weighted_mean": 0.8684978637380387,
+      "mean_error": -0.0020571760775517367,
+      "mean_mc_se": 0.004016612185966038,
+      "mean_error_over_mc_se": 0.5121669661660313,
+      "quantile_errors": [
+        0.0008671355171220307,
+        -0.004801164499555366,
+        0.0027789086227379967
+      ],
+      "quantile_error_over_mc_se": [
+        0.004407996713588117,
+        0.03713650112144111,
+        0.02882285925375061
+      ],
+      "cdf_max_abs_error": 0.03893870214869466,
+      "cdf_max_error_over_mc_se": 1.5871145491533596
+    }
+  ],
+  "completed_cells": 18,
+  "expected_cells": 18
+}

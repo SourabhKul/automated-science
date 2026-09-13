@@ -10,3 +10,9 @@
 - Same-Qwen workflow ablations remain allowed. Prompts, inference strategies, priors, proposal kernels, data splits/adapters, diagnostics, seeds, and compute budgets may be compared while the model ID and oMLX endpoint stay fixed; label these as same-Qwen ablations.
 - Near-term research focus is data exploration and ABC-SMC-style scientific discovery.
 - The Luna maximum-reasoning allocation remains the team policy for delegated coding, code review, tests, experiment execution, and monitoring. It does not authorize changing the fixed research model.
+
+## Git synchronization policy
+
+- Luna owns keeping GitHub up to date with completed, independently reviewed code, documentation, and compact evidence within the authorized scope.
+- Use one Git owner for a synchronization step: inspect the remote first, sync only the reviewed scoped changes, and verify the pushed content commit on `origin/main`.
+- Never force-push. Keep raw or bulky experiment artifacts, local environments, and secrets out of Git.
