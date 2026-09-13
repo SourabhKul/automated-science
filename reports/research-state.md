@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-09-13 05:48 UTC after the bounded smoke recovery. This file records observed state, not inferred execution.
+Updated: 2026-09-13 after the bounded smoke recovery and verified GitHub synchronization. This file records observed state, not inferred execution.
 
 ## Fixed direction and authority
 
@@ -20,7 +20,7 @@ Updated: 2026-09-13 05:48 UTC after the bounded smoke recovery. This file record
 
 ## Current work
 
-The bounded recovery is complete. Its synthetic-data deviation, exact budgets, and known scorer/sampler limitations are documented in `reports/scaffolding-smoke-2026-09-12.md`; no scientific source implementation was changed. The timestamped raw bundle remains local under the ignored `artifacts/` tree, while the report and replay harness are reviewable project files. Git synchronization remains a separate authorized step owned by the designated synchronization worker.
+The bounded recovery is complete. Its synthetic-data deviation, exact budgets, and known scorer/sampler limitations are documented in `reports/scaffolding-smoke-2026-09-12.md`; no scientific source implementation was changed. The timestamped raw bundle remains local under the ignored `artifacts/` tree, while the report and replay harness are reviewable project files. The reviewed project files were committed as `f2ee1cc1e0a95ea8c3bd9ac9aacc725c76ae72d8` and verified pushed to `origin/main`.
 
 The primary planner produced reports/inference-repair-acceptance-plan-2026-09-13.md: an explicit proposal/weight contract, finite-epsilon analytic test target, boundary/weight/failure checks, and criteria for evaluating BDSS. This is a scientific specification, not implemented or tested code.
 
@@ -30,6 +30,6 @@ The primary planner produced reports/inference-repair-acceptance-plan-2026-09-13
 2. Correct adaptive-validation/final-test separation and reserve an untouched sealed trajectory, replicate, or intervention condition before scaling discovery runs.
 3. Add semantic/canonical-form deduplication as an efficiency diagnostic for algebraically equivalent proposals before paying another full inference budget; treat this as an ablation target, not a claim of general symbolic-equivalence solving.
 4. Keep the five-hour heartbeat quiet while state is unchanged; on each wakeup inspect active processes first and preserve any failure evidence without substituting another research model.
-5. Synchronize the completed reviewed report, research-state updates, and replay harness through the designated Git owner; record the actual commit, branch, and push outcome. Do not publish raw smoke artifacts, local environments, or secrets.
+5. Keep raw smoke artifacts, local environments, and secrets out of Git; the reviewed report, research-state updates, and replay harness are already synchronized on `origin/main` at `f2ee1cc1e0a95ea8c3bd9ac9aacc725c76ae72d8`.
 
-No scientific breakthrough or successful GitHub synchronization is claimed by this checkpoint; the smoke integration result itself is verified locally and linked above.
+No scientific breakthrough is claimed by this checkpoint; the smoke integration result and the reviewed `origin/main` synchronization are verified locally and linked above.
