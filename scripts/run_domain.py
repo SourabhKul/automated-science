@@ -7,7 +7,8 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 
 import numpy as np
 import requests
@@ -113,7 +114,15 @@ def call_llm(
     system_prompt="You are a mathematical AI. Output ONLY a Python code block with `dynamics(t, y, args)` and `metadata`. No prose.",
     timeout_seconds=900,
     chat_template_kwargs=None,
+    response_metadata=None,
 ):
+    """Call the configured chat endpoint and preserve the legacy return API.
+
+    Callers still receive the extracted message content or ``None``.  Canonical
+    callers may pass a mutable ``response_metadata`` dict to receive the full
+    transport/result receipt, including failures and the untruncated response
+    body.  Legacy callers that omit the sink are unaffected.
+    """
     payload = {
         "model": model_id,
         "messages": [
@@ -125,13 +134,87 @@ def call_llm(
     }
     if chat_template_kwargs:
         payload["chat_template_kwargs"] = dict(chat_template_kwargs)
+    request_started_at = datetime.now(timezone.utc).isoformat()
+    started = time.monotonic()
+    status_code = None
+    raw_text = ""
+    response_payload = None
+    error = None
     try:
         r = requests.post(endpoint, json=payload, timeout=timeout_seconds)
+        status_code = getattr(r, "status_code", None)
+        raw_text = str(getattr(r, "text", "") or "")
+        try:
+            response_payload = r.json()
+        except (TypeError, ValueError):
+            response_payload = None
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
+        content = response_payload["choices"][0]["message"]["content"]
+        if isinstance(response_metadata, dict) and not isinstance(content, str):
+            raise TypeError("chat completion message.content must be a string")
+        if isinstance(response_metadata, dict) and not content.strip():
+            raise ValueError("chat completion message.content is empty")
+        return content
     except Exception as e:
+        error = f"{type(e).__name__}: {e}"
         print(f"LLM Error: {e}")
         return None
+    finally:
+        if isinstance(response_metadata, dict):
+            choices = response_payload.get("choices") if isinstance(response_payload, dict) else None
+            choice = choices[0] if isinstance(choices, list) and choices else {}
+            usage = response_payload.get("usage") if isinstance(response_payload, dict) else None
+            response_metadata.update({
+                "status": "success" if error is None else "failed",
+                "status_code": status_code,
+                "finish_reason": choice.get("finish_reason") if isinstance(choice, dict) else None,
+                "usage": usage,
+                "response_id": response_payload.get("id") if isinstance(response_payload, dict) else None,
+                "response_model": response_payload.get("model") if isinstance(response_payload, dict) else None,
+                "response_created": response_payload.get("created") if isinstance(response_payload, dict) else None,
+                "system_fingerprint": response_payload.get("system_fingerprint") if isinstance(response_payload, dict) else None,
+                "elapsed_seconds": time.monotonic() - started,
+                "request_started_at": request_started_at,
+                "request_finished_at": datetime.now(timezone.utc).isoformat(),
+                "error": error,
+                "raw_response": raw_text,
+                "raw_response_sha256": sha256_text(raw_text),
+            })
+
+
+def invoke_llm_with_metadata(*args, **kwargs):
+    """Invoke ``call_llm`` while guaranteeing a receipt for canonical calls."""
+
+    response_metadata = {}
+    started = time.monotonic()
+    kwargs["response_metadata"] = response_metadata
+    try:
+        reply = call_llm(*args, **kwargs)
+    except Exception as exc:  # Defensive for injected/mocked clients too.
+        reply = None
+        response_metadata.update({
+            "status": "failed",
+            "status_code": None,
+            "finish_reason": None,
+            "usage": None,
+            "elapsed_seconds": time.monotonic() - started,
+            "request_started_at": datetime.now(timezone.utc).isoformat(),
+            "request_finished_at": datetime.now(timezone.utc).isoformat(),
+            "error": f"{type(exc).__name__}: {exc}",
+            "raw_response": "",
+            "raw_response_sha256": sha256_text(""),
+        })
+    if reply is not None and (not isinstance(reply, str) or not reply.strip()):
+        response_metadata.update({
+            "status": "failed",
+            "error": (
+                "chat completion message.content must be a non-empty string"
+                if not isinstance(reply, str)
+                else "chat completion message.content is empty"
+            ),
+        })
+        reply = None
+    return reply, response_metadata
 
 
 def append_prompt_receipt(
@@ -142,9 +225,20 @@ def append_prompt_receipt(
     prompt: str,
     response: str | None,
     protocol: str,
+    response_metadata: dict | None = None,
 ) -> None:
     """Record canonical prompt/response hashes and payloads without final data."""
 
+    metadata = dict(response_metadata or {})
+    raw_response = str(metadata.get("raw_response") or "")
+    metadata.setdefault("status", "success" if response is not None else "failed")
+    metadata.setdefault("status_code", None)
+    metadata.setdefault("finish_reason", None)
+    metadata.setdefault("usage", None)
+    metadata.setdefault("elapsed_seconds", None)
+    metadata.setdefault("error", None if response is not None else "LLM returned no content")
+    metadata["raw_response"] = raw_response
+    metadata["raw_response_sha256"] = sha256_text(raw_response)
     receipts.append({
         "iteration": iteration,
         "stage": stage,
@@ -154,7 +248,18 @@ def append_prompt_receipt(
         "response_sha256": sha256_text(response or ""),
         "final_outcomes_in_context": False,
         "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
+        "response_metadata": metadata,
     })
+
+
+def write_prompt_receipts(path: str, receipts: list[dict]) -> None:
+    """Durably publish canonical LLM receipts after each request."""
+
+    temporary_path = f"{path}.tmp"
+    with open(temporary_path, "w") as f:
+        json.dump(receipts, f, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(temporary_path, path)
 
 
 def build_repair_prompt(domain: str, previous_code: str | None, error_msg: str | None) -> str:
@@ -460,8 +565,7 @@ def write_canonical_freeze(
     }
     with open(selection_path, "w") as f:
         json.dump(selection, f, indent=2, sort_keys=True)
-    with open(prompt_receipts_path, "w") as f:
-        json.dump(prompt_receipts, f, indent=2, sort_keys=True)
+    write_prompt_receipts(prompt_receipts_path, prompt_receipts)
     search_receipt = {
         "schema_version": 1,
         "evaluation_protocol": CANONICAL_PROTOCOL_VERSION,
@@ -928,18 +1032,30 @@ CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned 
         if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
             llm_kwargs["timeout_seconds"] = CANONICAL_CANDIDATE_TIMEOUT_SECONDS
             llm_kwargs["chat_template_kwargs"] = dict(CANONICAL_CHAT_TEMPLATE_KWARGS)
-        reply = call_llm(prompt, model_id, llm_endpoint, max_tokens=max_tokens, **llm_kwargs)
         if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
-            prompt_receipts.append({
-                "iteration": iteration,
-                "stage": "proposal",
-                "protocol": evaluation_protocol,
-                "prompt": prompt,
-                "prompt_sha256": sha256_text(prompt),
-                "response_sha256": sha256_text(reply or ""),
-                "final_outcomes_in_context": False,
-                "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
-            })
+            reply, response_metadata = invoke_llm_with_metadata(
+                prompt,
+                model_id,
+                llm_endpoint,
+                max_tokens=max_tokens,
+                **llm_kwargs,
+            )
+        else:
+            # Keep legacy monkeypatches and callers on the original call_llm
+            # signature/return path; provenance is canonical-only.
+            reply = call_llm(prompt, model_id, llm_endpoint, max_tokens=max_tokens, **llm_kwargs)
+            response_metadata = None
+        if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+            append_prompt_receipt(
+                prompt_receipts,
+                iteration=iteration,
+                stage="proposal",
+                prompt=prompt,
+                response=reply,
+                protocol=evaluation_protocol,
+                response_metadata=response_metadata,
+            )
+            write_prompt_receipts(PROMPT_RECEIPTS_PATH, prompt_receipts)
         raw_extracted = extract_code(reply)
         repair_source_code = raw_extracted.code if raw_extracted else None
         error_msg = "No code extracted"
@@ -1024,29 +1140,41 @@ CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned 
                 canonical_repairs_used += 1
                 repair_kwargs["timeout_seconds"] = CANONICAL_CANDIDATE_TIMEOUT_SECONDS
                 repair_kwargs["chat_template_kwargs"] = dict(CANONICAL_CHAT_TEMPLATE_KWARGS)
-            repair_reply = call_llm(
-                repair_prompt,
-                model_id,
-                llm_endpoint,
-                max_tokens=max_tokens,
-                system_prompt=(
-                    "You are a senior debugging agent. "
-                    "Repair the mathematical code and output ONLY a Python code block with "
-                    "`dynamics(t, y, args)` and `metadata`."
-                ),
-                **repair_kwargs,
+            repair_system_prompt = (
+                "You are a senior debugging agent. "
+                "Repair the mathematical code and output ONLY a Python code block with "
+                "`dynamics(t, y, args)` and `metadata`."
             )
             if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
-                prompt_receipts.append({
-                    "iteration": iteration,
-                    "stage": f"repair_{attempt}",
-                    "protocol": evaluation_protocol,
-                    "prompt": repair_prompt,
-                    "prompt_sha256": sha256_text(repair_prompt),
-                    "response_sha256": sha256_text(repair_reply or ""),
-                    "final_outcomes_in_context": False,
-                    "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
-                })
+                repair_reply, repair_response_metadata = invoke_llm_with_metadata(
+                    repair_prompt,
+                    model_id,
+                    llm_endpoint,
+                    max_tokens=max_tokens,
+                    system_prompt=repair_system_prompt,
+                    **repair_kwargs,
+                )
+            else:
+                repair_reply = call_llm(
+                    repair_prompt,
+                    model_id,
+                    llm_endpoint,
+                    max_tokens=max_tokens,
+                    system_prompt=repair_system_prompt,
+                    **repair_kwargs,
+                )
+                repair_response_metadata = None
+            if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+                append_prompt_receipt(
+                    prompt_receipts,
+                    iteration=iteration,
+                    stage=f"repair_{attempt}",
+                    prompt=repair_prompt,
+                    response=repair_reply,
+                    protocol=evaluation_protocol,
+                    response_metadata=repair_response_metadata,
+                )
+                write_prompt_receipts(PROMPT_RECEIPTS_PATH, prompt_receipts)
             raw_repair = extract_code(repair_reply)
             if raw_repair:
                 repair_source_code = raw_repair.code
