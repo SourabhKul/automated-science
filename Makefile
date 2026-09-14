@@ -128,6 +128,7 @@ test:
 	$(PY) -m tests.test_input_driven_eval
 	$(PY) -m tests.test_ph_reactor_non_llm_inference
 	$(PY) -m tests.test_run_domain_config
+	$(PY) -m tests.test_evaluation_boundary
 	$(PY) -m tests.test_domain_quarantine
 	$(PY) -m tests.test_model_matrix_status
 	$(PY) -m tests.test_analyze_model_matrix

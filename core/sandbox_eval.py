@@ -16,6 +16,11 @@ import pandas as pd
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.domain_configs import DOMAIN_CONFIGS
+from core.evaluation_boundary import (
+    CANONICAL_PROTOCOL_VERSION,
+    DEVELOPMENT_ROLES,
+    load_partition_manifest,
+)
 from core.evaluation import split_time_series, train_test_metrics
 from core.generated_code import GeneratedCodeError, validate_generated_math_code
 from core.real_data.warfarin_pkpd import (
@@ -44,9 +49,11 @@ def _safe_float(value: Any) -> float | None:
 def held_out_metric_failure(
     train_metrics: dict[str, Any] | None,
     test_metrics: dict[str, Any] | None,
+    *,
+    held_out_label: str = "test",
 ) -> dict[str, str] | None:
     invalid_fields: list[str] = []
-    for split, metrics in (("train", train_metrics), ("test", test_metrics)):
+    for split, metrics in (("train", train_metrics), (held_out_label, test_metrics)):
         for metric in ("mse", "rmse"):
             value = None if metrics is None else metrics.get(metric)
             try:
@@ -173,6 +180,9 @@ def build_diagnostic_packet(
     split_idx: int | None = None,
     train_metrics: dict[str, Any] | None = None,
     test_metrics: dict[str, Any] | None = None,
+    validation_metrics: dict[str, Any] | None = None,
+    evaluation_protocol: str = "legacy_held_out",
+    data_receipt: dict[str, Any] | None = None,
     error: str | None = None,
     extra_failure_modes: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
@@ -240,12 +250,14 @@ def build_diagnostic_packet(
     if observed is not None and predicted is not None:
         residual_summary = summarize_residuals(observed, predicted, observed_mask)
 
-    if train_metrics and test_metrics:
+    development_metrics = validation_metrics if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else test_metrics
+    development_label = "Validation" if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else "Held-out"
+    if train_metrics and development_metrics:
         train_rmse = train_metrics.get("rmse")
-        test_rmse = test_metrics.get("rmse")
-        if train_rmse and test_rmse and train_rmse > 0 and test_rmse >= train_rmse * 1.25:
+        development_rmse = development_metrics.get("rmse")
+        if train_rmse and development_rmse and train_rmse > 0 and development_rmse >= train_rmse * 1.25:
             warnings.append(
-                f"Held-out RMSE is {test_rmse / train_rmse:.2f}x train RMSE; candidate may generalize poorly."
+                f"{development_label} RMSE is {development_rmse / train_rmse:.2f}x train RMSE; candidate may generalize poorly."
             )
 
     if residual_summary:
@@ -280,6 +292,9 @@ def build_diagnostic_packet(
         },
         "train_metrics": train_metrics,
         "test_metrics": test_metrics,
+        "validation_metrics": validation_metrics,
+        "evaluation_protocol": evaluation_protocol,
+        "data_receipt": data_receipt,
         "best_parameters": best_parameters,
         "posterior_summary": posterior_summary,
         "parameter_bound_pressure": bound_pressure,
@@ -577,11 +592,180 @@ def evaluate_cell_holdout_candidate(raw_code: str, config: dict[str, Any], args:
     }
 
 
+def _trajectory_metrics(observed: np.ndarray, predicted: np.ndarray, mask: np.ndarray | None = None) -> dict[str, Any]:
+    """Return finite development metrics for one named trajectory partition."""
+
+    observed = np.asarray(observed)
+    predicted = np.asarray(predicted)
+    if observed.shape != predicted.shape:
+        raise ValueError(f"shape mismatch: {observed.shape} != {predicted.shape}")
+    if mask is None:
+        values = observed - predicted
+    else:
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != observed.shape:
+            raise ValueError(f"mask shape mismatch: {mask.shape} != {observed.shape}")
+        values = (observed - predicted)[mask]
+    if values.size == 0:
+        raise ValueError("trajectory partition has no observed values")
+    mse = float(np.mean(np.square(values)))
+    return {"mse": mse, "rmse": float(np.sqrt(mse)), "observed_count": int(values.size)}
+
+
+def _simulate_canonical_development(model, train_part, validation_part, params):
+    """Simulate train and validation using declared times only.
+
+    Chronological partitions are simulated in one rollout, preserving the
+    train-to-validation state. If the validation times restart, the protocol
+    is interpreted as an independent trajectory and starts from the declared
+    initial condition; no validation outcome is used to initialize the state.
+    """
+
+    train_times = np.asarray(train_part.time_points)
+    validation_times = np.asarray(validation_part.time_points)
+    joined = np.concatenate([train_times, validation_times])
+    monotonic = len(joined) == 1 or bool(np.all(np.diff(joined) > 0))
+    if monotonic:
+        joined_prediction = np.asarray(
+            model.simulate(params, joined, model.get_initial_conditions()), dtype=float
+        )
+        return (
+            joined_prediction[: len(train_times)],
+            joined_prediction[len(train_times) :],
+        )
+    train_prediction = np.asarray(
+        model.simulate(params, train_times, model.get_initial_conditions()), dtype=float
+    )
+    validation_prediction = np.asarray(
+        model.simulate(params, validation_times, model.get_initial_conditions()), dtype=float
+    )
+    return train_prediction, validation_prediction
+
+
+def evaluate_canonical_trajectory_candidate(
+    raw_code: str,
+    config: dict[str, Any],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Evaluate one candidate using train fitting and validation selection.
+
+    The development worker accepts a manifest containing exactly train and
+    validation roles. It rejects a manifest that also contains a final role,
+    so a sealed outcome cannot become an accidental fitting or prompt input.
+    """
+
+    manifest_path = getattr(args, "protocol_manifest", None)
+    if not manifest_path:
+        raise ValueError("canonical trajectory evaluation requires --protocol-manifest")
+    manifest = load_partition_manifest(
+        manifest_path,
+        required_roles=DEVELOPMENT_ROLES,
+        forbidden_roles=("final",),
+    )
+    train_part = manifest["roles"]["train"]
+    validation_part = manifest["roles"]["validation"]
+    model = build_candidate_model(raw_code, config)
+    metadata = model.get_parameter_metadata()
+
+    # The only observations supplied to SBIEngine are the declared training
+    # outcomes. Validation outcomes are reserved for structural selection.
+    engine = SBIEngine(
+        train_part.observations,
+        train_part.time_points,
+        use_summary_stats=True,
+        seed=args.seed,
+        observation_mask=train_part.observation_mask,
+    )
+    test_params = jnp.array([prior["range"][0] for prior in metadata])
+    check_ys = np.asarray(model.simulate(test_params, train_part.time_points[: min(5, len(train_part.time_points))], model.get_initial_conditions()), dtype=float)
+    expected_shape = (min(5, len(train_part.time_points)), len(config["y0"]))
+    if check_ys.shape != expected_shape:
+        raise ValueError(f"Model produced shape {check_ys.shape}, expected {expected_shape}.")
+    if not np.all(np.isfinite(check_ys)):
+        raise ValueError("Model produced NaN or Inf in canonical development sanity simulation.")
+
+    res = engine.run_abc_smc(
+        model,
+        target_samples=args.target_samples,
+        generations=args.generations,
+        initial_particles=args.initial_particles,
+        seed=args.seed,
+        strategy=args.inference_strategy,
+    )
+    results: dict[str, Any] = {
+        "status": "failed",
+        "median_distance": res["median_distance"],
+        "min_distance": res.get("min_distance", float("inf")),
+        "error": None,
+        "train_metrics": None,
+        "validation_metrics": None,
+        "test_metrics": None,
+        "requested_strategy": res.get("requested_strategy", args.inference_strategy),
+        "effective_strategy": res.get("effective_strategy"),
+        "evaluation_protocol": CANONICAL_PROTOCOL_VERSION,
+        "development_data_receipt": manifest["receipt"],
+    }
+    fit_succeeded = np.isfinite(float(res["median_distance"]))
+    predictions = None
+    metric_failure = None
+    if fit_succeeded:
+        best_params = jnp.array(np.median(res["accepted_params"], axis=0))
+        train_prediction, validation_prediction = _simulate_canonical_development(
+            model, train_part, validation_part, best_params
+        )
+        train_metrics = _trajectory_metrics(train_part.observations, train_prediction, train_part.observation_mask)
+        validation_metrics = _trajectory_metrics(
+            validation_part.observations,
+            validation_prediction,
+            validation_part.observation_mask,
+        )
+        results["train_metrics"] = finite_metric_mapping(train_metrics)
+        results["validation_metrics"] = finite_metric_mapping(validation_metrics)
+        predictions = np.concatenate([train_prediction, validation_prediction], axis=0)
+        metric_failure = held_out_metric_failure(
+            results["train_metrics"], results["validation_metrics"], held_out_label="validation"
+        )
+        results["status"] = "success" if metric_failure is None else "failed"
+        if metric_failure:
+            results["error"] = metric_failure["detail"]
+    else:
+        results["status"] = "failed"
+        results["error"] = "canonical development fit produced non-finite distance"
+
+    results["diagnostics"] = build_diagnostic_packet(
+        res=res,
+        metadata=metadata,
+        status=results["status"],
+        observed=np.concatenate([train_part.observations, validation_part.observations], axis=0) if predictions is not None else None,
+        predicted=predictions,
+        observed_mask=np.concatenate([train_part.observation_mask, validation_part.observation_mask], axis=0)
+        if predictions is not None and train_part.observation_mask is not None and validation_part.observation_mask is not None
+        else None,
+        split_idx=len(train_part.observations),
+        train_metrics=results["train_metrics"],
+        validation_metrics=results["validation_metrics"],
+        evaluation_protocol=CANONICAL_PROTOCOL_VERSION,
+        data_receipt=manifest["receipt"],
+        extra_failure_modes=[metric_failure] if metric_failure else None,
+    )
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate a candidate math model in an isolated process.")
     parser.add_argument("--code-file", required=True, help="Path to file containing raw dynamics + metadata code.")
     parser.add_argument("--domain", required=True, help="Domain name (e.g. ecology).")
     parser.add_argument("--held-out", action="store_true", help="Enable 80/20 train/test trajectory split protocol.")
+    parser.add_argument(
+        "--evaluation-protocol",
+        default="legacy",
+        choices=("legacy", CANONICAL_PROTOCOL_VERSION),
+        help="Opt-in canonical train/validation development protocol; legacy keeps historical semantics.",
+    )
+    parser.add_argument(
+        "--protocol-manifest",
+        help="Development manifest for the canonical trajectory protocol (train and validation roles only).",
+    )
     parser.add_argument("--target-samples", type=int, default=500, help="ABC-SMC target samples.")
     parser.add_argument("--generations", type=int, default=15, help="ABC-SMC generations.")
     parser.add_argument("--initial-particles", type=int, default=150000, help="ABC-SMC initial particles.")
@@ -605,6 +789,7 @@ def main() -> int:
         "error": None,
         "train_metrics": None,
         "test_metrics": None,
+        "validation_metrics": None,
         "diagnostics": None,
         "requested_strategy": args.inference_strategy,
         "effective_strategy": None,
@@ -622,6 +807,17 @@ def main() -> int:
 
         # 3. AST validate code
         validate_generated_math_code(raw_code)
+
+        if args.evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+            if args.held_out:
+                raise ValueError("--held-out cannot be combined with the canonical trajectory protocol")
+            results.update(evaluate_canonical_trajectory_candidate(raw_code, config, args))
+            out_dir = os.path.dirname(args.output)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            with open(args.output, "w") as f:
+                json.dump(results, f, indent=2)
+            return 0 if results["status"] == "success" else 1
 
         evaluation_mode = config.get("evaluation_mode")
         if evaluation_mode in {"subject_holdout", "cell_holdout"}:

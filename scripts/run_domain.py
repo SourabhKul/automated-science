@@ -16,15 +16,29 @@ import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.domain_configs import DOMAIN_CONFIGS
+from core.evaluation_boundary import (
+    CANONICAL_PROTOCOL_VERSION,
+    frozen_parameters_hash,
+    load_partition_manifest,
+    parameter_semantics_from_code,
+    sha256_json,
+    sha256_text,
+)
 from core.generated_code import GeneratedCodeError, extract_and_validate, extract_code, proposal_fingerprint
 
 DEFAULT_ENDPOINT = "http://localhost:1234/v1/chat/completions"
+FIXED_RESEARCH_MODEL_ID = "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed"
+FIXED_RESEARCH_ENDPOINT = "http://127.0.0.1:8000/v1/chat/completions"
 MAX_LOOP_FEEDBACK_ITEMS = 6
 DUPLICATE_DIVERSIFY_STREAK = 2
 DUPLICATE_EARLY_STOP_STREAK = 5
 DISTINCT_CANDIDATE_STALL_WINDOW = 12
 MIN_ACCEPTED_UPDATE_YIELD = 0.05
 EXTREME_TEST_MSE_THRESHOLD = 1e8
+CANONICAL_CANDIDATE_TIMEOUT_SECONDS = 120
+CANONICAL_MAX_REPAIR_ATTEMPTS = 1
+CANONICAL_MAX_PROPOSALS = 2
+CANONICAL_CHAT_TEMPLATE_KWARGS = {"enable_thinking": False}
 FAMILY_DEFAULTS = {
     "qwen36": {
         "model_id": "qwen3.6-27b-nvfp4",
@@ -66,7 +80,10 @@ def persist_diagnostic_packet(models_dir: str, artifact_name: str, eval_data: di
         "median_distance": eval_data.get("median_distance"),
         "min_distance": eval_data.get("min_distance"),
         "train_metrics": eval_data.get("train_metrics"),
+        "validation_metrics": eval_data.get("validation_metrics"),
         "test_metrics": eval_data.get("test_metrics"),
+        "evaluation_protocol": eval_data.get("evaluation_protocol", "legacy_held_out"),
+        "development_data_receipt": eval_data.get("development_data_receipt"),
         "diagnostics": diagnostics,
     }
     with open(path, "w") as f:
@@ -88,7 +105,15 @@ def diagnostic_prompt_context(eval_data: dict | None) -> str:
     return json.dumps(compact, indent=2, sort_keys=True)
 
 
-def call_llm(prompt, model_id, endpoint, max_tokens=8192, system_prompt="You are a mathematical AI. Output ONLY a Python code block with `dynamics(t, y, args)` and `metadata`. No prose."):
+def call_llm(
+    prompt,
+    model_id,
+    endpoint,
+    max_tokens=8192,
+    system_prompt="You are a mathematical AI. Output ONLY a Python code block with `dynamics(t, y, args)` and `metadata`. No prose.",
+    timeout_seconds=900,
+    chat_template_kwargs=None,
+):
     payload = {
         "model": model_id,
         "messages": [
@@ -98,13 +123,38 @@ def call_llm(prompt, model_id, endpoint, max_tokens=8192, system_prompt="You are
         "temperature": 0.2,
         "max_tokens": max_tokens
     }
+    if chat_template_kwargs:
+        payload["chat_template_kwargs"] = dict(chat_template_kwargs)
     try:
-        r = requests.post(endpoint, json=payload, timeout=900)
+        r = requests.post(endpoint, json=payload, timeout=timeout_seconds)
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
         print(f"LLM Error: {e}")
         return None
+
+
+def append_prompt_receipt(
+    receipts: list[dict],
+    *,
+    iteration: int,
+    stage: str,
+    prompt: str,
+    response: str | None,
+    protocol: str,
+) -> None:
+    """Record canonical prompt/response hashes and payloads without final data."""
+
+    receipts.append({
+        "iteration": iteration,
+        "stage": stage,
+        "protocol": protocol,
+        "prompt": prompt,
+        "prompt_sha256": sha256_text(prompt),
+        "response_sha256": sha256_text(response or ""),
+        "final_outcomes_in_context": False,
+        "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
+    })
 
 
 def build_repair_prompt(domain: str, previous_code: str | None, error_msg: str | None) -> str:
@@ -196,16 +246,22 @@ def metric_mse(eval_data: dict | None, split: str) -> float | None:
     return finite_float(metrics.get("mse"))
 
 
-def metric_failure_feedback(eval_data: dict | None, *, threshold: float = EXTREME_TEST_MSE_THRESHOLD) -> str | None:
+def metric_failure_feedback(
+    eval_data: dict | None,
+    *,
+    threshold: float = EXTREME_TEST_MSE_THRESHOLD,
+    metrics_key: str = "test_metrics",
+    metric_label: str = "held-out",
+) -> str | None:
     if not eval_data:
         return None
-    raw_test = (eval_data.get("test_metrics") or {}).get("mse")
-    test_mse = finite_float(raw_test)
-    if test_mse is None:
-        return "Previous candidate produced non-finite held-out metrics; constrain dynamics, state clipping, and parameter ranges before adding mechanisms."
-    if abs(test_mse) > threshold:
+    raw_metric = (eval_data.get(metrics_key) or {}).get("mse")
+    metric_value = finite_float(raw_metric)
+    if metric_value is None:
+        return f"Previous candidate produced non-finite {metric_label} metrics; constrain dynamics, state clipping, and parameter ranges before adding mechanisms."
+    if abs(metric_value) > threshold:
         return (
-            f"Previous candidate produced extreme held-out MSE {test_mse:.6g}; "
+            f"Previous candidate produced extreme {metric_label} MSE {metric_value:.6g}; "
             "avoid explosive dynamics and tighten parameter ranges around plausible scales."
         )
     return None
@@ -337,6 +393,101 @@ def write_proposal_waste_summary(path: str, summary: dict) -> None:
         json.dump(summary, f, indent=2, sort_keys=True)
 
 
+def write_canonical_freeze(
+    *,
+    models_dir: str,
+    domain: str,
+    domain_config: dict,
+    candidate_path: str,
+    selection_path: str,
+    search_receipt_path: str,
+    prompt_receipts_path: str,
+    protocol_manifest: str,
+    current_logic: str,
+    best_loss: float,
+    best_score: float,
+    data: dict | None,
+    proposal_fingerprint_ledger: list[dict],
+    candidate_evaluation_records: list[dict],
+    prompt_receipts: list[dict],
+) -> dict:
+    """Persist a frozen development result without touching sealed inputs."""
+
+    candidate_code_path = os.path.abspath(candidate_path)
+    with open(candidate_code_path, "w") as f:
+        f.write(current_logic)
+    best_parameters = ((data or {}).get("diagnostics") or {}).get("best_parameters") or {}
+    development_data_receipt = (data or {}).get("development_data_receipt") or {}
+    parameter_semantics = parameter_semantics_from_code(current_logic)
+    development_manifest_data = load_partition_manifest(
+        protocol_manifest,
+        required_roles=("train", "validation"),
+        forbidden_roles=("final",),
+    )
+    development_train_times = development_manifest_data["roles"]["train"].time_points
+    if len(development_train_times) == 0:
+        raise ValueError("canonical development train partition has no time origin")
+    time_origin = float(development_train_times[0])
+    selection = {
+        "schema_version": 1,
+        "evaluation_protocol": CANONICAL_PROTOCOL_VERSION,
+        "domain": domain,
+        "protocol_manifest": os.path.abspath(protocol_manifest),
+        "development_receipt_sha256": development_data_receipt.get("development_receipt_sha256"),
+        "development_split_metadata": development_data_receipt.get("metadata", {}),
+        "candidate_code_path": candidate_code_path,
+        "candidate_code_sha256": sha256_text(current_logic),
+        "parameter_semantics": parameter_semantics,
+        "parameter_semantics_sha256": sha256_json(parameter_semantics),
+        "model_contract": {
+            "initial_conditions": list(domain_config["y0"]),
+            "solver_dt0": float(domain_config["dt0"]),
+            "solver_max_steps": int(domain_config["max_steps"]),
+            "time_origin": time_origin,
+            "time_origin_source": "development_train_manifest",
+            "time_origin_policy": "declared_manifest_time_points",
+        },
+        "llm_request_settings": {
+            "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
+        },
+        "parameters": best_parameters,
+        "parameters_sha256": frozen_parameters_hash(best_parameters),
+        "selected_median_distance": finite_float(best_loss),
+        "selected_validation_mse": finite_float(best_score),
+        "selected_metric_role": "development_validation_mse",
+        "final_evaluation_required": True,
+        "final_outcomes_available_to_search": False,
+    }
+    with open(selection_path, "w") as f:
+        json.dump(selection, f, indent=2, sort_keys=True)
+    with open(prompt_receipts_path, "w") as f:
+        json.dump(prompt_receipts, f, indent=2, sort_keys=True)
+    search_receipt = {
+        "schema_version": 1,
+        "evaluation_protocol": CANONICAL_PROTOCOL_VERSION,
+        "domain": domain,
+        "development_data_receipt": (data or {}).get("development_data_receipt"),
+        "protocol_manifest": os.path.abspath(protocol_manifest),
+        "candidate_code_sha256": sha256_text(current_logic),
+        "parameters_sha256": frozen_parameters_hash(best_parameters),
+        "parameter_semantics": parameter_semantics,
+        "parameter_semantics_sha256": sha256_json(parameter_semantics),
+        "model_contract": selection["model_contract"],
+        "llm_request_settings": selection["llm_request_settings"],
+        "selected_metric_role": "development_validation_mse",
+        "selected_validation_mse": finite_float(best_score),
+        "selected_median_distance": finite_float(best_loss),
+        "proposal_fingerprints": proposal_fingerprint_ledger,
+        "candidate_evaluations": candidate_evaluation_records,
+        "prompt_receipt_sha256": sha256_text(json.dumps(prompt_receipts, sort_keys=True)),
+        "final_outcomes_available_to_search": False,
+        "final_data_hash": None,
+    }
+    with open(search_receipt_path, "w") as f:
+        json.dump(search_receipt, f, indent=2, sort_keys=True)
+    return selection
+
+
 def run_evaluation(
     code,
     domain,
@@ -347,6 +498,9 @@ def run_evaluation(
     seed,
     models_dir,
     inference_strategy="gaussian_weighted",
+    evaluation_protocol="legacy",
+    protocol_manifest=None,
+    timeout_seconds=1200,
 ):
     # Write code to temporary file
     temp_code_path = os.path.join(models_dir, "temp_proposed.py")
@@ -366,13 +520,17 @@ def run_evaluation(
         "--initial-particles", str(initial_particles),
         "--inference-strategy", inference_strategy,
     ]
+    if evaluation_protocol != "legacy":
+        cmd.extend(["--evaluation-protocol", evaluation_protocol])
+        if protocol_manifest:
+            cmd.extend(["--protocol-manifest", str(protocol_manifest)])
     if held_out:
         cmd.append("--held-out")
     if seed is not None:
         cmd.extend(["--seed", str(seed)])
         
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
         if res.returncode != 0:
             err = res.stderr or res.stdout or "Subprocess returned non-zero exit code"
             return float("inf"), None, f"SubprocessError: {err}"
@@ -418,7 +576,15 @@ def resolve_family(
     return model_id, llm_endpoint, experiment_tag
 
 
-def selection_score(median_distance: float, eval_data: dict | None, held_out: bool) -> float:
+def selection_score(
+    median_distance: float,
+    eval_data: dict | None,
+    held_out: bool,
+    evaluation_protocol: str = "legacy",
+) -> float:
+    if evaluation_protocol == CANONICAL_PROTOCOL_VERSION and eval_data:
+        score = finite_float((eval_data.get("validation_metrics") or {}).get("mse"))
+        return score if score is not None else float("inf")
     if held_out and eval_data and eval_data.get("test_metrics"):
         score = finite_float(eval_data["test_metrics"].get("mse"))
         return score if score is not None else float("inf")
@@ -426,7 +592,9 @@ def selection_score(median_distance: float, eval_data: dict | None, held_out: bo
     return score if score is not None else float("inf")
 
 
-def score_label(held_out: bool) -> str:
+def score_label(held_out: bool, evaluation_protocol: str = "legacy") -> str:
+    if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+        return "Development validation MSE"
     return "Held-out test MSE" if held_out else "ABC-SMC median distance"
 
 
@@ -444,6 +612,8 @@ def run_domain_main(
     target_samples_override: int | None = None,
     generations_override: int | None = None,
     initial_particles_override: int | None = None,
+    evaluation_protocol: str = "legacy",
+    protocol_manifest: str | None = None,
     dry_run: bool = False,
 ) -> int:
     if domain not in DOMAIN_CONFIGS:
@@ -451,6 +621,30 @@ def run_domain_main(
         return 1
         
     config = DOMAIN_CONFIGS[domain]
+
+    if evaluation_protocol not in {"legacy", CANONICAL_PROTOCOL_VERSION}:
+        print(f"Error: Unknown evaluation protocol '{evaluation_protocol}'")
+        return 1
+    if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+        if held_out:
+            print("Error: canonical trajectory protocol cannot be combined with legacy --held-out")
+            return 1
+        if not protocol_manifest:
+            print("Error: canonical trajectory protocol requires --protocol-manifest")
+            return 1
+        try:
+            # Validate the development input before any LLM request. The
+            # manifest loader rejects a final role, preventing accidental
+            # sealed-outcome exposure through the canonical runner.
+            load_partition_manifest(
+                protocol_manifest,
+                required_roles=("train", "validation"),
+                forbidden_roles=("final",),
+            )
+        except Exception as exc:
+            print(f"Error: invalid canonical development manifest: {exc}")
+            return 1
+        epochs = min(int(epochs), CANONICAL_MAX_PROPOSALS)
     
     try:
         model_id, llm_endpoint, experiment_tag = resolve_family(
@@ -464,6 +658,14 @@ def run_domain_main(
         print(f"Error: {exc}")
         return 1
 
+    if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+        if model_id != FIXED_RESEARCH_MODEL_ID or llm_endpoint != FIXED_RESEARCH_ENDPOINT:
+            print(
+                "Error: canonical research protocol requires the fixed Qwen model "
+                f"{FIXED_RESEARCH_MODEL_ID} at {FIXED_RESEARCH_ENDPOINT}"
+            )
+            return 1
+
     run_seed = seed if seed is not None else (int(os.environ["E3_SEED"]) if os.environ.get("E3_SEED") else None)
 
     MODELS_DIR = f"models/{experiment_tag}"
@@ -472,6 +674,10 @@ def run_domain_main(
     BEST_DIAGNOSTICS_PATH = f"{MODELS_DIR}/best_diagnostics.json"
     PROPOSAL_FINGERPRINTS_PATH = f"{MODELS_DIR}/proposal_fingerprints.json"
     PROPOSAL_WASTE_PATH = f"{MODELS_DIR}/proposal_waste_summary.json"
+    PROMPT_RECEIPTS_PATH = f"{MODELS_DIR}/proposal_prompt_receipts.json"
+    SEARCH_RECEIPT_PATH = f"{MODELS_DIR}/search_receipt.json"
+    FROZEN_SELECTION_PATH = f"{MODELS_DIR}/frozen_selection.json"
+    FROZEN_CANDIDATE_PATH = f"{MODELS_DIR}/frozen_candidate.py"
     RUN_LOG_PATH = f"{experiment_tag}_run.log"
 
     # Dynamic target samples, generations, and initial particles from config,
@@ -494,12 +700,18 @@ def run_domain_main(
             "models_dir": MODELS_DIR,
             "log_file": LOG_FILE,
             "held_out": held_out,
+            "evaluation_protocol": evaluation_protocol,
+            "protocol_manifest": protocol_manifest,
             "seed": run_seed,
             "max_tokens": max_tokens,
             "inference_strategy": inference_strategy,
             "target_samples": target_samples,
             "generations": generations,
             "initial_particles": initial_particles,
+            "candidate_timeout_seconds": CANONICAL_CANDIDATE_TIMEOUT_SECONDS if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else 1200,
+            "llm_request_settings": {
+                "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
+            } if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else None,
         }, indent=2, sort_keys=True))
         return 0
 
@@ -512,6 +724,9 @@ def run_domain_main(
     adaptive_yield_early_stop = False
     early_stop_reason = None
     candidate_evaluation_records: list[dict] = []
+    prompt_receipts: list[dict] = []
+    validation_history: list[dict] = []
+    canonical_repairs_used = 0
 
     # Setup Tee Logging
     _log_fh = open(RUN_LOG_PATH, "a", buffering=1)
@@ -522,6 +737,7 @@ def run_domain_main(
     print(f"  SBI-Factory Config Runner · {config['name']}")
     print(f"  Domain      : {domain} | Family: {family} | Model: {model_id}")
     print(f"  Held-out Eval: {held_out}")
+    print(f"  Evaluation Protocol: {evaluation_protocol}")
     print(f"  Inference Strategy: {inference_strategy}")
     print(f"  ABC-SMC     : target_samples={target_samples} generations={generations} initial_particles={initial_particles}")
     print("=" * 70)
@@ -537,7 +753,14 @@ def run_domain_main(
             target_samples=target_samples,
             generations=generations,
             initial_particles=initial_particles,
-            extra={"inference_strategy": inference_strategy},
+            extra={
+                "inference_strategy": inference_strategy,
+                "evaluation_protocol": evaluation_protocol,
+                "protocol_manifest": protocol_manifest,
+                "llm_request_settings": {
+                    "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
+                } if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else None,
+            },
         ),
         f"{MODELS_DIR}/run_config.json",
     )
@@ -579,6 +802,9 @@ def run_domain_main(
         run_seed,
         MODELS_DIR,
         inference_strategy=inference_strategy,
+        evaluation_protocol=evaluation_protocol,
+        protocol_manifest=protocol_manifest,
+        timeout_seconds=(CANONICAL_CANDIDATE_TIMEOUT_SECONDS if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else 1200),
     )
     if best_loss == float("inf"):
         print(f"Error evaluating seed: {err_msg}")
@@ -588,10 +814,10 @@ def run_domain_main(
         with open(seed_diag_path, "r") as src, open(BEST_DIAGNOSTICS_PATH, "w") as dst:
             dst.write(src.read())
 
-    best_score = selection_score(best_loss, data, held_out)
-    label = score_label(held_out)
+    best_score = selection_score(best_loss, data, held_out, evaluation_protocol)
+    label = score_label(held_out, evaluation_protocol)
     print(f"Seed ABC-SMC median distance: {best_loss:.6f}")
-    if held_out:
+    if held_out or evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
         print(f"Seed {label}: {best_score:.6f}")
     log_action(0, "SEED_EVALUATED", best_score, best_score)
     
@@ -635,6 +861,15 @@ class CandidateModel(BaseModel):
         })
         with open(held_out_metrics_path, "w") as f:
             json.dump(held_out_history, f, indent=2)
+    if evaluation_protocol == CANONICAL_PROTOCOL_VERSION and data.get("train_metrics"):
+        validation_history.append({
+            "iteration": 0,
+            "train": data.get("train_metrics"),
+            "validation": data.get("validation_metrics"),
+            "validation_mse": best_score,
+        })
+        with open(f"{MODELS_DIR}/validation_metrics.json", "w") as f:
+            json.dump(validation_history, f, indent=2)
 
     # Main Evolutionary Loop
     for iteration in range(1, epochs + 1):
@@ -688,8 +923,23 @@ metadata = [
 ]
 IMPORTANT: DO NOT include any import statements (e.g., 'import jax.numpy as jnp'). These modules are already imported for you in the execution sandbox.
 CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned from your `dynamics` function using `jnp.clip(jnp.array([...]), -1e6, 1e6)` to prevent severe solver explosion failures!
-"""
-        reply = call_llm(prompt, model_id, llm_endpoint, max_tokens=max_tokens)
+        """
+        llm_kwargs = {}
+        if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+            llm_kwargs["timeout_seconds"] = CANONICAL_CANDIDATE_TIMEOUT_SECONDS
+            llm_kwargs["chat_template_kwargs"] = dict(CANONICAL_CHAT_TEMPLATE_KWARGS)
+        reply = call_llm(prompt, model_id, llm_endpoint, max_tokens=max_tokens, **llm_kwargs)
+        if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+            prompt_receipts.append({
+                "iteration": iteration,
+                "stage": "proposal",
+                "protocol": evaluation_protocol,
+                "prompt": prompt,
+                "prompt_sha256": sha256_text(prompt),
+                "response_sha256": sha256_text(reply or ""),
+                "final_outcomes_in_context": False,
+                "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
+            })
         raw_extracted = extract_code(reply)
         repair_source_code = raw_extracted.code if raw_extracted else None
         error_msg = "No code extracted"
@@ -741,21 +991,39 @@ CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned 
                 run_seed,
                 MODELS_DIR,
                 inference_strategy=inference_strategy,
+                evaluation_protocol=evaluation_protocol,
+                protocol_manifest=protocol_manifest,
+                timeout_seconds=(CANONICAL_CANDIDATE_TIMEOUT_SECONDS if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else 1200),
             )
             persist_diagnostic_packet(MODELS_DIR, f"iteration_{iteration:03d}_candidate", eval_data)
             if eval_data is not None:
                 candidate_evaluation_records.append({"iteration": iteration, "stage": "candidate", "accepted": False})
-            if warning := metric_failure_feedback(eval_data):
+            if warning := metric_failure_feedback(
+                eval_data,
+                metrics_key=("validation_metrics" if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else "test_metrics"),
+                metric_label=("validation" if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else "held-out"),
+            ):
                 loop_feedback_events.append(f"Iteration {iteration}: {warning}")
 
         # Agentic Repair Loop
-        for attempt in range(1, 3):
+        repair_attempts = CANONICAL_MAX_REPAIR_ATTEMPTS if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else 2
+        for attempt in range(1, repair_attempts + 1):
             if new_logic and new_loss < float("inf"):
                 break
             if not repair_source_code:
                 break
+            if (
+                evaluation_protocol == CANONICAL_PROTOCOL_VERSION
+                and canonical_repairs_used >= CANONICAL_MAX_REPAIR_ATTEMPTS
+            ):
+                break
             print(f"  [Debugger Agent] Logic failure detected in iteration {iteration}. Attempting repair {attempt}/2...")
             repair_prompt = build_repair_prompt(domain, repair_source_code, error_msg)
+            repair_kwargs = {}
+            if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+                canonical_repairs_used += 1
+                repair_kwargs["timeout_seconds"] = CANONICAL_CANDIDATE_TIMEOUT_SECONDS
+                repair_kwargs["chat_template_kwargs"] = dict(CANONICAL_CHAT_TEMPLATE_KWARGS)
             repair_reply = call_llm(
                 repair_prompt,
                 model_id,
@@ -766,7 +1034,19 @@ CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned 
                     "Repair the mathematical code and output ONLY a Python code block with "
                     "`dynamics(t, y, args)` and `metadata`."
                 ),
+                **repair_kwargs,
             )
+            if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+                prompt_receipts.append({
+                    "iteration": iteration,
+                    "stage": f"repair_{attempt}",
+                    "protocol": evaluation_protocol,
+                    "prompt": repair_prompt,
+                    "prompt_sha256": sha256_text(repair_prompt),
+                    "response_sha256": sha256_text(repair_reply or ""),
+                    "final_outcomes_in_context": False,
+                    "chat_template_kwargs": dict(CANONICAL_CHAT_TEMPLATE_KWARGS),
+                })
             raw_repair = extract_code(repair_reply)
             if raw_repair:
                 repair_source_code = raw_repair.code
@@ -815,6 +1095,9 @@ CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned 
                 run_seed,
                 MODELS_DIR,
                 inference_strategy=inference_strategy,
+                evaluation_protocol=evaluation_protocol,
+                protocol_manifest=protocol_manifest,
+                timeout_seconds=(CANONICAL_CANDIDATE_TIMEOUT_SECONDS if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else 1200),
             )
             persist_diagnostic_packet(
                 MODELS_DIR,
@@ -823,7 +1106,11 @@ CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned 
             )
             if eval_data is not None:
                 candidate_evaluation_records.append({"iteration": iteration, "stage": f"repair_{attempt}", "accepted": False})
-            if warning := metric_failure_feedback(eval_data):
+            if warning := metric_failure_feedback(
+                eval_data,
+                metrics_key=("validation_metrics" if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else "test_metrics"),
+                metric_label=("validation" if evaluation_protocol == CANONICAL_PROTOCOL_VERSION else "held-out"),
+            ):
                 loop_feedback_events.append(f"Iteration {iteration} repair {attempt}: {warning}")
 
         if not new_logic or new_loss == float("inf"):
@@ -842,8 +1129,14 @@ CRITICAL SAFETY BOUNDS: You MUST wrap the final calculated derivatives returned 
             )
             continue
 
-        new_score = selection_score(new_loss, eval_data, held_out)
+        new_score = selection_score(new_loss, eval_data, held_out, evaluation_protocol)
         incumbent_eval_for_feedback = data
+        if candidate_evaluation_records:
+            candidate_evaluation_records[-1].update({
+                "score": new_score,
+                "median_distance": new_loss,
+                "evaluation_protocol": evaluation_protocol,
+            })
 
         # Scaffold proposed module
         scaff_module = f"""import jax.numpy as jnp
@@ -873,7 +1166,7 @@ class CandidateModel(BaseModel):
                 f.write(thoughts)
 
         print(f"Proposed ABC-SMC median distance: {new_loss:.6f} vs Best: {best_loss:.6f}")
-        if held_out:
+        if held_out or evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
             print(f"Proposed {label}: {new_score:.6f} vs Best: {best_score:.6f}")
 
         if new_score < best_score:
@@ -904,6 +1197,15 @@ class CandidateModel(BaseModel):
                 })
                 with open(held_out_metrics_path, "w") as f:
                     json.dump(held_out_history, f, indent=2)
+            if evaluation_protocol == CANONICAL_PROTOCOL_VERSION and eval_data and eval_data.get("train_metrics"):
+                validation_history.append({
+                    "iteration": iteration,
+                    "train": eval_data.get("train_metrics"),
+                    "validation": eval_data.get("validation_metrics"),
+                    "validation_mse": new_score,
+                })
+                with open(f"{MODELS_DIR}/validation_metrics.json", "w") as f:
+                    json.dump(validation_history, f, indent=2)
         else:
             log_action(iteration, "REJECTED", new_score, best_score)
             if held_out:
@@ -928,6 +1230,24 @@ class CandidateModel(BaseModel):
             ),
         )
 
+    if evaluation_protocol == CANONICAL_PROTOCOL_VERSION:
+        write_canonical_freeze(
+            models_dir=MODELS_DIR,
+            domain=domain,
+            domain_config=config,
+            candidate_path=FROZEN_CANDIDATE_PATH,
+            selection_path=FROZEN_SELECTION_PATH,
+            search_receipt_path=SEARCH_RECEIPT_PATH,
+            prompt_receipts_path=PROMPT_RECEIPTS_PATH,
+            protocol_manifest=protocol_manifest,
+            current_logic=current_logic,
+            best_loss=best_loss,
+            best_score=best_score,
+            data=data,
+            proposal_fingerprint_ledger=proposal_fingerprint_ledger,
+            candidate_evaluation_records=candidate_evaluation_records,
+            prompt_receipts=prompt_receipts,
+        )
     print("Orchestration loop completed successfully.")
     write_proposal_waste_summary(
         PROPOSAL_WASTE_PATH,
@@ -952,6 +1272,16 @@ def main() -> int:
     parser.add_argument("--tag-prefix", help="Experiment tag prefix override; domain is appended automatically.")
     parser.add_argument("--epochs", type=int, default=100, help="Number of evolutionary iterations to run.")
     parser.add_argument("--held-out", action="store_true", help="Enable 80/20 train/test split trajectory evaluation.")
+    parser.add_argument(
+        "--evaluation-protocol",
+        default="legacy",
+        choices=("legacy", CANONICAL_PROTOCOL_VERSION),
+        help="Opt in to canonical train/validation/sealed-final development semantics.",
+    )
+    parser.add_argument(
+        "--protocol-manifest",
+        help="Canonical development manifest containing train and validation arrays only.",
+    )
     parser.add_argument("--seed", type=int, help="Random seed override.")
     parser.add_argument("--endpoint", help="LLM endpoint override.")
     parser.add_argument("--max-tokens", type=int, default=8192, help="Maximum output tokens for LM Studio chat completions.")
@@ -980,6 +1310,8 @@ def main() -> int:
         target_samples_override=args.target_samples,
         generations_override=args.generations,
         initial_particles_override=args.initial_particles,
+        evaluation_protocol=args.evaluation_protocol,
+        protocol_manifest=args.protocol_manifest,
         dry_run=args.dry_run,
     )
 
