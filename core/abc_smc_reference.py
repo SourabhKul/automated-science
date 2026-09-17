@@ -310,6 +310,8 @@ def run_gaussian_abc_smc_reference(
     nugget: float = 1e-9,
     seed: int | None = None,
     rng: np.random.Generator | None = None,
+    population_event: Callable[[str, int, dict[str, Any] | None], None] | None = None,
+    stop_requested: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Run the explicit Gaussian ABC-SMC reference path.
 
@@ -361,6 +363,10 @@ def run_gaussian_abc_smc_reference(
     if rng is not None and seed is not None:
         raise ValueError("provide either seed or rng, not both")
     random = rng if rng is not None else np.random.default_rng(seed)
+    if population_event is not None and not callable(population_event):
+        raise TypeError("population_event must be callable when provided")
+    if stop_requested is not None and not callable(stop_requested):
+        raise TypeError("stop_requested must be callable when provided")
     checker: Callable[[np.ndarray], bool] | None = None
     if dimension is not None:
         checker = _support_checker(checked_bounds, in_support, dimension)
@@ -372,6 +378,8 @@ def run_gaussian_abc_smc_reference(
     top_level_reason = "completed"
 
     for generation, (epsilon, budget) in enumerate(zip(schedule, budgets)):
+        if population_event is not None:
+            population_event("start", generation, None)
         if generation == 0:
             covariance = None
         else:
@@ -396,8 +404,12 @@ def run_gaussian_abc_smc_reference(
         failed_proposals = 0
         failed_simulations = 0
         failed_discrepancies = 0
+        wall_budget_exhausted = False
 
         while len(accepted) < target_samples and attempts < budget:
+            if stop_requested is not None and stop_requested():
+                wall_budget_exhausted = True
+                break
             attempts += 1
             ancestor_index: int | None = None
             try:
@@ -442,7 +454,20 @@ def run_gaussian_abc_smc_reference(
                 simulated += 1
             except Exception:
                 failed_simulations += 1
+                # A bounded simulator may return an exception after the
+                # deadline. Preserve the timeout as the population outcome
+                # rather than spending another attempt or presenting the
+                # partial population as complete.
+                if stop_requested is not None and stop_requested():
+                    wall_budget_exhausted = True
+                    break
                 continue
+            # The simulator itself can consume the remaining wall budget.
+            # Recheck immediately after it returns, before discrepancy
+            # evaluation or accepting the proposal into this population.
+            if stop_requested is not None and stop_requested():
+                wall_budget_exhausted = True
+                break
             try:
                 distance = float(discrepancy(simulated_value))
             except Exception:
@@ -523,7 +548,9 @@ def run_gaussian_abc_smc_reference(
                 log_prior = np.empty(0, dtype=float)
                 log_proposal = np.empty(0, dtype=float)
 
-        if weight_failures:
+        if wall_budget_exhausted:
+            termination_reason = "wall_budget_exhausted"
+        elif weight_failures:
             termination_reason = "weight_evaluation_failed"
         elif complete:
             termination_reason = "target_reached"
@@ -560,6 +587,8 @@ def run_gaussian_abc_smc_reference(
         )
         populations.append(record)
         final_population = record
+        if population_event is not None:
+            population_event("end", generation, record)
         if not complete:
             top_level_reason = termination_reason
             break

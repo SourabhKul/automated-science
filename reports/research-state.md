@@ -1,6 +1,24 @@
 # Automated science: current research state
 
-Updated: 2026-09-14 after the bounded smoke recovery, opt-in ABC reference controls, sequential scalar pilot, canonical evaluation-boundary smoke, and durable evidence preservation. This file records observed state, not inferred execution.
+Updated: 2026-09-17 after the one approved corrected bounded ODE-control rerun completed. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-17T1051Z
+
+The 2026-09-17T1040Z pre-pilot inspection found local `HEAD` and `origin/main` equal at `e6c6008b19628fcb7d57ca4c79b91ae1a5d6f79d`, no competing ODE/ABC/pilot processes or checkpoints, 16 CPU cores, 128 GiB physical memory, and 447 GiB free disk. A read-only HTTP-200 `/v1/models` response advertised the exact fixed Qwen model `Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed`; no generation request was made. The previous 2026-09-15 workspace-credit failure remains recorded in `reports/research-ledger/2026-09-15T2258Z.md`.
+
+The reviewed ODE-control implementation is present in `core/ode_reference_controls.py` with focused `tests/test_ode_reference_controls.py`. Its dependency-light checks and the existing ABC-reference checks passed before the pilot. Independent review found and the implementation corrected a central-chi-square `x/2` scaling blocker before the pilot; the optional direct SciPy regression matches thresholds 4 and 9 and noncentralities 0, 0.5, 8, and 40. A separately labeled exact Gaussian-likelihood quadrature reference was added, with support-zero checks and tests requiring finite-epsilon and exact means/quantiles to differ. The pre-pilot commands, fixed-step RK4 settings, independent target check, bounded-failure checks, and limitations are recorded in `reports/research-ledger/2026-09-17T1011Z.md` as historical evidence.
+
+The reviewer-required status gate, serial six-cell driver, atomic per-cell/aggregate partial receipts, per-population timing and solver-failure counters, and global wall-deadline propagation were implemented and independently approved before the pilot. A post-pilot audit found that only the finite-target `target_prediction.observation_predictive_quantiles` field omitted target-density weights; the original run/report/hash is preserved and that field is invalidated. The implementation now uses density-weighted Normal-CDF quadrature, with an independent CDF/quantile regression and explicit target-versus-particle latent/observation-noise semantic checks. The reviewer approved exactly one same-config rerun, `20260917T104954Z_corrected_targetcdf`: six predeclared cells, 400 particles/population, epsilon `[3, 2]`, 50,000 attempts/population, and a 540-second cap. It completed 6/6 cells in 34.481593 seconds; stochastic inference receipts match the original exactly, every population reached 400 particles, all solver-failure counters were zero, and no cap or failure occurred. Corrected per-cell finite-epsilon comparisons, separate exact Gaussian references, corrected target predictive quantiles, counters, timing, and hashes are recorded in `reports/research-ledger/2026-09-17T1051Z.md` and `reports/ode-reference-control-pilot-2026-09-17-corrected-targetcdf.md`; corrected raw receipts remain ignored under `artifacts/ode_reference_control/20260917T104954Z_corrected_targetcdf/`. These are known-model control diagnostics for six independently generated datasets, with no coverage or scientific-discovery claim. Root accepted both the scoped implementation and corrected evidence; the designated Git owner is now synchronizing this reviewed scope.
+
+## Latest checkpoint: 2026-09-15T2258Z
+
+The last verified pushed commit is `e6c6008b19628fcb7d57ca4c79b91ae1a5d6f79d`, recording canonical Qwen response provenance. Its reviewed smoke completed two full Qwen responses, zero repairs, and two finite candidate evaluations; the first was selected on validation MSE 1.9346842034702103. Separate frozen final evaluation returned finite MSE 9.470892248597332. See `reports/research-ledger/2026-09-14T0646Z.md` and `reports/qwen-completion-review-2026-09-14.md`. These are bounded synthetic integration results, not calibrated inference or discovery evidence.
+
+The next ODE-control milestone is blocked by Luna workspace credits. The initial implementation worker, its one bounded recovery, and the independent reviewer reported: "Your workspace is out of credits. Ask your workspace owner to refill in order to continue." The recovery performed preflight and began an untracked `core/ode_reference_controls.py`; this partial source has not been independently reviewed or verified by tests. No completed ODE pilot or new inference result has been verified. Preserve this draft and inspect it before resuming; do not treat it as accepted implementation.
+
+The primary scientific specification is `reports/dynamical-inference-control-plan-2026-09-14.md`. The pre-pilot numerical choice is RK4 maximum step 0.05, with absolute solution-error tolerance 1e-6 over t<=5 at prior-boundary and interior rates, to be checked independently before any pilot. The six-cell pilot remains capped at 600 seconds total with explicit partial/incomplete receipts. Resume only once a Luna worker can run; keep the existing code/review ownership policy and do not substitute another research LLM.
+
+Local `HEAD` and `origin/main` were verified equal at `e6c6008` after the failure. This state update and the failure ledger are local documentation pending Luna Git synchronization; the unreviewed source draft must not be pushed as completed work. Earlier checkpoint prose below is historical.
 
 ## Fixed direction and authority
 
@@ -36,7 +54,7 @@ The single-population rejection baseline is recorded in `reports/abc-reference-c
 
 ## Next decisions
 
-1. The scoped reference implementation and scalar evidence have independent approval. Decide whether a small ODE control is warranted before treating ABC-SMC outputs as posterior evidence. The scalar controls do not establish calibration of the canonical discovery runner.
+1. Inspect the completed ODE-control receipts and report before any Git synchronization or further inference use. The six-cell control is known-model diagnostic evidence only; it does not establish coverage or calibration of the canonical discovery runner.
 2. Extend the explicit roles to independently sampled trajectories, cells, subjects, and permitted input conditions only after adapter-specific leakage checks; the narrow implementation does not claim those paths are fixed.
 3. Add semantic/canonical-form deduplication as an efficiency diagnostic for algebraically equivalent proposals before paying another full inference budget; treat this as an ablation target, not a claim of general symbolic-equivalence solving.
 4. Keep the five-hour heartbeat quiet while state is unchanged; on each wakeup inspect active processes first and preserve any failure evidence without substituting another research model.
