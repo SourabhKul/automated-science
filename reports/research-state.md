@@ -1,6 +1,38 @@
 # Automated science: current research state
 
-Updated: 2026-09-17 after the one approved corrected bounded ODE-control rerun completed. This file records observed state, not inferred execution.
+Updated: 2026-09-18 after the one approved observation-mismatch six-cell control pilot completed. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-18T1107Z
+
+The independently approved observation-mismatch and nested-mechanism control
+pilot ran exactly once, serially, using the unchanged six predeclared cells
+(both experiments with data seeds 11, 29, and 47), in 6.8 seconds under the
+540-second cap. Fresh preflight found local `HEAD` and `origin/main` equal at
+`029b1e2fb592c774041ce7b30240db2854bce25f`, no competing research workload,
+16 CPU cores, 128 GiB RAM, and 447 GiB free disk. A read-only `/v1/models`
+request returned HTTP 200 and advertised
+`Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed`; no generation request was
+made.
+
+All six cells and model receipts completed. The run used the explicitly
+labeled deterministic likelihood-weighted grid reference, not canonical SBI,
+BDSS, or Qwen. It preserved normalized grid weights, ESS, counters, seeds,
+solver and observation-map configuration, predictive draws, development and
+final hashes, alternatives, and unresolved outcomes. Experiment A selected
+the correct saturating observation map for seeds 11 and 47 and recorded
+`unresolved_retain_both` for seed 29; the unresolved cell did not run a sealed
+score. Experiment B recorded `unresolved_retain_simpler` for all three seeds;
+seed 47 passed the validation margin but failed sealed reproduction. The fixed
+future-time measurement rule returned
+`no_informative_measurement_under_this_protocol` in all B cells.
+
+Compact evidence is in
+`reports/observation-mismatch-abstention-control-pilot-2026-09-18.md` and
+`reports/research-ledger/2026-09-18T1107Z.md`. Raw receipts remain ignored at
+`artifacts/observation_mismatch_control/`, with artifact-manifest SHA-256
+`1cd0c016cfd4c74ae3f16dcd62c837590e057ab3065370377cd18bbb184dc3f1`. No
+rerun, setting change, commit, or push was made after this pilot; root must
+inspect the evidence before Git synchronization.
 
 ## Latest checkpoint: 2026-09-17T1051Z
 
