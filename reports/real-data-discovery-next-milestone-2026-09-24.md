@@ -44,4 +44,3 @@ at maximum reasoning. This is distinct from the sole research LLM, the local
 Qwen checkpoint above. The five-hour automation remains attached to this
 thread. Every wakeup must advance the highest-value unblocked gate and record
 actual work, rather than leave a completed review waiting for another cycle.
-
