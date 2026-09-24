@@ -1,0 +1,43 @@
+{
+  "source_record": {
+    "member": "SilverboxFiles/SNLS80mV.csv",
+    "sample_count": 131072,
+    "columns": {
+      "input": "V1",
+      "output": "V2"
+    },
+    "sampling_time_seconds": 0.0016384041943147375
+  },
+  "train_val": {
+    "source_start": 40650,
+    "source_stop": 105712,
+    "sample_count": 65062,
+    "published_role": "train_val"
+  },
+  "test_multisine": {
+    "source_start": 105712,
+    "source_stop": 127400,
+    "sample_count": 21688,
+    "published_role": "test",
+    "state_initialization_window_length": 50
+  },
+  "test_arrow_full": {
+    "source_start": 100,
+    "source_stop": 40575,
+    "sample_count": 40475,
+    "published_role": "test",
+    "state_initialization_window_length": 50
+  },
+  "test_arrow_no_extrapolation": {
+    "source_start": 100,
+    "source_stop": 32100,
+    "sample_count": 32000,
+    "published_role": "test",
+    "state_initialization_window_length": 50,
+    "subset_of": "test_arrow_full"
+  },
+  "validation": {
+    "published": false,
+    "rule": "The official loader publishes train_val only; create any validation split inside train_val before model selection."
+  }
+}

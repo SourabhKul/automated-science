@@ -1,6 +1,38 @@
 # Automated science: current research state
 
-Updated: 2026-09-18 after the one approved observation-mismatch six-cell control pilot completed. This file records observed state, not inferred execution.
+Updated: 2026-09-24 after independent approval of the Silverbox source contract. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-24T2250Z
+
+The independent final review approved the Silverbox source adapter, focused
+tests, manifest, published split contract, archive hashes, and development vs
+scoring boundary. The reviewer reported all seven focused tests passing. The
+dataset license and reuse terms remain unstated; this permits internal source
+auditing but leaves redistribution and public benchmark claims unresolved.
+
+A read-only runtime snapshot at 2026-09-24 22:50 UTC could not connect to
+`http://127.0.0.1:8000/v1/models`, so the exact fixed Qwen model ID could not
+be confirmed as available. The process scan found no active ABC, Silverbox,
+science, oMLX, Qwen, fitting, proposal, experiment, or research jobs. No
+fitting, ABC-SMC, Qwen generation, or sealed evaluation was launched during
+this source synchronization. The endpoint status blocks Qwen experiments and
+does not block review or synchronization of the offline adapter.
+
+Before synchronization, local `HEAD`, local `origin/main`, and remote
+`origin/main` all resolved to `4b8822ea8f39e052adf91f3d60eaa9602c634c36`.
+The reviewed adapter, metadata, and the planning checkpoint
+`reports/real-data-discovery-next-milestone-2026-09-24.md` are the active
+bounded scope for the sole Git owner. The five-hour automation is verified
+active on this task with `gpt-6-luna` at maximum reasoning. Delegated coding,
+review, tests, experiments, monitoring, and Git synchronization use that
+allocation; research runs remain fixed to the local Qwen checkpoint in
+`AGENTS.md`.
+
+The ordered research gates are in the linked next-milestone plan. First
+synchronize the approved offline source contract and record its source-term
+and CSV-precision limits. Then verify the local endpoint and exact model ID,
+pre-register all development choices, run a bounded real-data integration
+pilot, and score the locked result once.
 
 ## Latest checkpoint: 2026-09-18T1107Z
 
@@ -86,10 +118,6 @@ The single-population rejection baseline is recorded in `reports/abc-reference-c
 
 ## Next decisions
 
-1. Inspect the completed ODE-control receipts and report before any Git synchronization or further inference use. The six-cell control is known-model diagnostic evidence only; it does not establish coverage or calibration of the canonical discovery runner.
-2. Extend the explicit roles to independently sampled trajectories, cells, subjects, and permitted input conditions only after adapter-specific leakage checks; the narrow implementation does not claim those paths are fixed.
-3. Add semantic/canonical-form deduplication as an efficiency diagnostic for algebraically equivalent proposals before paying another full inference budget; treat this as an ablation target, not a claim of general symbolic-equivalence solving.
-4. Keep the five-hour heartbeat quiet while state is unchanged; on each wakeup inspect active processes first and preserve any failure evidence without substituting another research model.
-5. Keep raw smoke artifacts, local environments, and secrets out of Git; the earlier reviewed smoke report, state, and replay harness remain synchronized on `origin/main` at `f2ee1cc1e0a95ea8c3bd9ac9aacc725c76ae72d8`, the reviewed reference milestone is synchronized in content commit `88a1d1d6839a88a69170ddbdecd616c1d90f46ee`, and the evaluation-boundary scope is synchronized in content commit `e1b7d40d7caaed17b208424a1e49ee88bd75152e`.
+Follow the ordered gates in `reports/real-data-discovery-next-milestone-2026-09-24.md`: complete the reviewed source sync; check the local oMLX endpoint and exact Qwen ID before any generation; freeze the development split, candidate families, observation model, ABC-SMC schedule, budgets, baselines, failure criteria, and scoring contract; then run the bounded integration pilot and evaluate the locked outcome once. Keep the five-hour automation attached to this task, inspect research processes before future runtime work, and preserve the fixed-Qwen research policy. Keep raw data, local environments, and secrets out of Git.
 
 No scientific breakthrough is claimed by this checkpoint; the smoke integration result and the reviewed `origin/main` synchronization are verified locally and linked above.

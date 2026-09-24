@@ -1,0 +1,64 @@
+{
+  "status": "source_contract_ok_csv_precision_recorded_license_unstated",
+  "claim_boundary": "Official Nonlinear Benchmark Silverbox input-output record and published train/test split only; no model fit, inference, or scientific discovery claim.",
+  "source": {
+    "benchmark_page": "https://www.nonlinearbenchmark.org/benchmarks/silverbox",
+    "archive_view_url": "https://drive.google.com/file/d/17iS-6oBUUgrmiAcrZoG9S5sOaljZnDSy/view?usp=sharing",
+    "archive_download_url": "https://drive.google.com/uc?export=download&id=17iS-6oBUUgrmiAcrZoG9S5sOaljZnDSy",
+    "archive_name": "SilverboxFiles.zip",
+    "official_dataloader_repo": "https://github.com/MaartenSchoukens/nonlinear_benchmarks",
+    "official_dataloader_commit": "f9fb3883086870a27b31917ccde1f78c95d53cb2",
+    "official_dataloader_source": "https://raw.githubusercontent.com/MaartenSchoukens/nonlinear_benchmarks/f9fb3883086870a27b31917ccde1f78c95d53cb2/nonlinear_benchmarks/benchmarks.py",
+    "retrieved_at_utc": "2026-09-19T02:13:12Z",
+    "http_content_length_bytes": 5793999,
+    "http_last_modified": "Tue, 22 Sep 2020 14:01:22 GMT",
+    "raw_archive_path": "data/real/silverbox/raw/SilverboxFiles.zip",
+    "raw_archive_bytes": 5793999,
+    "raw_archive_sha256": "2398dda503ac4c30f46c7a1ba09d8a8864d001cc71bbeb59f207a054cc592d8c",
+    "expanded_member_bytes": 9738543,
+    "raw_plus_expanded_bytes": 15532542,
+    "under_50gb_guard": true
+  },
+  "terms": {
+    "dataset_license": "not stated on the official Silverbox page or in the downloaded archive",
+    "reuse_terms": "not stated; this audit does not infer a dataset license from public availability",
+    "website_disclaimer": "The official disclaimer gives no warranty and accepts no responsibility or liability for website information or materials.",
+    "dataloader_code_license": "BSD 3-Clause License for the official dataloader source; not treated as a license for the Silverbox data"
+  },
+  "archive_members": [
+    {"name": "SilverboxFiles/SNLS80mV.csv", "compressed_bytes": 932168, "expanded_bytes": 2649634, "sha256": "ae62d5a91230c10f76e6dd02c8a4fac3c9d4d8a95fbf50e87cb0c4885003e0f1"},
+    {"name": "SilverboxFiles/SNLS80mV.mat", "compressed_bytes": 1943018, "expanded_bytes": 2097520, "sha256": "5c7413a52255af0cb4e2f93fb6903beb92b08965ba1e6ad0a6ffedfed8477ed4"},
+    {"name": "SilverboxFiles/Schroeder80mV.mat", "compressed_bytes": 1955910, "expanded_bytes": 2097520, "sha256": "ec5a9740a4789aa20b9d84f387424c0218e843844807b30b367c218778339fb6"},
+    {"name": "SilverboxFiles/README.txt", "compressed_bytes": 589, "expanded_bytes": 1148, "sha256": "90c365916d60afc3cb208f772be40918175370cbcf43d1ada3df19b8a2c58ae8"},
+    {"name": "SilverboxFiles/README.m", "compressed_bytes": 589, "expanded_bytes": 1148, "sha256": "90c365916d60afc3cb208f772be40918175370cbcf43d1ada3df19b8a2c58ae8"},
+    {"name": "SilverboxFiles/Schroeder80mV.csv", "compressed_bytes": 960557, "expanded_bytes": 2891573, "sha256": "b22cbcba9c59d9b4b1b379967b669dc32959e515b24784da3254505f8563e36c"}
+  ],
+  "content_contract": {
+    "snls_csv": {"header": ["V1", "V2"], "sample_count": 131072, "finite_columns": ["V1", "V2"]},
+    "schroeder_csv": {"header": ["Ovld2", "Ovld1", "V1", "V2"], "sample_count": 131072, "finite_columns": ["V1", "V2"], "overflow_fields": "only first row contains zero indicators; subsequent entries are blank"},
+    "mat_files": ["SNLS80mV.mat", "Schroeder80mV.mat"],
+    "mat_variables": {"SNLS80mV.mat": ["Ovld1", "Ovld2", "V1", "V2"], "Schroeder80mV.mat": ["Ovld1", "Ovld2", "V1", "V2"]},
+    "sampling_time_seconds": 0.0016384041943147375,
+    "source_readme": "The archive README describes offset removal for the Schroeder record and a 1024-point Schroeder section; these corrections are not applied to the canonical SNLS split.",
+    "source_fidelity": {
+      "canonical_adapter_source": "SNLS80mV.csv",
+      "choice": "Use the published CSV parsed as float64 to keep this adapter dependency-light; retain the official MAT files in the ignored raw archive rather than adding a MAT parser dependency.",
+      "audit_reference_method": "SciPy loadmat was used only for this audit comparison; it is not a runtime dependency of the adapter.",
+      "numeric_mat_vs_csv": {
+        "SNLS80mV.mat": {
+          "sample_count": 131072,
+          "V1": {"differing_values": 131072, "max_abs": 4.960457825803344e-06, "mean_abs": 1.6177242575513782e-07, "rmse": 2.31916830851918e-07},
+          "V2": {"differing_values": 131072, "max_abs": 4.997186306865409e-06, "mean_abs": 3.5403082864888265e-07, "rmse": 7.841998417741928e-07}
+        },
+        "Schroeder80mV.mat": {
+          "sample_count": 131072,
+          "V1": {"differing_values": 131072, "max_abs": 4.836886109554905e-06, "mean_abs": 1.8830775879403308e-07, "rmse": 2.499697395843303e-07},
+          "V2": {"differing_values": 131072, "max_abs": 4.999777993647259e-06, "mean_abs": 4.647398040538315e-07, "rmse": 1.001448871629416e-06}
+        }
+      }
+    }
+  },
+  "split_contract_path": "data/real/silverbox/split.json",
+  "raw_archive_is_gitignored": true,
+  "prohibited_until_independent_review": ["model fitting", "ABC/Qwen work", "sealed-test tuning", "redistribution without resolving unstated dataset terms"]
+}
