@@ -1,6 +1,37 @@
 # Automated science: current research state
 
-Updated: 2026-09-25 after Silverbox Phase 1 boundary review and focused validation. This file records observed state, not inferred execution.
+Updated: 2026-09-25 after train-only Silverbox dynamics exploration and a proposed first-fit protocol. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-25T1301Z
+
+The reviewed Phase 1 controlled development boundary is synchronized to
+`origin/main` at `a8b43477e82df7c323fc30b109a0d1a8a38e6215` with a clean
+worktree at the start of this wake. The local oMLX service is running; a
+read-only preflight again advertised the exact fixed Qwen model. There was
+no active research job or recent checkpoint to resume.
+
+Using only the four fixed training windows, a Luna operator measured a
+forced observed-output linear AR(2) free-run RMS of 0.00719364 and a
+training-only cubic extension RMS of 0.00482064. These are exploratory
+development fits, not validation or independent evidence. The primary agent
+proposed `reports/silverbox-first-fit-protocol-2026-09-25.md` for one
+constrained Qwen proposal and checked ABC-SMC fit. Independent methodological
+review approved the revised protocol. The bounded Qwen proposer and
+train-only checked-ABC development fit/selection components were implemented
+and independently approved after 29 focused tests passed. The proposer now
+preflights the exact model and returns a receipted term choice; the fit
+requires that receipt hash. A reviewed orchestration bridge must still
+validate the successful proposer receipt and its term match before the first
+real fit. A separate multisine-only scorer remains a later gate. No Qwen
+generation, ABC run, validation selection, or sealed evaluation has occurred.
+The fit's hard memory guard uses `psutil`; that optional runtime package is
+absent from `requirements-freeze.txt` and the default checkout environment.
+The focused suite passes when `psutil` is supplied in an ephemeral test
+environment, while without it the fit correctly stops as incomplete before
+calibration. A reviewed environment/dependency integration must ensure
+`psutil` is available before any real pilot. No live Qwen request, ABC fit,
+validation score, or sealed access has occurred.
+See `reports/research-ledger/2026-09-25T1301Z.md`.
 
 ## Latest checkpoint: 2026-09-25T0808Z
 
