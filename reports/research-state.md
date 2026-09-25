@@ -11,7 +11,8 @@ replaced it with a bounded loader and an independent reviewer approved its
 source, receipt, and deadline gates after 61 offline tests. The scorer's
 source/proposal gates and later terminal-run gate were independently approved
 after 23 synthetic tests. The final scorer has **not** been run on real data.
-These local changes remain pending one-owner Git synchronization.
+The reviewed package was synchronized by the one-owner Git workflow as
+content commit `3928793d286b9fc1f8a176f0e6779d19b75becae` on `main`.
 
 One real development pilot ran under the frozen first-fit protocol as run
 `silverbox-20260925T191245Z-7e7d6af42abe`. The exact local Qwen model was
@@ -43,7 +44,9 @@ diagnostics. The proposed version is
 `reports/silverbox-second-development-protocol-proposal-2026-09-25.md`,
 methodologically reviewed as a proposal, not yet implemented or run. A
 512-attempt cap was the immediate limiting factor; no scientific discovery
-is claimed. Local code/report changes are not yet on GitHub.
+is claimed. The commit above was pushed without force to `origin/main`; a
+fresh fetch verified that local `HEAD` and `origin/main` both resolve to
+`3928793d286b9fc1f8a176f0e6779d19b75becae` on `main`, with a clean worktree.
 
 ## Latest checkpoint: 2026-09-25T1301Z
 
