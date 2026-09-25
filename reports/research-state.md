@@ -33,6 +33,18 @@ calibration. A reviewed environment/dependency integration must ensure
 validation score, or sealed access has occurred.
 See `reports/research-ledger/2026-09-25T1301Z.md`.
 
+## Synchronization verification: 2026-09-25 13:53 UTC
+
+The approved seven-file protocol and development implementation package was
+pushed as content commit
+`973bab4f30c094aa40fa74d69f140182bc7dd486`. A fresh fetch confirmed that
+exact commit on `origin/main`; the working tree was clean after the push.
+The focused proposer/first-fit suite passed 29 tests in an ephemeral `uv`
+environment with `pytest`, `numpy`, and `psutil`; scoped Python compilation
+and staged whitespace checks passed. The `psutil` availability requirement
+and the absence of a run are recorded above and in the ledger. No Qwen or ABC
+run, validation scoring, or sealed data access occurred during synchronization.
+
 ## Latest checkpoint: 2026-09-25T0808Z
 
 The Silverbox controlled-development boundary and its focused tests were
