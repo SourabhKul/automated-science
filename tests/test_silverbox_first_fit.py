@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+from dataclasses import replace
 from pathlib import Path
+import zipfile
 
 import numpy as np
 import pytest
@@ -16,7 +18,11 @@ from core.real_data.silverbox_controlled import (
     VALIDATION_SOURCE_START,
     VALIDATION_SOURCE_STOP,
     SilverboxControlledSeries,
+    SilverboxControlledValidation,
+    load_silverbox_controlled_development,
 )
+from core.real_data.silverbox import REQUIRED_ARCHIVE_MEMBERS, SAMPLE_COUNT, SNLS_CSV_MEMBER
+from core.real_data import silverbox_controlled
 import core.real_data.silverbox_first_fit as first_fit
 
 
@@ -56,6 +62,39 @@ def _validation_series(target_value: float = 0.47) -> SilverboxControlledSeries:
     )
 
 
+def _lazy_validation_series(tmp_path: Path) -> SilverboxControlledValidation:
+    source = tmp_path / "synthetic-validation-source.zip"
+    source.write_bytes(b"synthetic validation source")
+    return SilverboxControlledValidation(
+        source_start=VALIDATION_SOURCE_START,
+        source_stop=VALIDATION_SOURCE_STOP,
+        input_u=np.full(VALIDATION_SOURCE_STOP - VALIDATION_SOURCE_START, 0.02),
+        initialization_y=np.full(50, 0.10),
+        sampling_time=SAMPLE_TIME_SECONDS,
+        _raw_archive=source,
+        _source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        _source_bytes=source.stat().st_size,
+    )
+
+
+def _write_source_bound_development_archive(path: Path) -> str:
+    rows = ["V1,V2,\n"]
+    for index in range(SAMPLE_COUNT):
+        output = (
+            0.47
+            if VALIDATION_SOURCE_START + 50 <= index < VALIDATION_SOURCE_STOP
+            else 0.10
+        )
+        rows.append(f"0.02000000,{output:.8f},\n")
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for member in REQUIRED_ARCHIVE_MEMBERS:
+            archive.writestr(
+                member,
+                "".join(rows) if member == SNLS_CSV_MEMBER else "synthetic placeholder",
+            )
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _complete_fake_abc(prior_sampler, simulator, discrepancy, **kwargs):
     """Return two complete populations and exercise the callbacks/simulator."""
     expected = {
@@ -86,20 +125,45 @@ def _complete_fake_abc(prior_sampler, simulator, discrepancy, **kwargs):
     weights = np.full(64, 1.0 / 64.0)
     for generation, epsilon in enumerate(kwargs["epsilon_schedule"]):
         kwargs["population_event"]("start", generation, None)
+        if generation == 0:
+            covariance = None
+            log_prior = np.full(64, np.nan)
+            log_proposal = np.full(64, np.nan)
+            log_weights = np.log(weights)
+        else:
+            covariance = first_fit.make_gaussian_kernel_covariance(
+                accepted,
+                weights,
+                covariance_scale=kwargs["covariance_scale"],
+                lambda_noise=kwargs["lambda_noise"],
+                nugget=kwargs["nugget"],
+            )
+            log_prior = np.asarray([kwargs["prior_logpdf"](point) for point in accepted])
+            log_proposal = np.asarray(
+                [
+                    first_fit.gaussian_mixture_logpdf(point, accepted, weights, covariance)
+                    for point in accepted
+                ]
+            )
+            log_weights = log_prior - log_proposal
         population = {
             "generation": generation,
             "epsilon": float(epsilon),
             "accepted_params": accepted.copy(),
             "distances": np.full(64, float(epsilon)),
             "weights": weights.copy(),
-            "log_weights": np.log(weights),
-            "log_prior_density": np.full(64, np.nan),
-            "log_proposal_mixture_density": np.full(64, np.nan),
-            "proposal_covariance": None if generation == 0 else np.eye(dimension),
+            "log_weights": log_weights,
+            "log_prior_density": log_prior,
+            "log_proposal_mixture_density": log_proposal,
+            "proposal_covariance": covariance,
             "effective_sample_size": 64.0,
             "diagnostics": {
-                "proposed": 64,
-                "simulated": 64,
+                # One simulated, finite draw per generation is omitted from
+                # the accepted ledger because it exceeded epsilon. The
+                # reference diagnostics expose it only as the nonnegative
+                # residual `simulated - accepted - failed_discrepancies`.
+                "proposed": 65,
+                "simulated": 65,
                 "accepted": 64,
                 "out_of_support": 0,
                 "failed_prior_draws": 0,
@@ -110,7 +174,7 @@ def _complete_fake_abc(prior_sampler, simulator, discrepancy, **kwargs):
                 "max_attempts": 512,
                 "complete": True,
                 "termination_reason": "target_reached",
-                "ancestor_indices": [None] * 64 if generation == 0 else [0] * 64,
+                "ancestor_indices": [None] * 65 if generation == 0 else [0] * 65,
             },
         }
         kwargs["population_event"]("end", generation, population)
@@ -120,10 +184,18 @@ def _complete_fake_abc(prior_sampler, simulator, discrepancy, **kwargs):
         "complete": True,
         "termination_reason": "completed",
         "reference_path": "gaussian_abc_smc_reference_opt_in",
+        "canonical_runner_integrated": False,
         "target_samples": 64,
-        "epsilon_schedule": kwargs["epsilon_schedule"],
+        "epsilon_schedule": [float(value) for value in kwargs["epsilon_schedule"]],
         "max_attempts_per_population": [512, 512],
         "seed": kwargs["seed"],
+        "accepted_params": populations[-1]["accepted_params"],
+        "distances": populations[-1]["distances"],
+        "accepted_distances": populations[-1]["distances"],
+        "weights": populations[-1]["weights"],
+        "accepted_weights": populations[-1]["weights"],
+        "effective_sample_size": populations[-1]["effective_sample_size"],
+        "diagnostics": populations[-1]["diagnostics"],
         "populations": populations,
     }
 
@@ -221,11 +293,45 @@ def test_fit_api_is_explicitly_train_only_and_requires_upstream_term_id():
         )
 
 
+def test_selection_rejects_preloaded_validation_series():
+    with pytest.raises(ValueError, match="deferred, source-bound"):
+        first_fit._validate_validation_series(_validation_series())
+
+
+def test_caller_monotonic_start_is_included_in_fit_wall_budget(monkeypatch, tmp_path):
+    def forbidden_abc(*args, **kwargs):
+        raise AssertionError("an already expired global pilot must not start ABC")
+
+    monkeypatch.setattr(first_fit, "run_gaussian_abc_smc_reference", forbidden_abc)
+    fit = first_fit.fit_silverbox_development(
+        _train_windows(),
+        "y_cubed",
+        source_sha256=hashlib.sha256(b"synthetic-deadline-source").hexdigest(),
+        proposal_receipt_sha256=hashlib.sha256(b"synthetic-deadline-proposal").hexdigest(),
+        run_id="synthetic-expired-global-deadline",
+        receipt_dir=tmp_path,
+        pilot_started_monotonic=0.0,
+    )
+
+    assert fit.status == "incomplete"
+    receipt = json.loads(fit.receipt_path.read_text())
+    assert receipt["fit_started_monotonic"] == 0.0
+    assert receipt["budget"]["wall_started_monotonic"] == 0.0
+    assert receipt["budget"]["stop_reason"] == "wall_time_limit"
+    assert receipt["selection"]["validation_accessed"] is False
+
+
 def test_calibration_and_reference_call_contract_and_separate_validation_selection(monkeypatch, tmp_path):
-    windows = _train_windows()
+    source_archive = tmp_path / "source-bound-development.zip"
+    source_sha256 = _write_source_bound_development_archive(source_archive)
+    development = load_silverbox_controlled_development(source_archive)
+    windows = development.train_windows
+    validation = development.validation
+    simulated_values = []
 
     def fake_simulator(input_u, initialization_y, parameters, *, hypothesis, term_id, s_y, s_feature, divergence_bound):
         value = 0.50 if hypothesis == "linear" else 0.47
+        simulated_values.append(hypothesis)
         return np.full(len(input_u) - 50, value)
 
     monkeypatch.setattr(first_fit, "simulate_controlled_ar2", fake_simulator)
@@ -233,7 +339,7 @@ def test_calibration_and_reference_call_contract_and_separate_validation_selecti
     fit = first_fit.fit_silverbox_development(
         windows,
         "y_cubed",
-        source_sha256=hashlib.sha256(b"synthetic-only").hexdigest(),
+        source_sha256=source_sha256,
         proposal_receipt_sha256=hashlib.sha256(b"synthetic-proposal-receipt").hexdigest(),
         run_id="synthetic-complete",
         receipt_dir=tmp_path,
@@ -242,6 +348,7 @@ def test_calibration_and_reference_call_contract_and_separate_validation_selecti
     fit_payload = json.loads(fit.receipt_path.read_text())
     assert fit_payload["proposal_receipt_sha256"] == fit.proposal_receipt_sha256
     assert fit_payload["selection"]["validation_accessed"] is False
+    assert fit_payload["selection"]["validation_target_loaded"] is False
     assert "validation_target_sha256" not in fit_payload
     for hypothesis in ("linear", "nonlinear"):
         calibration = fit_payload["hypotheses"][hypothesis]["calibration"]
@@ -254,16 +361,147 @@ def test_calibration_and_reference_call_contract_and_separate_validation_selecti
         assert len(fit_payload["hypotheses"][hypothesis]["abc_result"]["populations"]) == 2
         for generation in range(2):
             assert (fit.receipt_path.parent / f"{hypothesis}_population_{generation:02d}.json").exists()
+            diagnostics = fit_payload["hypotheses"][hypothesis]["abc_result"]["populations"][generation]["diagnostics"]
+            assert diagnostics["simulated"] - diagnostics["accepted"] - diagnostics["failed_discrepancies"] == 1
 
-    selection = first_fit.select_silverbox_development(fit, _validation_series())
+    simulated_values.clear()
+    assert validation.target_loaded is False
+    target_load_calls = []
+
+    original_target_loader = silverbox_controlled._read_fixed_validation_target_suffix
+    def counted_target_loader(path, *, expected_source_sha256, expected_source_bytes):
+        target_load_calls.append((path, expected_source_sha256, expected_source_bytes))
+        assert len(simulated_values) == 2 * first_fit.ABC_PARTICLES
+        return original_target_loader(
+            path,
+            expected_source_sha256=expected_source_sha256,
+            expected_source_bytes=expected_source_bytes,
+        )
+
+    monkeypatch.setattr(
+        silverbox_controlled,
+        "_read_fixed_validation_target_suffix",
+        counted_target_loader,
+    )
+    selection = first_fit.select_silverbox_development(fit, validation)
     assert selection.status == "selected"
     assert selection.selected_hypothesis == "nonlinear"
+    assert validation.target_loaded is True
+    assert len(target_load_calls) == 1
+    target = validation.load_target_y(fit)
+    assert len(target_load_calls) == 1
+    assert not target.flags.writeable
+    np.testing.assert_array_equal(
+        target,
+        np.full(VALIDATION_SOURCE_STOP - VALIDATION_SOURCE_START - 50, 0.47),
+    )
     selection_payload = json.loads(selection.receipt_path.read_text())
     assert selection_payload["validation_accessed"] is True
+    assert selection_payload["validation_target_loaded"] is True
     assert set(selection_payload["forecasts"]) == {"linear", "nonlinear"}
     assert selection_payload["scores"]["rmse"]["nonlinear"] == pytest.approx(0.0)
     assert selection_payload["scores"]["rmse"]["linear"] > 0.0
     assert selection_payload["scores"]["persistence_rmse"] > 0.0
+
+    mutations = (
+        ("source_indices", lambda body: body.update({"source_indices": [[1, 2]]})),
+        ("sampling_time", lambda body: body.update({"sampling_time": 2.0})),
+        (
+            "protocol_constants",
+            lambda body: body["protocol_constants"].update({"abc_particles": 63}),
+        ),
+        ("implementation_sha256", lambda body: body.update({"implementation_sha256": "0" * 64})),
+        ("controlled_contract_sha256", lambda body: body.update({"controlled_contract_sha256": "0" * 64})),
+        ("abc_reference_sha256", lambda body: body.update({"abc_reference_sha256": "0" * 64})),
+        (
+            "calibration_seed",
+            lambda body: body["hypotheses"]["linear"]["calibration"].update({"seed": 0}),
+        ),
+        (
+            "calibration_draw",
+            lambda body: body["hypotheses"]["linear"]["calibration"]["calibration_draws"][0]["parameters"].__setitem__(0, 1000.0),
+        ),
+        (
+            "quantile_method",
+            lambda body: body["hypotheses"]["nonlinear"]["calibration"].update({"quantile_method": "higher"}),
+        ),
+        (
+            "abc_seed",
+            lambda body: body["hypotheses"]["nonlinear"]["abc_result"].update({"seed": 0}),
+        ),
+        (
+            "particle_outside_support",
+            lambda body: body["hypotheses"]["linear"]["abc_result"]["populations"][0]["accepted_params"][0].__setitem__(0, 1000.0),
+        ),
+        (
+            "particle_ess",
+            lambda body: body["hypotheses"]["linear"]["abc_result"]["populations"][1].update({"effective_sample_size": 1.0}),
+        ),
+        (
+            "population_attempt_counter",
+            lambda body: body["hypotheses"]["linear"]["abc_result"]["populations"][0]["diagnostics"].update({"proposed": 63}),
+        ),
+        (
+            "negative_epsilon_rejection_residual",
+            lambda body: body["hypotheses"]["linear"]["abc_result"]["populations"][0]["diagnostics"].update({"simulated": 63, "failed_discrepancies": 1}),
+        ),
+        (
+            "accepted_distance_over_epsilon",
+            lambda body: body["hypotheses"]["linear"]["abc_result"]["populations"][0]["distances"].__setitem__(0, 1000.0),
+        ),
+    )
+    for index, (name, mutate) in enumerate(mutations):
+        body = json.loads(fit.receipt_path.read_text())
+        body.pop("receipt_sha256")
+        mutate(body)
+        path, digest = first_fit._write_signed_json(
+            tmp_path / f"tampered-fit-{name}-{index}.json", body
+        )
+        tampered_fit = replace(fit, receipt_path=path, receipt_sha256=digest)
+        with pytest.raises(ValueError):
+            validation.load_target_y(tampered_fit)
+    with pytest.raises(ValueError):
+        validation.load_target_y(replace(fit, run_id="different-cached-fit"))
+    assert len(target_load_calls) == 1
+
+
+def test_public_target_loader_rejects_minimal_content_hashed_fit_handle(monkeypatch, tmp_path):
+    validation = _lazy_validation_series(tmp_path)
+    proposal_digest = hashlib.sha256(b"synthetic-proposal").hexdigest()
+    minimal_receipt = {
+        "protocol_id": first_fit.PROTOCOL_ID,
+        "run_id": "fabricated-minimal-fit",
+        "source_sha256": validation._source_sha256,
+        "proposal_receipt_sha256": proposal_digest,
+        "term_id": "y_cubed",
+        "status": "complete",
+        "reason": None,
+        "selection": {"validation_accessed": False, "validation_target_loaded": False},
+    }
+    receipt_path, receipt_digest = first_fit._write_signed_json(
+        tmp_path / "fabricated-minimal-fit" / "fit.json", minimal_receipt
+    )
+    fabricated_fit = first_fit.FrozenSilverboxFit(
+        run_id="fabricated-minimal-fit",
+        receipt_path=receipt_path,
+        receipt_sha256=receipt_digest,
+        status="complete",
+        term_id="y_cubed",
+        source_sha256=validation._source_sha256,
+        proposal_receipt_sha256=proposal_digest,
+    )
+
+    def forbidden_target_read(*args, **kwargs):
+        raise AssertionError("a minimally fabricated receipt must not open validation targets")
+
+    monkeypatch.setattr(
+        silverbox_controlled,
+        "_read_fixed_validation_target_suffix",
+        forbidden_target_read,
+    )
+    with pytest.raises(ValueError, match="frozen source split or protocol constants"):
+        validation.load_target_y(fabricated_fit)
+    assert validation.target_loaded is False
 
 
 def test_incomplete_fit_writes_unresolved_receipt_without_reading_validation(monkeypatch, tmp_path):
@@ -286,12 +524,162 @@ def test_incomplete_fit_writes_unresolved_receipt_without_reading_validation(mon
         receipt_dir=tmp_path,
     )
     assert fit.status == "incomplete"
-    result = first_fit.select_silverbox_development(fit, object())  # must return before touching it
+    validation = _lazy_validation_series(tmp_path)
+
+    def forbidden_target_load(*args, **kwargs):
+        raise AssertionError("incomplete fit must not open validation target outputs")
+
+    monkeypatch.setattr(silverbox_controlled, "_read_fixed_validation_target_suffix", forbidden_target_load)
+    with pytest.raises(ValueError, match="complete frozen fit"):
+        validation.load_target_y(fit)
+    assert validation.target_loaded is False
+    result = first_fit.select_silverbox_development(fit, validation)
     assert result.status == "unresolved"
+    assert validation.target_loaded is False
     payload = json.loads(result.receipt_path.read_text())
     assert payload["reason"] == "fit_incomplete"
     assert payload["validation_accessed"] is False
+    assert payload["validation_target_loaded"] is False
     assert payload["scores"] is None
+
+
+def test_selection_honors_same_global_wall_deadline(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        first_fit,
+        "simulate_controlled_ar2",
+        lambda input_u, initialization_y, parameters, **kwargs: np.zeros(len(input_u) - 50),
+    )
+    monkeypatch.setattr(first_fit, "run_gaussian_abc_smc_reference", _complete_fake_abc)
+    fit = first_fit.fit_silverbox_development(
+        _train_windows(),
+        "y_cubed",
+        source_sha256=hashlib.sha256(b"synthetic-selection-deadline-source").hexdigest(),
+        proposal_receipt_sha256=hashlib.sha256(b"synthetic-selection-deadline-proposal").hexdigest(),
+        run_id="synthetic-selection-deadline",
+        receipt_dir=tmp_path,
+    )
+    assert fit.status == "complete"
+    receipt = json.loads(fit.receipt_path.read_text())
+    original_start = receipt["budget"]["wall_started_monotonic"]
+    calls = 0
+
+    def advancing_clock():
+        nonlocal calls
+        calls += 1
+        return original_start + (1.0 if calls < 3 else first_fit.PILOT_WALL_SECONDS + 1.0)
+
+    monkeypatch.setattr(first_fit.time, "monotonic", advancing_clock)
+    selection = first_fit.select_silverbox_development(fit, _lazy_validation_series(tmp_path))
+
+    assert selection.status == "unresolved"
+    assert selection.reason == "wall_time_limit"
+    selection_receipt = json.loads(selection.receipt_path.read_text())
+    assert selection_receipt["validation_accessed"] is True
+    assert selection_receipt["validation_target_loaded"] is False
+    assert selection_receipt["forecasts"] == {}
+    assert selection_receipt["scores"] is None
+
+
+def test_selection_that_crosses_deadline_during_scoring_is_unresolved(monkeypatch, tmp_path):
+    validation = _lazy_validation_series(tmp_path)
+    monkeypatch.setattr(
+        first_fit,
+        "simulate_controlled_ar2",
+        lambda input_u, initialization_y, parameters, **kwargs: np.zeros(len(input_u) - 50),
+    )
+    monkeypatch.setattr(first_fit, "run_gaussian_abc_smc_reference", _complete_fake_abc)
+    fit = first_fit.fit_silverbox_development(
+        _train_windows(),
+        "y_cubed",
+        source_sha256=validation._source_sha256,
+        proposal_receipt_sha256=hashlib.sha256(b"synthetic-late-score-proposal").hexdigest(),
+        run_id="synthetic-late-score-deadline",
+        receipt_dir=tmp_path,
+    )
+    assert fit.status == "complete"
+    fit_receipt = json.loads(fit.receipt_path.read_text())
+    started = fit_receipt["budget"]["wall_started_monotonic"]
+    now = [started + 1.0]
+    original_rmse = first_fit._rmse
+    score_calls = 0
+
+    def advance_after_final_score(prediction, target):
+        nonlocal score_calls
+        result = original_rmse(prediction, target)
+        score_calls += 1
+        if score_calls == 3:
+            now[0] = started + first_fit.PILOT_WALL_SECONDS + 1.0
+        return result
+
+    monkeypatch.setattr(first_fit.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(first_fit, "_rmse", advance_after_final_score)
+    monkeypatch.setattr(
+        silverbox_controlled,
+        "_read_fixed_validation_target_suffix",
+        lambda *args, **kwargs: np.full(validation.prediction_count, 0.0),
+    )
+    selection = first_fit.select_silverbox_development(fit, validation)
+
+    assert score_calls == 3
+    assert selection.status == "unresolved"
+    assert selection.selected_hypothesis is None
+    assert selection.reason == "wall_time_limit"
+    receipt = json.loads(selection.receipt_path.read_text())
+    assert receipt["status"] == "unresolved"
+    assert receipt["reason"] == "wall_time_limit"
+    assert receipt["selected_hypothesis"] is None
+    assert receipt["scores"]["rmse"] is not None
+
+
+def test_selection_write_that_crosses_deadline_is_replaced_with_unresolved(monkeypatch, tmp_path):
+    validation = _lazy_validation_series(tmp_path)
+    def fake_simulator(input_u, initialization_y, parameters, *, hypothesis, **kwargs):
+        value = 0.50 if hypothesis == "linear" else 0.47
+        return np.full(len(input_u) - 50, value)
+
+    monkeypatch.setattr(first_fit, "simulate_controlled_ar2", fake_simulator)
+    monkeypatch.setattr(first_fit, "run_gaussian_abc_smc_reference", _complete_fake_abc)
+    fit = first_fit.fit_silverbox_development(
+        _train_windows(),
+        "y_cubed",
+        source_sha256=validation._source_sha256,
+        proposal_receipt_sha256=hashlib.sha256(b"synthetic-write-deadline-proposal").hexdigest(),
+        run_id="synthetic-write-deadline",
+        receipt_dir=tmp_path,
+    )
+    fit_receipt = json.loads(fit.receipt_path.read_text())
+    started = fit_receipt["budget"]["wall_started_monotonic"]
+    now = [started + 1.0]
+    original_write = first_fit._write_signed_json
+    selection_write_statuses = []
+
+    def cross_budget_during_selected_write(path, payload):
+        path, digest = original_write(path, payload)
+        if path.name == "selection.json":
+            selection_write_statuses.append(payload["status"])
+            if payload["status"] == "selected":
+                now[0] = started + first_fit.PILOT_WALL_SECONDS + 1.0
+        return path, digest
+
+    monkeypatch.setattr(first_fit.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(first_fit, "_write_signed_json", cross_budget_during_selected_write)
+    monkeypatch.setattr(
+        silverbox_controlled,
+        "_read_fixed_validation_target_suffix",
+        lambda *args, **kwargs: np.full(validation.prediction_count, 0.47),
+    )
+    selection = first_fit.select_silverbox_development(fit, validation)
+
+    assert selection_write_statuses == ["selected", "unresolved"]
+    assert selection.status == "unresolved"
+    assert selection.selected_hypothesis is None
+    assert selection.reason == "wall_time_limit"
+    receipt = json.loads(selection.receipt_path.read_text())
+    assert receipt["status"] == "unresolved"
+    assert receipt["reason"] == "wall_time_limit"
+    assert receipt["selected_hypothesis"] is None
+    assert receipt["receipt_sha256"] == selection.receipt_sha256
+    assert first_fit._load_signed_json(selection.receipt_path, selection.receipt_sha256) == receipt
 
 
 def test_calibration_failure_count_and_finite_draw_gate_are_retained(monkeypatch, tmp_path):

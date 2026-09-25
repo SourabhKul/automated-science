@@ -25,8 +25,14 @@ from typing import Any, Literal
 
 import numpy as np
 
-from core.abc_smc_reference import make_uniform_prior, run_gaussian_abc_smc_reference
+from core.abc_smc_reference import (
+    gaussian_mixture_logpdf,
+    make_gaussian_kernel_covariance,
+    make_uniform_prior,
+    run_gaussian_abc_smc_reference,
+)
 from core.real_data.silverbox_controlled import (
+    SAMPLE_TIME_SECONDS,
     STATE_INITIALIZATION_LENGTH,
     TRAIN_SOURCE_START,
     TRAIN_WINDOW_LENGTH,
@@ -35,6 +41,7 @@ from core.real_data.silverbox_controlled import (
     VALIDATION_SOURCE_START,
     VALIDATION_SOURCE_STOP,
     SilverboxControlledSeries,
+    SilverboxControlledValidation,
 )
 
 
@@ -246,8 +253,14 @@ def fit_silverbox_development(
     proposal_receipt_sha256: str,
     run_id: str,
     receipt_dir: str | Path = DEFAULT_RECEIPT_DIR,
+    pilot_started_monotonic: float | None = None,
 ) -> FrozenSilverboxFit:
-    """Run one exclusive, train-only pilot fit with the upstream term choice."""
+    """Run one exclusive, train-only pilot fit with the upstream term choice.
+
+    ``pilot_started_monotonic`` lets a caller include pre-fit work, such as a
+    bounded proposal request, in the same 600-second wall-time budget.
+    Omitting it preserves the historical fit-local budget behavior.
+    """
 
     _validate_train_windows(train_windows)
     _validate_term_id(term_id)
@@ -256,6 +269,15 @@ def fit_silverbox_development(
     normalized_source_hash = source_sha256.lower()
     if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", run_id):
         raise ValueError("run_id must be a filesystem-safe 1–128 character identifier")
+    if pilot_started_monotonic is not None:
+        if (
+            isinstance(pilot_started_monotonic, bool)
+            or not isinstance(pilot_started_monotonic, (int, float))
+            or not math.isfinite(float(pilot_started_monotonic))
+        ):
+            raise ValueError("pilot_started_monotonic must be a finite monotonic timestamp")
+        if float(pilot_started_monotonic) > time.monotonic():
+            raise ValueError("pilot_started_monotonic cannot be in the future")
     with _exclusive_fit_process(receipt_dir):
         return _fit_silverbox_development_locked(
             train_windows,
@@ -264,6 +286,9 @@ def fit_silverbox_development(
             proposal_receipt_sha256=proposal_receipt_sha256,
             run_id=run_id,
             receipt_dir=receipt_dir,
+            pilot_started_monotonic=(
+                None if pilot_started_monotonic is None else float(pilot_started_monotonic)
+            ),
         )
 
 
@@ -275,6 +300,7 @@ def _fit_silverbox_development_locked(
     proposal_receipt_sha256: str,
     run_id: str,
     receipt_dir: str | Path,
+    pilot_started_monotonic: float | None = None,
 ) -> FrozenSilverboxFit:
     """Calibrate and fit both fixed hypotheses from training windows only.
 
@@ -289,8 +315,9 @@ def _fit_silverbox_development_locked(
     source_sha256 = source_sha256.lower()
     if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", run_id):
         raise ValueError("run_id must be a filesystem-safe 1–128 character identifier")
-    started_monotonic = time.monotonic()
-    started_unix = time.time()
+    current_monotonic = time.monotonic()
+    started_monotonic = current_monotonic if pilot_started_monotonic is None else pilot_started_monotonic
+    started_unix = time.time() - max(0.0, current_monotonic - started_monotonic)
     rss_baseline = _current_rss_bytes()
     budget = _PilotBudget(started_monotonic, started_unix, rss_baseline)
     run_dir = Path(receipt_dir) / run_id
@@ -355,8 +382,17 @@ def _fit_silverbox_development_locked(
             "rule": "pointwise weighted median; unresolved if either fit/forecast fails or neither beats persistence; nonlinear only if at least 5% below linear",
             "nonlinear_promotion_margin": NONLINEAR_PROMOTION_MARGIN,
             "validation_accessed": False,
+            "validation_target_loaded": False,
         },
     }
+    # Receipt construction can take time after the last budget check. Recheck
+    # at the serialization boundary so a fit is never frozen as complete once
+    # the shared proposal-plus-fit pilot deadline has elapsed.
+    budget.check()
+    if budget.stop_reason is not None:
+        fit_receipt["status"] = "incomplete"
+        fit_receipt["reason"] = budget.stop_reason
+        fit_receipt["budget"] = budget.receipt()
     path, digest = _write_signed_json(run_dir / "fit.json", fit_receipt)
     return FrozenSilverboxFit(
         run_id,
@@ -371,7 +407,7 @@ def _fit_silverbox_development_locked(
 
 def select_silverbox_development(
     fit: FrozenSilverboxFit,
-    validation_series: SilverboxControlledSeries,
+    validation_series: SilverboxControlledValidation,
 ) -> SilverboxSelection:
     """Freeze the pointwise ensemble forecast and apply the development rule.
 
@@ -397,6 +433,7 @@ def select_silverbox_development(
         "fit_receipt_sha256": fit.receipt_sha256,
         "status": "started",
         "validation_accessed": False,
+        "validation_target_loaded": False,
     }
     _write_signed_json(run_dir / "selection_started.json", started_receipt)
 
@@ -429,6 +466,31 @@ def select_silverbox_development(
         receipt["validation_accessed"] = True
         path, digest = _write_signed_json(selection_path, receipt)
         return SilverboxSelection("unresolved", None, path, digest, reason)
+
+    wall_started_monotonic = float(budget_info.get("wall_started_monotonic", time.monotonic()))
+
+    def selection_wall_time_expired() -> bool:
+        return time.monotonic() - wall_started_monotonic >= PILOT_WALL_SECONDS
+
+    def unresolved_for_selection_wall_time(
+        partial_forecasts: dict[str, dict[str, Any]],
+    ) -> SilverboxSelection:
+        receipt = _unresolved_selection_receipt(fit, "wall_time_limit")
+        receipt.update(
+            {
+                "validation_accessed": True,
+                "validation_source_range": [validation_series.source_start, validation_series.source_stop],
+                "validation_input_sha256": _sha256_array(validation_series.input_u),
+                "validation_initializer_sha256": _sha256_array(validation_series.initialization_y),
+                "forecasts": partial_forecasts,
+                "scores": None,
+            }
+        )
+        path, digest = _write_signed_json(selection_path, receipt)
+        return SilverboxSelection("unresolved", None, path, digest, "wall_time_limit")
+
+    if selection_wall_time_expired():
+        return unresolved_for_selection_wall_time({})
     scalers = fit_receipt["training_scalers"]
     bound = float(scalers["divergence_bound"])
     hypotheses_receipt = fit_receipt["hypotheses"]
@@ -450,6 +512,15 @@ def select_silverbox_development(
         particle_predictions: list[np.ndarray] = []
         failures: list[dict[str, Any]] = []
         for index, theta in enumerate(parameters):
+            if selection_wall_time_expired():
+                forecasts[hypothesis] = {
+                    "status": "incomplete",
+                    "failure_mode": "wall_time_limit",
+                    "completed_particles": len(particle_predictions),
+                    "expected_particles": ABC_PARTICLES,
+                    "failures": failures,
+                }
+                return unresolved_for_selection_wall_time(forecasts)
             try:
                 prediction = simulate_controlled_ar2(
                     validation_series.input_u,
@@ -461,17 +532,20 @@ def select_silverbox_development(
                     s_feature=float(scalers["s_feature"]),
                     divergence_bound=bound,
                 )
-                if prediction.shape != validation_series.target_y.shape:
+                expected_prediction_shape = (validation_series.prediction_count,)
+                if prediction.shape != expected_prediction_shape:
                     raise SimulationFailure(
                         "wrong_output_shape",
-                        f"expected {validation_series.target_y.shape}, received {prediction.shape}",
+                        f"expected {expected_prediction_shape}, received {prediction.shape}",
                     )
                 particle_predictions.append(prediction)
             except Exception as error:
                 mode = error.failure_mode if isinstance(error, SimulationFailure) else "simulator_exception"
                 failures.append({"particle_index": index, "failure_mode": mode, "detail": str(error)})
                 # Continue through all particles so the receipt exposes every failure.
-                particle_predictions.append(np.full(validation_series.target_y.shape, np.nan, dtype=float))
+                particle_predictions.append(
+                    np.full((validation_series.prediction_count,), np.nan, dtype=float)
+                )
         if failures:
             forecasts[hypothesis] = {
                 "status": "failed",
@@ -492,6 +566,9 @@ def select_silverbox_development(
                 "forecast_sha256": _sha256_array(median),
             }
 
+    if selection_wall_time_expired():
+        return unresolved_for_selection_wall_time(forecasts)
+
     if any(forecasts[name]["status"] != "success" for name in HYPOTHESES):
         receipt = _unresolved_selection_receipt(fit, "validation_forecast_failure")
         receipt.update(
@@ -507,8 +584,29 @@ def select_silverbox_development(
         path, digest = _write_signed_json(selection_path, receipt)
         return SilverboxSelection("unresolved", None, path, digest, "validation_forecast_failure")
 
-    # Targets are first accessed here, after every particle of both models passed.
-    target = np.asarray(validation_series.target_y, dtype=float)
+    # Validation target outputs are first opened here, only after the frozen
+    # fit receipt was verified and every particle of both models passed.
+    try:
+        target = validation_series.load_target_y(fit)
+        target = np.asarray(target, dtype=float)
+        if target.shape != (validation_series.prediction_count,) or not np.all(np.isfinite(target)):
+            raise ValueError("validation target has an invalid shape or nonfinite value")
+    except Exception as error:
+        reason = f"validation_target_load_failed: {type(error).__name__}: {error}"
+        receipt = _unresolved_selection_receipt(fit, reason)
+        receipt.update(
+            {
+                "validation_accessed": True,
+                "validation_source_range": [validation_series.source_start, validation_series.source_stop],
+                "validation_input_sha256": _sha256_array(validation_series.input_u),
+                "validation_initializer_sha256": _sha256_array(validation_series.initialization_y),
+                "forecasts": forecasts,
+                "scores": None,
+                "validation_target_loaded": False,
+            }
+        )
+        path, digest = _write_signed_json(selection_path, receipt)
+        return SilverboxSelection("unresolved", None, path, digest, reason)
     forecast_arrays = {
         name: np.asarray(forecasts[name]["pointwise_weighted_median"], dtype=float)
         for name in HYPOTHESES
@@ -548,6 +646,7 @@ def select_silverbox_development(
         "reason": reason,
         "selected_hypothesis": selected,
         "validation_accessed": True,
+        "validation_target_loaded": True,
         "validation_source_range": [validation_series.source_start, validation_series.source_stop],
         "validation_input_sha256": _sha256_array(validation_series.input_u),
         "validation_initializer_sha256": _sha256_array(validation_series.initialization_y),
@@ -566,7 +665,24 @@ def select_silverbox_development(
             "summary": "per-timepoint weighted median of all particle trajectories; stable value sort; first cumulative normalized weight >= 0.5",
         },
     }
+    # Target conversion, metric calculation, and receipt assembly all count
+    # against the same global pilot clock. A late score remains in the audit
+    # receipt, but cannot produce a terminal selected outcome.
+    if selection_wall_time_expired():
+        receipt["status"] = "unresolved"
+        receipt["reason"] = "wall_time_limit"
+        receipt["selected_hypothesis"] = None
     path, digest = _write_signed_json(selection_path, receipt)
+    # The atomic write itself is part of the wall budget. If it started under
+    # budget but completed after the deadline, replace the selected receipt
+    # atomically with an unresolved one before returning any handle.
+    if receipt["status"] == "selected" and selection_wall_time_expired():
+        receipt["status"] = "unresolved"
+        receipt["reason"] = "wall_time_limit"
+        receipt["selected_hypothesis"] = None
+        path, digest = _write_signed_json(selection_path, receipt)
+    if receipt["status"] == "unresolved" and receipt["reason"] == "wall_time_limit":
+        return SilverboxSelection("unresolved", None, path, digest, "wall_time_limit")
     return SilverboxSelection(outcome, selected, path, digest, reason)
 
 
@@ -856,19 +972,19 @@ def _validate_train_windows(train_windows: Any) -> None:
 
 
 def _validate_validation_series(series: Any) -> None:
-    if type(series) is not SilverboxControlledSeries:
-        raise ValueError("selection requires exactly one SilverboxControlledSeries validation input")
+    if type(series) is not SilverboxControlledValidation:
+        raise ValueError("selection requires one deferred, source-bound Silverbox validation input")
     if (
         series.role != "validation"
         or series.source_start != VALIDATION_SOURCE_START
         or series.source_stop != VALIDATION_SOURCE_STOP
         or series.input_u.size != VALIDATION_SOURCE_STOP - VALIDATION_SOURCE_START
         or series.initialization_y.shape != (STATE_INITIALIZATION_LENGTH,)
-        or series.target_y.size != series.input_u.size - STATE_INITIALIZATION_LENGTH
+        or series.prediction_count != series.input_u.size - STATE_INITIALIZATION_LENGTH
     ):
         raise ValueError("selection requires the fixed validation source interval and 50-sample initializer")
-    if not all(np.all(np.isfinite(array)) for array in (series.input_u, series.initialization_y, series.target_y)):
-        raise ValueError("validation series contains nonfinite values")
+    if not all(np.all(np.isfinite(array)) for array in (series.input_u, series.initialization_y)):
+        raise ValueError("validation input or initializer contains nonfinite values")
 
 
 def _validate_term_id(term_id: Any) -> None:
@@ -905,25 +1021,7 @@ def _fit_metadata(
         "term_id": term_id,
         "source_indices": [[window.source_start, window.source_stop] for window in train_windows],
         "sampling_time": float(train_windows[0].sampling_time),
-        "protocol_constants": {
-            "calibration_draws": CALIBRATION_DRAWS,
-            "calibration_min_finite": CALIBRATION_MIN_FINITE,
-            "calibration_quantiles": CALIBRATION_QUANTILES,
-            "calibration_quantile_method": "linear",
-            "calibration_seeds": CALIBRATION_SEEDS,
-            "abc_seeds": ABC_SEEDS,
-            "abc_particles": ABC_PARTICLES,
-            "abc_populations": ABC_POPULATIONS,
-            "abc_attempts_per_population": ABC_ATTEMPTS_PER_POPULATION,
-            "covariance_scale": ABC_COVARIANCE_SCALE,
-            "lambda_noise": ABC_LAMBDA_NOISE,
-            "nugget": ABC_NUGGET,
-            "linear_parameter_names": LINEAR_PARAMETER_NAMES,
-            "linear_bounds": LINEAR_BOUNDS,
-            "nonlinear_parameter_names": NONLINEAR_PARAMETER_NAMES,
-            "nonlinear_bounds": NONLINEAR_BOUNDS,
-            "divergence_rule": "max(abs(full trajectory)) <= max(1.0, 10 * max(abs(training observed y)))",
-        },
+        "protocol_constants": _fit_protocol_constants(),
         "implementation_sha256": _sha256_file(Path(__file__)),
         "controlled_contract_sha256": controlled_hash,
         "abc_reference_sha256": abc_hash,
@@ -934,6 +1032,30 @@ def _fit_metadata(
     }
 
 
+def _fit_protocol_constants() -> dict[str, Any]:
+    """Return the complete frozen calibration/ABC contract for receipts."""
+
+    return {
+        "calibration_draws": CALIBRATION_DRAWS,
+        "calibration_min_finite": CALIBRATION_MIN_FINITE,
+        "calibration_quantiles": CALIBRATION_QUANTILES,
+        "calibration_quantile_method": "linear",
+        "calibration_seeds": CALIBRATION_SEEDS,
+        "abc_seeds": ABC_SEEDS,
+        "abc_particles": ABC_PARTICLES,
+        "abc_populations": ABC_POPULATIONS,
+        "abc_attempts_per_population": ABC_ATTEMPTS_PER_POPULATION,
+        "covariance_scale": ABC_COVARIANCE_SCALE,
+        "lambda_noise": ABC_LAMBDA_NOISE,
+        "nugget": ABC_NUGGET,
+        "linear_parameter_names": LINEAR_PARAMETER_NAMES,
+        "linear_bounds": LINEAR_BOUNDS,
+        "nonlinear_parameter_names": NONLINEAR_PARAMETER_NAMES,
+        "nonlinear_bounds": NONLINEAR_BOUNDS,
+        "divergence_rule": "max(abs(full trajectory)) <= max(1.0, 10 * max(abs(training observed y)))",
+    }
+
+
 def _fit_code_hashes_match(receipt: dict[str, Any]) -> bool:
     controlled_hash, abc_hash = _controlled_and_abc_hashes()
     return (
@@ -941,6 +1063,425 @@ def _fit_code_hashes_match(receipt: dict[str, Any]) -> bool:
         and receipt.get("controlled_contract_sha256") == controlled_hash
         and receipt.get("abc_reference_sha256") == abc_hash
     )
+
+
+def _verify_complete_fit_receipt(fit: Any, receipt: dict[str, Any]) -> None:
+    """Validate frozen fit bindings and internal calibration/ABC consistency.
+
+    This gate makes validation targets available only after a complete fit is
+    content-hash verified. Selection applies the stricter operational order of
+    completing all validation forecasts before it calls the target loader.
+    """
+
+    def finite_number(value: Any) -> bool:
+        return (
+            not isinstance(value, bool)
+            and isinstance(value, (int, float, np.integer, np.floating))
+            and math.isfinite(float(value))
+        )
+
+    def int_value(value: Any, *, minimum: int = 0) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value >= minimum
+
+    def float_array(value: Any, shape: tuple[int, ...], name: str) -> np.ndarray:
+        try:
+            array = np.asarray(value, dtype=float)
+        except Exception as error:
+            raise ValueError(f"complete fit receipt has invalid {name}") from error
+        if array.shape != shape or not np.all(np.isfinite(array)):
+            raise ValueError(f"complete fit receipt has invalid {name}")
+        return array
+
+    def close(left: Any, right: Any, *, name: str) -> None:
+        if not finite_number(left) or not finite_number(right) or not math.isclose(
+            float(left), float(right), rel_tol=1e-11, abs_tol=1e-13
+        ):
+            raise ValueError(f"complete fit receipt has inconsistent {name}")
+
+    if not isinstance(receipt, dict):
+        raise ValueError("fit receipt is not a JSON object")
+    try:
+        _validate_term_id(receipt.get("term_id"))
+        _validate_sha256(receipt.get("source_sha256"), "source_sha256")
+        _validate_proposal_receipt_sha256(receipt.get("proposal_receipt_sha256"))
+    except ValueError as error:
+        raise ValueError("fit receipt has invalid source or proposal bindings") from error
+    selection = receipt.get("selection")
+    if not isinstance(selection, dict) or (
+        getattr(fit, "status", None) != "complete"
+        or receipt.get("protocol_id") != PROTOCOL_ID
+        or receipt.get("status") != "complete"
+        or receipt.get("reason") is not None
+        or receipt.get("run_id") != getattr(fit, "run_id", None)
+        or receipt.get("source_sha256") != getattr(fit, "source_sha256", None)
+        or receipt.get("term_id") != getattr(fit, "term_id", None)
+        or receipt.get("proposal_receipt_sha256")
+        != getattr(fit, "proposal_receipt_sha256", None)
+        or selection.get("validation_accessed") is not False
+        or selection.get("validation_target_loaded") is not False
+    ):
+        raise ValueError("fit receipt does not prove a complete unselected run")
+
+    expected_indices = [
+        [TRAIN_SOURCE_START + offset, TRAIN_SOURCE_START + offset + TRAIN_WINDOW_LENGTH]
+        for offset in TRAIN_WINDOW_RELATIVE_STARTS
+    ]
+    expected_protocol_constants = json.loads(json.dumps(_fit_protocol_constants(), allow_nan=False))
+    if (
+        receipt.get("source_indices") != expected_indices
+        or receipt.get("sampling_time") != SAMPLE_TIME_SECONDS
+        or receipt.get("protocol_constants") != expected_protocol_constants
+    ):
+        raise ValueError("fit receipt does not match the frozen source split or protocol constants")
+    if not _fit_code_hashes_match(receipt):
+        raise ValueError("fit receipt code hashes do not match the current implementation")
+
+    budget = receipt.get("budget")
+    if not isinstance(budget, dict):
+        raise ValueError("complete fit receipt has no bounded resource receipt")
+    wall_elapsed = budget.get("wall_elapsed_seconds")
+    wall_started_unix = budget.get("wall_started_unix")
+    wall_started_monotonic = budget.get("wall_started_monotonic")
+    baseline = budget.get("memory_baseline_rss_bytes")
+    peak_additional = budget.get("peak_additional_rss_bytes")
+    process_id = budget.get("process_id")
+    if (
+        budget.get("stop_reason") is not None
+        or budget.get("wall_limit_seconds") != PILOT_WALL_SECONDS
+        or not finite_number(wall_elapsed)
+        or float(wall_elapsed) < 0
+        or float(wall_elapsed) >= PILOT_WALL_SECONDS
+        or budget.get("memory_limit_bytes") != PILOT_ADDITIONAL_MEMORY_BYTES
+        or not int_value(baseline, minimum=1)
+        or not int_value(peak_additional)
+        or peak_additional > PILOT_ADDITIONAL_MEMORY_BYTES
+        or not int_value(process_id, minimum=1)
+        or not finite_number(wall_started_unix)
+        or not finite_number(wall_started_monotonic)
+        or receipt.get("fit_started_unix") != wall_started_unix
+        or receipt.get("fit_started_monotonic") != wall_started_monotonic
+        or receipt.get("memory_baseline_rss_bytes") != baseline
+        or receipt.get("process_id") != process_id
+    ):
+        raise ValueError("complete fit receipt violates the frozen resource limits")
+
+    scalers = receipt.get("training_scalers")
+    if not isinstance(scalers, dict) or scalers.get("feature_term_id") != receipt.get("term_id"):
+        raise ValueError("complete fit receipt has invalid train-only scalers")
+    if any(
+        not finite_number(scalers.get(name)) or float(scalers[name]) <= 0
+        for name in ("s_y", "s_feature", "divergence_bound")
+    ):
+        raise ValueError("complete fit receipt has invalid train-only scalers")
+    training_max_abs_y = scalers.get("training_max_abs_y")
+    if (
+        not finite_number(training_max_abs_y)
+        or float(training_max_abs_y) < 0
+        or scalers.get("training_target_count")
+        != len(TRAIN_WINDOW_RELATIVE_STARTS) * TRAIN_WINDOW_PREDICTION_LENGTH
+        or not math.isclose(
+            float(scalers["divergence_bound"]),
+            max(1.0, 10.0 * float(training_max_abs_y)),
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+    ):
+        raise ValueError("complete fit receipt has inconsistent train-only scaler bindings")
+
+    hypotheses = receipt.get("hypotheses")
+    if not isinstance(hypotheses, dict) or tuple(hypotheses) != HYPOTHESES:
+        raise ValueError("complete fit receipt does not contain both fixed hypotheses in protocol order")
+    for hypothesis in HYPOTHESES:
+        family = hypotheses[hypothesis]
+        names = LINEAR_PARAMETER_NAMES if hypothesis == "linear" else NONLINEAR_PARAMETER_NAMES
+        bounds_tuple = LINEAR_BOUNDS if hypothesis == "linear" else NONLINEAR_BOUNDS
+        bounds = np.asarray(bounds_tuple, dtype=float)
+        calibration_seed = CALIBRATION_SEEDS[hypothesis]
+        abc_seed = ABC_SEEDS[hypothesis]
+        if not isinstance(family, dict) or (
+            family.get("status") != "complete"
+            or family.get("reason") is not None
+            or family.get("parameter_names") != list(names)
+            or family.get("bounds") != [list(row) for row in bounds_tuple]
+        ):
+            raise ValueError(f"complete fit receipt has invalid {hypothesis} family metadata")
+
+        calibration = family.get("calibration")
+        if not isinstance(calibration, dict):
+            raise ValueError(f"complete fit receipt has no {hypothesis} calibration ledger")
+        expected_draws = np.random.default_rng(calibration_seed).uniform(
+            bounds[:, 0], bounds[:, 1], size=(CALIBRATION_DRAWS, len(names))
+        )
+        draw_records = calibration.get("calibration_draws")
+        if (
+            calibration.get("protocol_id") != PROTOCOL_ID
+            or calibration.get("run_id") != receipt.get("run_id")
+            or calibration.get("hypothesis") != hypothesis
+            or calibration.get("seed") != calibration_seed
+            or calibration.get("prior_draw_count") != CALIBRATION_DRAWS
+            or calibration.get("draws_generated") != CALIBRATION_DRAWS
+            or calibration.get("draws_completed") != CALIBRATION_DRAWS
+            or calibration.get("quantile_probabilities") != list(CALIBRATION_QUANTILES)
+            or calibration.get("quantile_method") != "linear"
+            or calibration.get("status") != "complete"
+            or calibration.get("reason") is not None
+            or not isinstance(draw_records, list)
+            or len(draw_records) != CALIBRATION_DRAWS
+        ):
+            raise ValueError(f"complete fit receipt has invalid {hypothesis} calibration metadata")
+
+        finite_discrepancies: list[float] = []
+        calibration_failure_modes: Counter[str] = Counter()
+        for draw_index, record in enumerate(draw_records):
+            if not isinstance(record, dict) or record.get("draw_index") != draw_index:
+                raise ValueError(f"complete fit receipt has an invalid {hypothesis} calibration ledger index")
+            parameters = float_array(record.get("parameters"), (len(names),), "calibration parameters")
+            if not np.array_equal(parameters, expected_draws[draw_index]):
+                raise ValueError(f"complete fit receipt has an altered {hypothesis} calibration draw")
+            if record.get("status") == "finite":
+                discrepancy = record.get("discrepancy")
+                if not finite_number(discrepancy) or float(discrepancy) < 0:
+                    raise ValueError(f"complete fit receipt has an invalid {hypothesis} calibration discrepancy")
+                finite_discrepancies.append(float(discrepancy))
+            elif record.get("status") == "failed":
+                try:
+                    failed_discrepancy = float(record.get("discrepancy"))
+                except (TypeError, ValueError) as error:
+                    raise ValueError(f"complete fit receipt has an invalid {hypothesis} failed draw") from error
+                mode = record.get("failure_mode")
+                if not (math.isinf(failed_discrepancy) and failed_discrepancy > 0) or not isinstance(mode, str) or not mode:
+                    raise ValueError(f"complete fit receipt has an invalid {hypothesis} failed draw")
+                calibration_failure_modes[mode] += 1
+            else:
+                raise ValueError(f"complete fit receipt has an incomplete {hypothesis} calibration ledger")
+
+        expected_finite = len(finite_discrepancies)
+        expected_failures = CALIBRATION_DRAWS - expected_finite
+        if (
+            expected_finite < CALIBRATION_MIN_FINITE
+            or calibration.get("finite_count") != expected_finite
+            or calibration.get("failure_count") != expected_failures
+            or calibration.get("not_simulated_count") != 0
+            or calibration.get("failure_modes") != dict(sorted(calibration_failure_modes.items()))
+        ):
+            raise ValueError(f"complete fit receipt has inconsistent {hypothesis} calibration counts")
+        expected_epsilon = np.quantile(
+            np.asarray(finite_discrepancies, dtype=float), CALIBRATION_QUANTILES, method="linear"
+        )
+        epsilon = float_array(
+            calibration.get("epsilon_schedule"), (len(CALIBRATION_QUANTILES),), "calibration epsilon schedule"
+        )
+        quantiles = calibration.get("epsilon_quantiles")
+        if (
+            not np.allclose(epsilon, expected_epsilon, rtol=1e-12, atol=1e-15)
+            or epsilon[0] < epsilon[1]
+            or not isinstance(quantiles, dict)
+            or quantiles.get("q50") != float(epsilon[0])
+            or quantiles.get("q20") != float(epsilon[1])
+        ):
+            raise ValueError(f"complete fit receipt has inconsistent {hypothesis} calibration quantiles")
+
+        abc_result = family.get("abc_result")
+        if not isinstance(abc_result, dict) or (
+            abc_result.get("status") != "complete"
+            or abc_result.get("complete") is not True
+            or abc_result.get("termination_reason") != "completed"
+            or abc_result.get("reference_path") != "gaussian_abc_smc_reference_opt_in"
+            or abc_result.get("canonical_runner_integrated") is not False
+            or abc_result.get("target_samples") != ABC_PARTICLES
+            or abc_result.get("epsilon_schedule") != [float(value) for value in epsilon]
+            or abc_result.get("max_attempts_per_population") != [ABC_ATTEMPTS_PER_POPULATION] * ABC_POPULATIONS
+            or abc_result.get("seed") != abc_seed
+            or not isinstance(abc_result.get("populations"), list)
+            or len(abc_result["populations"]) != ABC_POPULATIONS
+        ):
+            raise ValueError(f"complete fit receipt has invalid {hypothesis} ABC-SMC metadata")
+
+        previous_params: np.ndarray | None = None
+        previous_weights: np.ndarray | None = None
+        failed_simulations_total = 0
+        for generation, population in enumerate(abc_result["populations"]):
+            if not isinstance(population, dict):
+                raise ValueError(f"complete fit receipt has an invalid {hypothesis} population")
+            parameters = float_array(
+                population.get("accepted_params"),
+                (ABC_PARTICLES, len(names)),
+                f"{hypothesis} accepted parameters",
+            )
+            if np.any(parameters < bounds[:, 0]) or np.any(parameters > bounds[:, 1]):
+                raise ValueError(f"complete fit receipt has {hypothesis} particles outside frozen support")
+            distances = float_array(
+                population.get("distances"), (ABC_PARTICLES,), f"{hypothesis} accepted distances"
+            )
+            if np.any(distances < 0) or np.any(distances > float(epsilon[generation])):
+                raise ValueError(f"complete fit receipt has {hypothesis} distances outside epsilon")
+            weights = float_array(population.get("weights"), (ABC_PARTICLES,), f"{hypothesis} particle weights")
+            if np.any(weights < 0) or not np.isclose(
+                math.fsum(float(value) for value in weights), 1.0, rtol=1e-10, atol=1e-12
+            ):
+                raise ValueError(f"complete fit receipt has invalid {hypothesis} particle weights")
+            log_weights = float_array(
+                population.get("log_weights"), (ABC_PARTICLES,), f"{hypothesis} log weights"
+            )
+            max_log_weight = float(np.max(log_weights))
+            normalized_log_weights = np.exp(log_weights - max_log_weight)
+            normalized_log_weights /= math.fsum(float(value) for value in normalized_log_weights)
+            if not np.allclose(normalized_log_weights, weights, rtol=1e-10, atol=1e-12):
+                raise ValueError(f"complete fit receipt has inconsistent {hypothesis} log weights")
+            ess = population.get("effective_sample_size")
+            expected_ess = 1.0 / math.fsum(float(value) ** 2 for value in weights)
+            close(ess, expected_ess, name=f"{hypothesis} population ESS")
+            if population.get("generation") != generation or population.get("epsilon") != float(epsilon[generation]):
+                raise ValueError(f"complete fit receipt has a mismatched {hypothesis} generation threshold")
+
+            diagnostics = population.get("diagnostics")
+            if not isinstance(diagnostics, dict):
+                raise ValueError(f"complete fit receipt has no {hypothesis} population diagnostics")
+            counter_names = (
+                "proposed",
+                "simulated",
+                "accepted",
+                "out_of_support",
+                "failed_prior_draws",
+                "failed_proposals",
+                "failed_simulations",
+                "failed_discrepancies",
+                "weight_failures",
+            )
+            if any(not int_value(diagnostics.get(name)) for name in counter_names):
+                raise ValueError(f"complete fit receipt has invalid {hypothesis} population counters")
+            ancestors = diagnostics.get("ancestor_indices")
+            epsilon_rejections = (
+                diagnostics.get("simulated")
+                - diagnostics.get("accepted")
+                - diagnostics.get("failed_discrepancies")
+            )
+            if (
+                diagnostics.get("complete") is not True
+                or diagnostics.get("termination_reason") != "target_reached"
+                or diagnostics.get("accepted") != ABC_PARTICLES
+                or diagnostics.get("max_attempts") != ABC_ATTEMPTS_PER_POPULATION
+                or diagnostics.get("proposed") < ABC_PARTICLES
+                or diagnostics.get("proposed") > ABC_ATTEMPTS_PER_POPULATION
+                or epsilon_rejections < 0
+                or diagnostics.get("simulated") > diagnostics.get("proposed")
+                or diagnostics.get("weight_failures") != 0
+                or sum(diagnostics[name] for name in (
+                    "out_of_support", "failed_prior_draws", "failed_proposals",
+                    "failed_simulations",
+                )) + diagnostics.get("simulated") != diagnostics.get("proposed")
+                or not isinstance(ancestors, list)
+                or len(ancestors) != diagnostics.get("proposed")
+            ):
+                raise ValueError(f"complete fit receipt has inconsistent {hypothesis} population counters")
+            if generation == 0:
+                if (
+                    diagnostics.get("failed_proposals") != 0
+                    or population.get("proposal_covariance") is not None
+                    or any(value is not None for value in ancestors)
+                    or not np.allclose(weights, np.full(ABC_PARTICLES, 1.0 / ABC_PARTICLES), rtol=1e-12, atol=1e-15)
+                ):
+                    raise ValueError(f"complete fit receipt has invalid initial {hypothesis} population")
+                try:
+                    log_prior = np.asarray(population.get("log_prior_density"), dtype=float)
+                    log_proposal = np.asarray(population.get("log_proposal_mixture_density"), dtype=float)
+                except Exception as error:
+                    raise ValueError(f"complete fit receipt has invalid initial {hypothesis} densities") from error
+                if (
+                    log_prior.shape != (ABC_PARTICLES,)
+                    or log_proposal.shape != (ABC_PARTICLES,)
+                    or not np.all(np.isnan(log_prior))
+                    or not np.all(np.isnan(log_proposal))
+                    or not np.allclose(log_weights, np.log(weights), rtol=1e-12, atol=1e-15)
+                ):
+                    raise ValueError(f"complete fit receipt has invalid initial {hypothesis} weights")
+            else:
+                if diagnostics.get("failed_prior_draws") != 0 or any(
+                    value is not None and (not isinstance(value, int) or value < 0 or value >= ABC_PARTICLES)
+                    for value in ancestors
+                ):
+                    raise ValueError(f"complete fit receipt has invalid {hypothesis} ancestry")
+                try:
+                    covariance = np.asarray(population.get("proposal_covariance"), dtype=float)
+                    log_prior = float_array(
+                        population.get("log_prior_density"), (ABC_PARTICLES,), f"{hypothesis} prior log density"
+                    )
+                    log_proposal = float_array(
+                        population.get("log_proposal_mixture_density"),
+                        (ABC_PARTICLES,),
+                        f"{hypothesis} proposal log density",
+                    )
+                    assert previous_params is not None and previous_weights is not None
+                    expected_covariance = make_gaussian_kernel_covariance(
+                        previous_params,
+                        previous_weights,
+                        covariance_scale=ABC_COVARIANCE_SCALE,
+                        lambda_noise=ABC_LAMBDA_NOISE,
+                        nugget=ABC_NUGGET,
+                    )
+                except Exception as error:
+                    raise ValueError(f"complete fit receipt has invalid {hypothesis} proposal kernel") from error
+                if (
+                    covariance.shape != (len(names), len(names))
+                    or not np.all(np.isfinite(covariance))
+                    or not np.allclose(covariance, expected_covariance, rtol=1e-11, atol=1e-14)
+                ):
+                    raise ValueError(f"complete fit receipt has inconsistent {hypothesis} proposal covariance")
+                _, prior_logpdf = make_uniform_prior(bounds)
+                expected_log_prior = np.asarray([prior_logpdf(point) for point in parameters], dtype=float)
+                expected_log_proposal = np.asarray(
+                    [
+                        gaussian_mixture_logpdf(point, previous_params, previous_weights, covariance)
+                        for point in parameters
+                    ],
+                    dtype=float,
+                )
+                if (
+                    not np.allclose(log_prior, expected_log_prior, rtol=1e-11, atol=1e-12)
+                    or not np.allclose(log_proposal, expected_log_proposal, rtol=1e-11, atol=1e-12)
+                    or not np.allclose(log_weights, log_prior - log_proposal, rtol=1e-11, atol=1e-12)
+                ):
+                    raise ValueError(f"complete fit receipt has inconsistent {hypothesis} importance weights")
+            failed_simulations_total += diagnostics["failed_simulations"]
+            previous_params = parameters
+            previous_weights = weights
+
+        # The reference result duplicates the terminal population at the top
+        # level. Keep those summary fields bound to the audited ledger too.
+        final_population = abc_result["populations"][-1]
+        for summary_key, population_key in (
+            ("accepted_params", "accepted_params"),
+            ("distances", "distances"),
+            ("accepted_distances", "distances"),
+            ("weights", "weights"),
+            ("accepted_weights", "weights"),
+        ):
+            summary = float_array(
+                abc_result.get(summary_key),
+                np.asarray(final_population[population_key], dtype=float).shape,
+                f"{hypothesis} ABC summary {summary_key}",
+            )
+            if not np.array_equal(summary, np.asarray(final_population[population_key], dtype=float)):
+                raise ValueError(f"complete fit receipt has inconsistent {hypothesis} ABC summary")
+        if (
+            abc_result.get("diagnostics") != final_population.get("diagnostics")
+            or not math.isclose(
+                float(abc_result.get("effective_sample_size", float("nan"))),
+                float(final_population.get("effective_sample_size", float("nan"))),
+                rel_tol=1e-11,
+                abs_tol=1e-13,
+            )
+        ):
+            raise ValueError(f"complete fit receipt has inconsistent {hypothesis} ABC terminal summary")
+
+        abc_failure_modes = family.get("abc_failure_modes")
+        if (
+            not isinstance(abc_failure_modes, dict)
+            or any(not isinstance(mode, str) or not mode or not int_value(count, minimum=1)
+                   for mode, count in abc_failure_modes.items())
+            or sum(abc_failure_modes.values()) != failed_simulations_total
+        ):
+            raise ValueError(f"complete fit receipt has inconsistent {hypothesis} simulator failures")
 
 
 def _controlled_and_abc_hashes() -> tuple[str, str]:
@@ -995,6 +1536,7 @@ def _unresolved_selection_receipt(fit: FrozenSilverboxFit, reason: str) -> dict[
         "reason": reason,
         "selected_hypothesis": None,
         "validation_accessed": False,
+        "validation_target_loaded": False,
         "forecasts": None,
         "scores": None,
     }

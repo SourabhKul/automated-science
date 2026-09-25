@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from core.real_data.silverbox import SAMPLE_COUNT, SCHROEDER_CSV_MEMBER, SNLS_CSV_MEMBER
+from core.real_data import silverbox_controlled
 from core.real_data.silverbox_controlled import (
     BLOCK_SOURCE_START,
     BLOCK_SOURCE_STOP,
@@ -21,6 +22,7 @@ from core.real_data.silverbox_controlled import (
     VALIDATION_SOURCE_START,
     VALIDATION_SOURCE_STOP,
     SilverboxControlledDevelopment,
+    SilverboxControlledValidation,
     load_silverbox_controlled_development,
     simulate_controlled_series,
 )
@@ -41,6 +43,67 @@ def _write_index_coded_archive(path: Path) -> None:
             archive.writestr(name, "placeholder")
 
 
+def _write_test_sentinel_archive(path: Path) -> None:
+    """Put nonnumeric sentinels only in the official test source ranges."""
+
+    from core.real_data.silverbox import (
+        ARROW_FULL_START,
+        ARROW_FULL_STOP,
+        MULTISINE_START,
+        MULTISINE_STOP,
+        MULTISINE_TRAIN_STOP,
+    )
+
+    sealed_ranges = (
+        (ARROW_FULL_START, ARROW_FULL_STOP),
+        (MULTISINE_TRAIN_STOP, MULTISINE_STOP),
+    )
+    rows = ["V1,V2,\n"]
+    for index in range(SAMPLE_COUNT):
+        if any(start <= index < stop for start, stop in sealed_ranges):
+            if ARROW_FULL_START <= index < ARROW_FULL_STOP:
+                # Deliberately malformed CSV: raw-line skipping must avoid
+                # csv.reader tokenization of this fixed sealed prefix.
+                rows.append(f'"SEALED_INPUT_{index},SEALED_OUTPUT_{index}\n')
+            else:
+                rows.append(f"SEALED_INPUT_{index},SEALED_OUTPUT_{index},\n")
+        elif MULTISINE_START <= index < MULTISINE_TRAIN_STOP:
+            rows.append(f"{index / 10:.8f},{index / 20:.8f},\n")
+        else:
+            rows.append("0.0,0.0,\n")
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(SNLS_CSV_MEMBER, "".join(rows))
+        archive.writestr(SCHROEDER_CSV_MEMBER, "Ovld2,Ovld1,V1,V2,\n")
+        for name in (
+            "SilverboxFiles/SNLS80mV.mat",
+            "SilverboxFiles/Schroeder80mV.mat",
+            "SilverboxFiles/README.txt",
+            "SilverboxFiles/README.m",
+        ):
+            archive.writestr(name, "placeholder")
+
+
+def _write_poisoned_validation_target_archive(path: Path) -> None:
+    """Keep validation target outputs nonnumeric while inputs stay usable."""
+
+    rows = ["V1,V2,\n"]
+    for index in range(SAMPLE_COUNT):
+        if VALIDATION_SOURCE_START + STATE_INITIALIZATION_LENGTH <= index < VALIDATION_SOURCE_STOP:
+            rows.append(f"{index / 10:.8f},POISON_TARGET_{index},\n")
+        else:
+            rows.append(f"{index / 10:.8f},{index / 20:.8f},\n")
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(SNLS_CSV_MEMBER, "".join(rows) + "\n")
+        archive.writestr(SCHROEDER_CSV_MEMBER, "Ovld2,Ovld1,V1,V2,\n")
+        for name in (
+            "SilverboxFiles/SNLS80mV.mat",
+            "SilverboxFiles/Schroeder80mV.mat",
+            "SilverboxFiles/README.txt",
+            "SilverboxFiles/README.m",
+        ):
+            archive.writestr(name, "placeholder")
+
+
 @pytest.fixture(scope="module")
 def development(tmp_path_factory: pytest.TempPathFactory) -> SilverboxControlledDevelopment:
     archive = tmp_path_factory.mktemp("silverbox-controlled") / "SilverboxFiles.zip"
@@ -48,7 +111,9 @@ def development(tmp_path_factory: pytest.TempPathFactory) -> SilverboxControlled
     return load_silverbox_controlled_development(archive)
 
 
-def test_fixed_source_indices_roles_gap_and_50_sample_initializers(development: SilverboxControlledDevelopment) -> None:
+def test_fixed_source_indices_roles_gap_and_50_sample_initializers(
+    development: SilverboxControlledDevelopment,
+) -> None:
     assert development.block_source_range == (BLOCK_SOURCE_START, BLOCK_SOURCE_STOP) == (40_650, 48_842)
     assert development.train_source_range == (TRAIN_SOURCE_START, TRAIN_SOURCE_STOP) == (40_650, 46_794)
     assert development.unused_gap_source_range == (UNUSED_GAP_SOURCE_START, UNUSED_GAP_SOURCE_STOP) == (46_794, 47_050)
@@ -72,16 +137,15 @@ def test_fixed_source_indices_roles_gap_and_50_sample_initializers(development: 
     assert validation.role == "validation"
     assert validation.source_stop - validation.source_start == 1_792
     assert validation.initialization_y.size == 50
-    assert validation.target_y.size == 1_742
+    assert isinstance(validation, SilverboxControlledValidation)
+    assert validation.prediction_count == 1_742
+    assert validation.target_loaded is False
     np.testing.assert_array_equal(validation.input_u, np.arange(VALIDATION_SOURCE_START, VALIDATION_SOURCE_STOP) / 10.0)
     np.testing.assert_array_equal(
         validation.initialization_y,
         np.arange(VALIDATION_SOURCE_START, VALIDATION_SOURCE_START + 50) / 20.0,
     )
-    np.testing.assert_array_equal(
-        validation.target_y,
-        np.arange(VALIDATION_SOURCE_START + 50, VALIDATION_SOURCE_STOP) / 20.0,
-    )
+    assert validation.target_loaded is False
     assert all(window.source_stop <= UNUSED_GAP_SOURCE_START for window in development.train_windows)
     assert validation.source_start == UNUSED_GAP_SOURCE_STOP
 
@@ -162,9 +226,77 @@ def test_simulator_exceptions_bad_shapes_and_nonfinite_outputs_are_failures(
     assert wrong_shape_result.failure_mode == "wrong_output_shape"
 
 
-def test_development_contract_does_not_expose_sealed_test_outputs(development: SilverboxControlledDevelopment) -> None:
+def test_development_contract_does_not_expose_sealed_test_outputs(
+    development: SilverboxControlledDevelopment,
+) -> None:
     assert not hasattr(development, "test_candidates")
     assert not hasattr(development, "test_records")
     assert not hasattr(development, "final")
     assert not hasattr(development, "gap")
-    assert all(not hasattr(series, "output_y") for series in (*development.train_windows, development.validation))
+    assert all(
+        not hasattr(series, "output_y")
+        for series in (*development.train_windows, development.validation)
+    )
+
+
+def test_development_loader_does_not_convert_or_hold_poisoned_validation_targets(
+    tmp_path: Path, monkeypatch
+) -> None:
+    archive = tmp_path / "poisoned-validation-targets.zip"
+    _write_poisoned_validation_target_archive(archive)
+    parsed_source_indices = []
+    original_parse = silverbox_controlled._parse_fixed_csv_physical_line
+
+    def record_parsed_line(raw_line, source_index):
+        parsed_source_indices.append(source_index)
+        return original_parse(raw_line, source_index)
+
+    monkeypatch.setattr(silverbox_controlled, "_parse_fixed_csv_physical_line", record_parsed_line)
+
+    development = load_silverbox_controlled_development(archive)
+    validation = development.validation
+
+    assert validation.target_loaded is False
+    assert not hasattr(validation, "target_y")
+    assert not any(
+        source_index >= VALIDATION_SOURCE_START + STATE_INITIALIZATION_LENGTH
+        for source_index in parsed_source_indices
+    )
+    assert validation.input_u.shape == (VALIDATION_SOURCE_STOP - VALIDATION_SOURCE_START,)
+    assert validation.initialization_y.shape == (STATE_INITIALIZATION_LENGTH,)
+    assert np.all(np.isfinite(validation.input_u))
+    assert np.all(np.isfinite(validation.initialization_y))
+
+    def forbidden_target_read(*args, **kwargs):
+        raise AssertionError("an unverified fit must not open validation targets")
+
+    monkeypatch.setattr(
+        silverbox_controlled,
+        "_read_fixed_validation_target_suffix",
+        forbidden_target_read,
+    )
+    with pytest.raises(ValueError, match="complete frozen fit"):
+        validation.load_target_y(None)
+    assert validation.target_loaded is False
+
+
+def test_controlled_loader_does_not_float_parse_or_expose_official_test_rows(tmp_path: Path) -> None:
+    archive = tmp_path / "sealed-sentinel.zip"
+    _write_test_sentinel_archive(archive)
+    development = load_silverbox_controlled_development(archive)
+
+    assert tuple(window.source_start for window in development.train_windows) == tuple(
+        TRAIN_SOURCE_START + offset for offset in TRAIN_WINDOW_RELATIVE_STARTS
+    )
+    assert development.validation.source_start == VALIDATION_SOURCE_START
+    assert development.validation.source_stop == VALIDATION_SOURCE_STOP
+    for series in (*development.train_windows, development.validation):
+        assert np.all(np.isfinite(series.input_u))
+        assert np.all(np.isfinite(series.initialization_y))
+        if series.role == "train":
+            assert np.all(np.isfinite(series.target_y))
+        else:
+            assert series.target_loaded is False
+    assert "SEALED_INPUT_" not in repr(development)
+    assert "SEALED_OUTPUT_" not in repr(development)
+    assert not hasattr(silverbox_controlled, "load_silverbox_archive")

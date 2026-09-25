@@ -1,22 +1,25 @@
 """Opt-in controlled-system development contract for the Silverbox record.
 
-This module exposes one fixed, bounded slice of the default development-safe
-Silverbox loader. Each simulator call receives the measured input sequence and
-the first 50 measured outputs for initialization, then returns only the
-free-run predictions after those 50 samples. Targets stay outside the
-simulator call. This is a data/simulator boundary; it does not fit or score a
-model.
+The development loader reads only the predeclared source rows needed for four
+training windows and one validation segment. It never calls the broad dataset
+loader or converts official test rows to floats. Each simulator call receives
+the measured input sequence and the first 50 measured outputs for initialization,
+then returns only the free-run predictions. This module does not fit or score.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import csv
+from dataclasses import dataclass, field
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Callable, Literal
+import zipfile
 
 import numpy as np
 
-from core.real_data.silverbox import SAMPLE_TIME_SECONDS, load_silverbox_archive
+from core.real_data.silverbox import REQUIRED_ARCHIVE_MEMBERS, SAMPLE_TIME_SECONDS, SNLS_CSV_MEMBER
 
 
 BLOCK_SOURCE_START = 40_650
@@ -35,6 +38,7 @@ STATE_INITIALIZATION_LENGTH = 50
 
 SegmentRole = Literal["train", "validation"]
 ControlledSimulator = Callable[..., Any]
+_SHA256_LENGTH = 64
 
 
 @dataclass(frozen=True)
@@ -103,18 +107,161 @@ class SilverboxControlledSeries:
         return int(self.target_y.size)
 
 
+@dataclass(frozen=True, repr=False)
+class SilverboxControlledValidation:
+    """Validation input and initializer with a deferred output target.
+
+    The development phase keeps the measured validation inputs and exactly
+    the permitted 50-output initializer. The validation suffix output is
+    loaded from the source archive only when the selection API asks for it
+    after verifying a complete fit receipt.
+    """
+
+    source_start: int
+    source_stop: int
+    input_u: np.ndarray
+    initialization_y: np.ndarray
+    sampling_time: float
+    _raw_archive: Path = field(repr=False)
+    _source_sha256: str = field(repr=False)
+    _source_bytes: int = field(repr=False)
+    _target_y: np.ndarray | None = field(default=None, init=False, repr=False, compare=False)
+    _target_fit_run_id: str | None = field(default=None, init=False, repr=False, compare=False)
+    _target_fit_receipt_sha256: str | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        input_u = np.asarray(self.input_u, dtype=float)
+        initialization_y = np.asarray(self.initialization_y, dtype=float)
+        if self.source_start != VALIDATION_SOURCE_START or self.source_stop != VALIDATION_SOURCE_STOP:
+            raise ValueError("Silverbox validation series must use the fixed validation source range")
+        if input_u.shape != (VALIDATION_SOURCE_STOP - VALIDATION_SOURCE_START,):
+            raise ValueError("Silverbox validation input length does not match the fixed source range")
+        if initialization_y.shape != (STATE_INITIALIZATION_LENGTH,):
+            raise ValueError("Silverbox validation must use exactly 50 initialization outputs")
+        if not np.all(np.isfinite(input_u)) or not np.all(np.isfinite(initialization_y)):
+            raise ValueError("Silverbox validation input and initializer must be finite")
+        if not np.isfinite(self.sampling_time) or self.sampling_time != SAMPLE_TIME_SECONDS:
+            raise ValueError("Silverbox validation must use the native sample interval")
+        if len(self._source_sha256) != _SHA256_LENGTH or any(
+            char not in "0123456789abcdef" for char in self._source_sha256
+        ):
+            raise ValueError("Silverbox validation source hash must be a lowercase SHA-256")
+        if self._source_bytes <= 0:
+            raise ValueError("Silverbox validation source byte count must be positive")
+        for name, array in (("input_u", input_u), ("initialization_y", initialization_y)):
+            frozen = np.array(array, copy=True)
+            frozen.setflags(write=False)
+            object.__setattr__(self, name, frozen)
+        object.__setattr__(self, "_raw_archive", Path(self._raw_archive).resolve())
+
+    @property
+    def role(self) -> Literal["validation"]:
+        return "validation"
+
+    @property
+    def sample_count(self) -> int:
+        return int(self.input_u.size)
+
+    @property
+    def prediction_count(self) -> int:
+        return int(self.input_u.size - STATE_INITIALIZATION_LENGTH)
+
+    @property
+    def target_loaded(self) -> bool:
+        return self._target_y is not None
+
+    def load_target_y(self, fit: Any) -> np.ndarray:
+        """Open targets only for a matching complete frozen fit receipt.
+
+        The public gate is a complete content-hash-verified fit; it does not
+        claim that validation forecasts have already run. The normal selector
+        calls this only after every validation forecast succeeds. This method
+        independently verifies fit/source/proposal/run bindings and current
+        code and protocol contracts before opening the archive suffix.
+        """
+
+        fit_run_id, fit_receipt_sha256 = self._verify_complete_fit_binding(fit)
+        target = self._target_y
+        if target is None:
+            target = _read_fixed_validation_target_suffix(
+                self._raw_archive,
+                expected_source_sha256=self._source_sha256,
+                expected_source_bytes=self._source_bytes,
+            )
+            target = np.asarray(target, dtype=float)
+            if target.shape != (self.prediction_count,) or not np.all(np.isfinite(target)):
+                raise ValueError("Silverbox validation target suffix has an invalid shape or nonfinite value")
+            target = np.array(target, copy=True)
+            target.setflags(write=False)
+            object.__setattr__(self, "_target_y", target)
+            object.__setattr__(self, "_target_fit_run_id", fit_run_id)
+            object.__setattr__(self, "_target_fit_receipt_sha256", fit_receipt_sha256)
+        elif (
+            fit_run_id != self._target_fit_run_id
+            or fit_receipt_sha256 != self._target_fit_receipt_sha256
+        ):
+            raise ValueError("cached validation targets are bound to a different frozen fit")
+        return target
+
+    def _verify_complete_fit_binding(self, fit: Any) -> tuple[str, str]:
+        if getattr(fit, "status", None) != "complete":
+            raise ValueError("validation targets require a complete frozen fit")
+        receipt_path = getattr(fit, "receipt_path", None)
+        expected_digest = getattr(fit, "receipt_sha256", None)
+        if receipt_path is None or not isinstance(expected_digest, str) or len(expected_digest) != 64:
+            raise ValueError("validation targets require a hash-bound frozen fit handle")
+        try:
+            receipt = json.loads(Path(receipt_path).read_text(encoding="utf-8"))
+            embedded_digest = receipt.pop("receipt_sha256", None)
+            canonical = json.dumps(
+                receipt,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            observed_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        except Exception as error:
+            raise ValueError("frozen fit receipt could not be verified") from error
+        if embedded_digest != expected_digest or observed_digest != expected_digest:
+            raise ValueError("frozen fit receipt hash mismatch")
+        from core.real_data import silverbox_first_fit
+
+        # Use the fit API's full verifier so this public deferred loader cannot
+        # be bypassed with a minimally fabricated "complete" receipt. That
+        # verifier binds the source split, sample interval, all frozen fit
+        # constants, resource limits, fitted populations, and current code
+        # hashes before this method opens the target suffix.
+        silverbox_first_fit._verify_complete_fit_receipt(fit, receipt)
+        if (
+            receipt.get("source_sha256") != self._source_sha256
+            or getattr(fit, "source_sha256", None) != self._source_sha256
+        ):
+            raise ValueError("frozen fit receipt does not match validation source")
+        return str(fit.run_id), expected_digest
+
+    def __repr__(self) -> str:
+        return (
+            "SilverboxControlledValidation("
+            f"source_start={self.source_start}, source_stop={self.source_stop}, "
+            f"input_count={self.input_u.size}, initializer_count={self.initialization_y.size}, "
+            f"target_loaded={self.target_loaded})"
+        )
+
+
 @dataclass(frozen=True)
 class SilverboxControlledDevelopment:
     """The Phase 1 block, represented only by train and validation roles.
 
     The 256-sample gap is named by absolute indices and has no exposed signal
     arrays. Training contains four predeclared 256-sample windows. Validation
-    is one contiguous 1,792-sample series whose first 50 outputs initialize
-    the simulator and whose remaining outputs are candidate-selection targets.
+    holds one contiguous 1,792-sample input sequence and its 50-output
+    initializer. Candidate-selection outputs remain source-backed until a
+    complete fit receipt has been verified.
     """
 
     train_windows: tuple[SilverboxControlledSeries, ...]
-    validation: SilverboxControlledSeries
+    validation: SilverboxControlledValidation | SilverboxControlledSeries
     sampling_time: float
 
     def __post_init__(self) -> None:
@@ -187,57 +334,263 @@ class ControlledSimulationResult:
             raise ValueError(f"unsupported controlled simulation status: {self.status}")
 
 
-def load_silverbox_controlled_development(raw_archive: str | Path) -> SilverboxControlledDevelopment:
-    """Load and split only the fixed development block through the default loader."""
+def _read_fixed_development_rows(
+    raw_archive: str | Path,
+) -> tuple[tuple[tuple[np.ndarray, np.ndarray], ...], np.ndarray, np.ndarray]:
+    """Read train windows and validation input plus the 50-value initializer.
 
-    dataset = load_silverbox_archive(raw_archive)
-    source = dataset.train_val
-    if source.record_id != "train_val_multisine" or source.source_start != BLOCK_SOURCE_START:
-        raise ValueError("default Silverbox loader returned an unexpected development source")
-    if source.source_stop < BLOCK_SOURCE_STOP:
-        raise ValueError("Silverbox development record does not cover the fixed Phase 1 block")
-    if source.sampling_time != SAMPLE_TIME_SECONDS:
-        raise ValueError("Silverbox development record does not preserve its native sampling interval")
+    The source index is the CSV data-row index (the header is not counted).
+    Rows before the fixed development block are skipped as raw physical lines,
+    without CSV tokenization. Unused development rows are skipped as raw
+    lines. Validation inputs are converted across their fixed source range,
+    while validation outputs are converted only for the first 50 initializer
+    rows. The reader stops before source index ``BLOCK_SOURCE_STOP``.
+    """
 
+    train_starts = tuple(TRAIN_SOURCE_START + offset for offset in TRAIN_WINDOW_RELATIVE_STARTS)
+    train_input = [np.empty(TRAIN_WINDOW_LENGTH, dtype=float) for _ in train_starts]
+    train_output = [np.empty(TRAIN_WINDOW_LENGTH, dtype=float) for _ in train_starts]
+    validation_count = VALIDATION_SOURCE_STOP - VALIDATION_SOURCE_START
+    validation_input = np.empty(validation_count, dtype=float)
+    validation_initializer = np.empty(STATE_INITIALIZATION_LENGTH, dtype=float)
+
+    train_rows: dict[int, tuple[int, int]] = {}
+    for window_index, start in enumerate(train_starts):
+        for offset in range(TRAIN_WINDOW_LENGTH):
+            train_rows[start + offset] = (window_index, offset)
+
+    with zipfile.ZipFile(raw_archive) as archive:
+        names = {info.filename for info in archive.infolist() if not info.is_dir()}
+        missing = sorted(set(REQUIRED_ARCHIVE_MEMBERS) - names)
+        if missing:
+            raise ValueError(f"Silverbox archive is missing required members: {missing}")
+        with archive.open(SNLS_CSV_MEMBER) as raw_csv:
+            header_line = raw_csv.readline()
+            if not header_line:
+                raise ValueError("Silverbox SNLS CSV is empty")
+            try:
+                header = next(csv.reader([header_line.decode("utf-8")]))
+            except (UnicodeDecodeError, csv.Error) as error:
+                raise ValueError("Silverbox SNLS CSV header is invalid") from error
+            if header[:2] != ["V1", "V2"] or any(cell.strip() for cell in header[2:]):
+                raise ValueError(f"unexpected Silverbox SNLS header: {header}")
+
+            # The official arrow tests precede this development block in the
+            # CSV. Count their raw lines only; do not tokenize their fields.
+            for source_index in range(BLOCK_SOURCE_START):
+                if not raw_csv.readline():
+                    raise ValueError(
+                        f"Silverbox SNLS CSV ends before development source row {source_index}"
+                    )
+
+            for source_index in range(BLOCK_SOURCE_START, BLOCK_SOURCE_STOP):
+                raw_line = raw_csv.readline()
+                if not raw_line:
+                    raise ValueError(
+                        f"Silverbox SNLS CSV ends before required source row {source_index}"
+                    )
+                destination = train_rows.get(source_index)
+                is_validation = VALIDATION_SOURCE_START <= source_index < VALIDATION_SOURCE_STOP
+                if destination is None and not is_validation:
+                    # Skip the unused gap and unselected development rows
+                    # without CSV tokenization or numeric conversion.
+                    continue
+                if (
+                    is_validation
+                    and source_index >= VALIDATION_SOURCE_START + STATE_INITIALIZATION_LENGTH
+                ):
+                    input_value = _parse_fixed_csv_input_only(raw_line, source_index)
+                    validation_input[source_index - VALIDATION_SOURCE_START] = input_value
+                    continue
+                row = _parse_fixed_csv_physical_line(raw_line, source_index)
+                try:
+                    input_value = float(row[0])
+                    output_value = float(row[1])
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        f"non-numeric Silverbox development row at source index {source_index}"
+                    ) from error
+                if not np.isfinite(input_value) or not np.isfinite(output_value):
+                    raise ValueError(
+                        f"non-finite Silverbox development row at source index {source_index}"
+                    )
+                if destination is not None:
+                    window_index, offset = destination
+                    train_input[window_index][offset] = input_value
+                    train_output[window_index][offset] = output_value
+                else:
+                    validation_offset = source_index - VALIDATION_SOURCE_START
+                    validation_input[validation_offset] = input_value
+                    validation_initializer[validation_offset] = output_value
+
+    return tuple(zip(train_input, train_output)), validation_input, validation_initializer
+
+
+def _parse_fixed_csv_physical_line(raw_line: bytes, source_index: int) -> list[str]:
+    try:
+        text = raw_line.decode("utf-8")
+        rows = list(csv.reader([text]))
+    except (UnicodeDecodeError, csv.Error) as error:
+        raise ValueError(f"invalid Silverbox CSV row at source index {source_index}") from error
+    if len(rows) != 1:
+        raise ValueError(f"unexpected Silverbox CSV row at source index {source_index}")
+    row = rows[0]
+    if not row or not any(cell.strip() for cell in row):
+        raise ValueError(f"blank Silverbox SNLS row at source index {source_index}")
+    if len(row) < 2 or not row[0].strip() or not row[1].strip() or any(
+        cell.strip() for cell in row[2:]
+    ):
+        raise ValueError(f"unexpected Silverbox SNLS row at source index {source_index}")
+    return row
+
+
+def _parse_fixed_csv_input_only(raw_line: bytes, source_index: int) -> float:
+    """Read V1 only, without decoding or tokenizing validation target V2."""
+
+    physical_line = raw_line.rstrip(b"\r\n")
+    first_separator = physical_line.find(b",")
+    second_separator = physical_line.find(b",", first_separator + 1)
+    if (
+        first_separator <= 0
+        or second_separator <= first_separator + 1
+        or second_separator != len(physical_line) - 1
+    ):
+        raise ValueError(f"unexpected Silverbox SNLS row at source index {source_index}")
+    try:
+        input_text = physical_line[:first_separator].decode("ascii").strip()
+        input_value = float(input_text)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError(
+            f"non-numeric Silverbox validation input at source index {source_index}"
+        ) from error
+    if not input_text or not np.isfinite(input_value):
+        raise ValueError(f"non-finite Silverbox validation input at source index {source_index}")
+    return input_value
+
+
+def _archive_identity(raw_archive: str | Path) -> tuple[int, str]:
+    path = Path(raw_archive)
+    size = path.stat().st_size
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return size, digest.hexdigest()
+
+
+def _read_fixed_validation_target_suffix(
+    raw_archive: str | Path,
+    *,
+    expected_source_sha256: str,
+    expected_source_bytes: int,
+) -> np.ndarray:
+    """Load only the frozen validation output suffix after fit completion."""
+
+    source_bytes, source_sha256 = _archive_identity(raw_archive)
+    if source_bytes != expected_source_bytes or source_sha256 != expected_source_sha256:
+        raise ValueError("Silverbox source archive changed before validation target loading")
+    target_start = VALIDATION_SOURCE_START + STATE_INITIALIZATION_LENGTH
+    target_count = VALIDATION_SOURCE_STOP - target_start
+    target = np.empty(target_count, dtype=float)
+    with zipfile.ZipFile(raw_archive) as archive:
+        names = {info.filename for info in archive.infolist() if not info.is_dir()}
+        missing = sorted(set(REQUIRED_ARCHIVE_MEMBERS) - names)
+        if missing:
+            raise ValueError(f"Silverbox archive is missing required members: {missing}")
+        with archive.open(SNLS_CSV_MEMBER) as raw_csv:
+            header_line = raw_csv.readline()
+            if not header_line:
+                raise ValueError("Silverbox SNLS CSV is empty")
+            try:
+                header = next(csv.reader([header_line.decode("utf-8")]))
+            except (UnicodeDecodeError, csv.Error) as error:
+                raise ValueError("Silverbox SNLS CSV header is invalid") from error
+            if header[:2] != ["V1", "V2"] or any(cell.strip() for cell in header[2:]):
+                raise ValueError(f"unexpected Silverbox SNLS header: {header}")
+            # Every preceding source row is skipped as a physical line. This
+            # preserves the earlier sealed-prefix boundary and avoids
+            # tokenizing any pre-target row during target loading.
+            for source_index in range(target_start):
+                if not raw_csv.readline():
+                    raise ValueError(
+                        f"Silverbox SNLS CSV ends before validation target row {source_index}"
+                    )
+            for offset, source_index in enumerate(range(target_start, VALIDATION_SOURCE_STOP)):
+                raw_line = raw_csv.readline()
+                if not raw_line:
+                    raise ValueError(
+                        f"Silverbox SNLS CSV ends before validation target row {source_index}"
+                    )
+                row = _parse_fixed_csv_physical_line(raw_line, source_index)
+                try:
+                    output_value = float(row[1])
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        f"non-numeric Silverbox validation target at source index {source_index}"
+                    ) from error
+                if not np.isfinite(output_value):
+                    raise ValueError(
+                        f"non-finite Silverbox validation target at source index {source_index}"
+                    )
+                target[offset] = output_value
+    return target
+
+
+def load_silverbox_controlled_development(
+    raw_archive: str | Path,
+    *,
+    expected_source_sha256: str | None = None,
+    expected_source_bytes: int | None = None,
+) -> SilverboxControlledDevelopment:
+    """Load only fixed train windows and validation rows from the source CSV.
+
+    This development-only path does not call the broad dataset loader. It
+    converts no validation target-suffix output before fit completion. It stops
+    reading before source index 48,842 and well before every official test
+    range. Target loading rechecks the archive hash/byte count and fixed source
+    indices after selection begins.
+    """
+
+    source_bytes, source_sha256 = _archive_identity(raw_archive)
+    if expected_source_bytes is not None and source_bytes != expected_source_bytes:
+        raise ValueError("Silverbox archive byte count does not match the verified source")
+    if expected_source_sha256 is not None and source_sha256 != expected_source_sha256:
+        raise ValueError("Silverbox archive SHA-256 does not match the verified source")
+    train_arrays, validation_u, validation_initializer = _read_fixed_development_rows(raw_archive)
     train_windows = []
-    for relative_start in TRAIN_WINDOW_RELATIVE_STARTS:
-        absolute_start = BLOCK_SOURCE_START + relative_start
-        source_offset = absolute_start - source.source_start
-        source_stop_offset = source_offset + TRAIN_WINDOW_LENGTH
+    for start, (input_u, output_y) in zip(
+        (TRAIN_SOURCE_START + offset for offset in TRAIN_WINDOW_RELATIVE_STARTS), train_arrays
+    ):
         train_windows.append(
             SilverboxControlledSeries(
                 role="train",
-                source_start=absolute_start,
-                source_stop=absolute_start + TRAIN_WINDOW_LENGTH,
-                input_u=source.input_u[source_offset:source_stop_offset],
-                initialization_y=source.output_y[source_offset : source_offset + STATE_INITIALIZATION_LENGTH],
-                target_y=source.output_y[source_offset + STATE_INITIALIZATION_LENGTH : source_stop_offset],
-                sampling_time=source.sampling_time,
+                source_start=start,
+                source_stop=start + TRAIN_WINDOW_LENGTH,
+                input_u=input_u,
+                initialization_y=output_y[:STATE_INITIALIZATION_LENGTH],
+                target_y=output_y[STATE_INITIALIZATION_LENGTH:],
+                sampling_time=SAMPLE_TIME_SECONDS,
             )
         )
-
-    validation_start = VALIDATION_SOURCE_START - source.source_start
-    validation_stop = VALIDATION_SOURCE_STOP - source.source_start
-    validation_u = source.input_u[validation_start:validation_stop]
-    validation_y = source.output_y[validation_start:validation_stop]
-    validation = SilverboxControlledSeries(
-        role="validation",
+    validation = SilverboxControlledValidation(
         source_start=VALIDATION_SOURCE_START,
         source_stop=VALIDATION_SOURCE_STOP,
         input_u=validation_u,
-        initialization_y=validation_y[:STATE_INITIALIZATION_LENGTH],
-        target_y=validation_y[STATE_INITIALIZATION_LENGTH:],
-        sampling_time=source.sampling_time,
+        initialization_y=validation_initializer,
+        sampling_time=SAMPLE_TIME_SECONDS,
+        _raw_archive=Path(raw_archive),
+        _source_sha256=source_sha256,
+        _source_bytes=source_bytes,
     )
     return SilverboxControlledDevelopment(
         train_windows=tuple(train_windows),
         validation=validation,
-        sampling_time=source.sampling_time,
+        sampling_time=SAMPLE_TIME_SECONDS,
     )
 
 
 def simulate_controlled_series(
-    series: SilverboxControlledSeries,
+    series: SilverboxControlledSeries | SilverboxControlledValidation,
     simulator: ControlledSimulator,
     parameters: Any,
 ) -> ControlledSimulationResult:
@@ -310,6 +663,7 @@ __all__ = [
     "TRAIN_WINDOW_PREDICTION_LENGTH",
     "STATE_INITIALIZATION_LENGTH",
     "SilverboxControlledSeries",
+    "SilverboxControlledValidation",
     "SilverboxControlledDevelopment",
     "ControlledSimulationResult",
     "load_silverbox_controlled_development",

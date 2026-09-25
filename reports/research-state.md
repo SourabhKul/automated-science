@@ -1,6 +1,49 @@
 # Automated science: current research state
 
-Updated: 2026-09-25 after train-only Silverbox dynamics exploration and a proposed first-fit protocol. This file records observed state, not inferred execution.
+Updated: 2026-09-25 after the first real Silverbox development pilot. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-25T1802Z wake
+
+The reviewed Silverbox development bridge and multisine-only final scorer were
+implemented locally. The bridge's first independent review caught a broad
+loader that parsed sealed multisine test outputs during development; Luna
+replaced it with a bounded loader and an independent reviewer approved its
+source, receipt, and deadline gates after 61 offline tests. The scorer's
+source/proposal gates and later terminal-run gate were independently approved
+after 23 synthetic tests. The final scorer has **not** been run on real data.
+These local changes remain pending one-owner Git synchronization.
+
+One real development pilot ran under the frozen first-fit protocol as run
+`silverbox-20260925T191245Z-7e7d6af42abe`. The exact local Qwen model was
+available and returned one successful `y_cubed` proposal. Both train-only
+calibrations and first ABC populations completed, but the fixed 512-attempt
+second populations reached only 58/64 linear and 42/64 nonlinear particles.
+The run ended `unresolved/fit_incomplete` in 12.857 seconds, below the 600 s
+and 2 GiB caps. There was no selection receipt or sealed score; the
+incomplete populations were not promoted. A Luna read-only audit verified the
+source/Qwen/fit receipt hashes, counts, terminal process absence, and no
+selection or final receipt. The auditor had authored the first-fit module,
+so that implementation check is coupled. Details and evidence paths are in
+`reports/research-ledger/2026-09-25T1802Z.md`.
+
+The audit found a narrower boundary weakness: the fit API received only train
+windows and made no validation score, but the controlled loader had already
+materialized validation target values in memory before the fit. Thus the
+run's `validation_accessed:false` flags mean no validation selection or
+scoring, not that values were never loaded. Luna repaired the controlled
+development path to retain only validation input and its permitted 50-output
+initializer until a complete frozen fit is verified. The selector forecasts
+all particles before loading the target suffix; eager validation objects are
+rejected. An independent reviewer found and the author fixed incomplete
+receipt checks and an ABC epsilon-rejection counter error in this gate; the
+final read-only review approved it after 45 synthetic tests. This repair has
+not been exercised in a new real fit. No new fit or sealed evaluation should
+start until a revised attempt/proposal protocol is frozen from training-only
+diagnostics. The proposed version is
+`reports/silverbox-second-development-protocol-proposal-2026-09-25.md`,
+methodologically reviewed as a proposal, not yet implemented or run. A
+512-attempt cap was the immediate limiting factor; no scientific discovery
+is claimed. Local code/report changes are not yet on GitHub.
 
 ## Latest checkpoint: 2026-09-25T1301Z
 
