@@ -1,6 +1,57 @@
 # Automated science: current research state
 
-Updated: 2026-09-24 after independent approval of the Silverbox source contract. This file records observed state, not inferred execution.
+Updated: 2026-09-25 after Silverbox Phase 1 boundary review and focused validation. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-25T0808Z
+
+The Silverbox controlled-development boundary and its focused tests were
+independently reviewed. At synchronization start, local `main` and fetched
+`origin/main` matched at `191a25d7daa7c2af7fe2679a16cf516aedf2480f`; no other
+Git synchronization or research job was active. The exact focused command
+`uv run --with pytest --with numpy python -m pytest -q
+tests/test_silverbox_controlled.py` passed all five tests. The tests use a
+temporary index-coded archive. No raw dataset, Qwen generation, ABC fit,
+candidate fit, or sealed evaluation was used in this check.
+
+The Phase 1 interface fixes the source ranges, training windows, initialization
+length, measured input, and native sampling interval. Its simulator call omits
+the target arrays and reports simulator exceptions, malformed shapes, or
+nonfinite predictions as failures. The validation `target_y` remains
+accessible on the validation-series object for candidate selection, so this
+boundary does not enforce a policy preventing validation metrics from setting
+fit parameters or ABC thresholds. That fit/threshold policy and its audit
+receipt remain future pre-fit work. No end-to-end leakage-proof claim, real-data
+inference result, or scientific discovery is supported.
+
+The canonical runner still uses the autonomous legacy `SBIEngine`; it has not
+been connected to the controlled Silverbox interface or checked ABC-SMC
+reference. A reviewed controlled fit/selection/scorer contract is still needed
+before any inference run. The model family, priors, discrepancy, ABC schedule,
+and selection margin remain unfrozen.
+
+## Prior checkpoint: 2026-09-25T0301Z
+
+The independently reviewed Silverbox source contract, 2026-09-24 next-milestone
+plan, and active GPT-6 Luna delegation policy were pushed in content commit
+`35831429ea8c1e23d6c7804e333223fdcc71dc8e`, followed by whitespace
+cleanup `191a25d7daa7c2af7fe2679a16cf516aedf2480f`. At this wakeup, local
+`HEAD` matched `origin/main` at the latter commit and the worktree was clean.
+Raw data remain ignored. The seven focused Silverbox tests and archive hashes
+were verified by independent review before synchronization.
+
+The installed oMLX service was stopped; one bounded restart restored it. A
+subsequent read-only `/v1/models` request returned HTTP 200 and advertised the
+exact `Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed` ID. No Qwen generation,
+ABC fit, or sealed evaluation was run. The integration audit established that
+the canonical trajectory runner is autonomous and still uses legacy
+`SBIEngine`; the checked ABC-SMC reference and controlled Silverbox input
+cannot pass through it as-is. At that checkpoint, a dedicated controlled-system
+development and scorer route was the next implementation gate. No real-data
+inference claim was supported. Development-only characterization and the first controlled
+data-boundary implementation scope are recorded in
+`reports/silverbox-controlled-development-contract-plan-2026-09-25.md` and
+`reports/research-ledger/2026-09-25T0301Z.md`. The model family and ABC
+protocol are not frozen; no fit or generation has been run.
 
 ## Latest checkpoint: 2026-09-24T2250Z
 
