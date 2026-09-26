@@ -1,6 +1,48 @@
 # Automated science: current research state
 
-Updated: 2026-09-26 after the reviewed Silverbox v2 implementation, before any v2 run. This file records observed state, not inferred execution.
+Updated: 2026-09-26 after the one V2 development run and locked final failure. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-26T0504Z–0526Z
+
+The reviewed V2 implementation was synchronized to `origin/main` as content
+commit `b0cbac4885dab84b9a43b8b1f75c68eb52704221`. A later status-only
+commit left clean local `HEAD == origin/main` at
+`0db503edb9ec33dc1d831b9306cd40959b3de41a` before the run. A distinct
+Luna reviewer verified the ignored exact-byte V2 manifest (SHA-256
+`b830357ba4225621d84193bf1bea7b788ac426e75d48d54645e2391db397a26f`)
+against that revision, eight code hashes, pinned runtime, official archive,
+and exact Qwen ID. No competing research job was present. One mistyped CLI
+command failed in argparse before the workflow or Qwen request; it is logged
+separately and did not create a run.
+
+One corrected V2 development workflow ran as
+`silverbox-20260926T050458Z-03859cef3530`. The exact Qwen proposed `y_cubed`.
+Both hypotheses completed two 64-particle ABC populations with the frozen
+2,048-attempt cap. The second populations used 553 linear and 773 nonlinear
+attempts; terminal ESS was 55.6702 and 56.9518. Validation RMSE was
+0.0193194470 linear, 0.0182095781 nonlinear, and 0.0601643587 persistence.
+The nonlinear family cleared the frozen 5% promotion rule by 5.7448% and was
+selected. Independent Luna audits found no blocking receipt, reference-kernel
+arithmetic, or selection discrepancy. These are development scores from one
+block/device and do not establish a new physical mechanism.
+
+After separate pre-final receipt audits, one locked multisine-only scorer
+invocation produced a **terminal failure**, not a score: three selected
+nonlinear particles (zero-based 25, 44, 53) generated nonfinite trajectories
+under the held-out multisine input. The scorer did not drop particles or
+compute a weighted-median forecast; final RMSE, forecast hash, and target hash
+are null. Independent receipt audits confirmed one final-start marker and one
+terminal receipt, both content-hash valid, and no second attempt. The scorer
+returned before numeric target-suffix materialization, though its CSV reader
+may have transiently tokenized suffix-output strings while scanning inputs.
+The multisine condition is now consumed for confirmation. Do not retry or
+tune against it. This result supports a robustness failure of the locked
+ensemble, **not** a comparative predictive score or publishable discovery.
+The precise evidence and limits are in
+`reports/research-ledger/2026-09-26T0405Z.md` and
+`reports/silverbox-v2-development-and-locked-final-2026-09-26.md`. The new
+compact reports are local pending one-owner Git synchronization; raw archive
+and receipts remain ignored.
 
 ## Latest checkpoint: 2026-09-26T0405Z wake
 
