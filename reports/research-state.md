@@ -1,6 +1,42 @@
 # Automated science: current research state
 
-Updated: 2026-09-26T19:08Z wake. This file records observed state, not inferred execution.
+Updated: 2026-09-26T19:52Z wake continuation. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-26T19:52Z synthetic control
+
+The prior 19:08Z reviewed Cascaded Tanks mechanics/evidence content commit
+`35022b6d0849a158d59eb45f3a506d6061c67764` was pushed non-force on
+`main`; status-only commit `3eeab60a6a55b9a3c828eca0e86a018289c85b85`
+then recorded that sync. The sole Luna Git owner freshly fetched and
+verified `HEAD == origin/main` and a clean tracked worktree. Fourteen
+focused tests and lint passed. The ignored synthetic ABC-control artifacts
+were not staged.
+
+A six-fit, one-free-parameter **synthetic-only** ABC-SMC family control ran
+under fixed, predeclared settings. Independent Luna replay matched all
+statuses, attempts, accepted counts, ESS, target hashes, and complete-fit
+summaries. Four fits completed; both crossing wrong-family fits exhausted
+1,024 initial-population attempts with zero accepts and **no posterior**.
+When the threshold was never crossed, O2 and C2 traces were exactly
+identical and both fits completed with zero error; structure remains
+unresolved. Overall control status is **incomplete**. Its noiseless,
+truth-fixed H-only result is a method control, not real-system
+identifiability or scientific discovery. Three earlier launch failures
+occurred before any generation/fit and remain in ignored receipts. The
+successful worker took 0.789 s and about 40.9 MB peak RSS under an external
+300 s / 1 GiB watchdog; macOS did not enforce the requested process memory
+rlimits. Precise settings, negative results, hashes, and evidence paths are
+in `reports/research-ledger/2026-09-26T1952Z.md`.
+
+The next scientific gate is synthetic multi-parameter recovery and coverage,
+including nuisance initial states and model mismatch, followed by a
+source-gated real-data fit and complete-forecast receipt gate before any
+deferred target scorer. Freeze numeric priors/tolerances, Qwen request,
+matched baselines, abstention, refit, state-only final initializer, full
+manifest and run ID; independent Luna review must precede any real tank
+Qwen/ABC run. No tank development target or official `uVal/yVal` has been
+opened or scored. The old multi-repeat discovery gate remains unsatisfied;
+Silverbox multisine is consumed with no final score.
 
 ## Latest checkpoint: 2026-09-26T19:08Z
 
