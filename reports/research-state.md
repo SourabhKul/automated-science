@@ -4,6 +4,14 @@ Updated: 2026-09-26T19:08Z wake. This file records observed state, not inferred 
 
 ## Latest checkpoint: 2026-09-26T19:08Z
 
+The seven scoped, independently reviewed forecast/parser/report files were
+committed as `35022b6d0849a158d59eb45f3a506d6061c67764` on `main` and
+pushed non-force to `origin/main` by the sole Luna Git owner. A fresh fetch
+verified local `HEAD == origin/main` at that content commit and a clean
+tracked worktree. The owner passed 14 focused tests, Ruff, formatting,
+compilation, and staged whitespace checks; no ignored experiment artifact
+was staged. This sync covers mechanics only, not a real-data fit or scorer.
+
 The Cascaded Tanks methods-control track remains pre-fit. No real tank Qwen
 proposal, ABC fit, development-target score, or official test access occurred.
 The consumed Silverbox multisine failure remains terminal with three
@@ -41,9 +49,8 @@ no correctness blocker, and cleared this scoped forecast seam for sync.
 Neither module fits real data or verifies ABC origin; no production
 source-backed development-target accessor or scorer exists yet.
 
-**Next gate:** synchronize the reviewed compact mechanics and evidence with
-one Luna Git owner, then freeze and independently
-review numeric priors, discrepancy/epsilon and proposal/weight semantics,
+**Next gate:** freeze and independently review numeric priors,
+discrepancy/epsilon and proposal/weight semantics,
 Qwen request, matched baselines, pre-target separation/abstention,
 all-candidate scoring, full-estimation refit, state-only final initializer,
 runtime/source/code manifest, and one new run ID. A source-gated ABC bridge
