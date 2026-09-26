@@ -41,8 +41,9 @@ ensemble, **not** a comparative predictive score or publishable discovery.
 The precise evidence and limits are in
 `reports/research-ledger/2026-09-26T0405Z.md` and
 `reports/silverbox-v2-development-and-locked-final-2026-09-26.md`. The new
-compact reports are local pending one-owner Git synchronization; raw archive
-and receipts remain ignored.
+compact reports were synchronized as content commit
+`1910e6ea856acb3368ded87109ac5b251e4f1f14` on `main`; raw archive and
+receipts remain ignored.
 
 ## Latest checkpoint: 2026-09-26T0405Z wake
 
