@@ -4,6 +4,14 @@ Updated: 2026-09-26T19:52Z wake continuation. This file records observed state, 
 
 ## Latest checkpoint: 2026-09-26T19:52Z synthetic control
 
+The independently reviewed compact ledger and this checkpoint were pushed
+non-force as commit `09c5a893850a2d9b1e98ba6d16e312f563267739` on
+`main`. The sole Luna Git owner freshly fetched and verified
+`HEAD == origin/main` at that commit with a clean tracked worktree; only
+the two reports were in scope, and ignored run artifacts were excluded.
+Fourteen focused tests, Ruff, compilation, and diff checks passed on the
+final reviewed code snapshot.
+
 The prior 19:08Z reviewed Cascaded Tanks mechanics/evidence content commit
 `35022b6d0849a158d59eb45f3a506d6061c67764` was pushed non-force on
 `main`; status-only commit `3eeab60a6a55b9a3c828eca0e86a018289c85b85`
