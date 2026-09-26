@@ -2,6 +2,59 @@
 
 Updated: 2026-09-26 after the one V2 development run and locked final failure. This file records observed state, not inferred execution.
 
+## Latest checkpoint: 2026-09-26T1042Z source-adapter gate
+
+The independently reviewed Cascaded Tanks development adapter is implemented
+locally under `core/real_data/cascaded_tanks_controlled.py`. It pins the
+official v1 archive and returns only 768 estimation-record training input/
+output samples plus 256 later estimation inputs, with development targets and
+official test fields deferred. A real source smoke on the previously verified
+archive succeeded under adapter SHA-256
+`d651c1a149c702342498ecc63d13c47a803e424fb93938225c5f71cf4b949014`
+and contract SHA-256
+`c92dad6bcf731c1171172861ca85fae5d9b69dff5a45783b61f3eeeeda017723`.
+The 39 focused synthetic tests and Ruff passed; a separate Luna reviewer
+approved the final source grammar and target-skip behavior. Three earlier
+fail-closed real-source smoke attempts exposed ZIP directory, CSV header,
+and scalar-`Ts` wire-layout mistakes. They are preserved with code hashes and
+precise failure stages in `reports/research-ledger/2026-09-26T0906Z.md`.
+No Qwen, ABC, validation score, or official final test has run on Cascaded
+Tanks. Its official test is a single public record and remains a procedural
+blind; the older multi-repeat gate is still failed. Next is Git sync of
+reviewed code/evidence, then a separately frozen and independently reviewed
+tank-specific inference/proposal/refit protocol. The Silverbox multisine
+condition remains consumed.
+
+## Latest checkpoint: 2026-09-26T0906Z
+
+The consumed Silverbox multisine final remains a terminal failed attempt with
+no RMSE or mechanism claim. A fresh Luna preflight found no active research
+job; oMLX advertised the exact required Qwen model, and pre-edit
+`main == origin/main` at `6b7d7ab63c8d00f7765a332fea0c7327908b124c`.
+No Qwen generation, ABC run, or final scoring occurred in this wake.
+
+The official Cascaded Tanks loader maps source `uEst/yEst` to `train_val` and
+`uVal/yVal` to its one held-out test, with 50 initializer samples. The older
+local manifest correctly fails a **stricter multi-record external-repeat**
+gate but mislabels the canonical official test role. It remains unchanged.
+The primary's separately named one-test methods-control source resolution is
+`reports/cascaded-tanks-source-resolution-proposal-2026-09-26.md`, track ID
+`cascaded_tanks_methods_v1_20260926`; an independent Luna review cleared the
+bounded source-adapter gate only. It does not clear inference or a final test.
+The existing 7,520,592-byte archive was found in a dated backup, not this
+active checkout; byte hashes match the historical and official records.
+Metadata-only ZIP inspection found 7,625,951 expanded member bytes and no
+path/size alarm. No data member or test outcome was opened. Total active
+research data/artifacts plus the archive are about 69.8 MiB, below 50 GB.
+
+The next work is an independently reviewed, target-deferred development
+adapter, followed by a real estimation-only source smoke and a separately
+frozen tank-specific Qwen plus ABC-SMC protocol. Published overflow physics
+and prior SMC results make Cascaded Tanks a methods control, not a discovery
+claim. Precise sources, limits, resource observations, and pending gates are
+in `reports/research-ledger/2026-09-26T0906Z.md`. This documentation and
+adapter work are local pending independent review/Git synchronization.
+
 ## Latest checkpoint: 2026-09-26T0504Z–0526Z
 
 The reviewed V2 implementation was synchronized to `origin/main` as content
