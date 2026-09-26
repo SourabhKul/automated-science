@@ -25,9 +25,12 @@ archive-mutation test now blocks proposal dispatch. Reviewers approved the
 result after 114 focused runner/scorer tests and 113 inference/protocol tests,
 respectively. Those are control tests, not evidence that v2 inference is
 correct or that it will complete on real data. No v2 Qwen request, ABC fit,
-validation selection, or sealed score has run. The code and compact report
-still need one-owner Git synchronization; only after that can the exact
-run manifest be frozen and one v2 pilot executed. The proposed protocol is
+validation selection, or sealed score has run. The reviewed code and compact
+report were synchronized as content commit
+`b0cbac4885dab84b9a43b8b1f75c68eb52704221` on `main`; a later status-only
+commit recorded this synchronization, and a fresh fetch verified that local
+`HEAD` and `origin/main` matched with a clean worktree. Only after that can
+the exact run manifest be frozen and one v2 pilot executed. The proposed protocol is
 `reports/silverbox-second-development-protocol-proposal-2026-09-25.md`.
 
 ## Latest checkpoint: 2026-09-25T1802Z wake
