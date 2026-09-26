@@ -45,6 +45,17 @@ compact reports were synchronized as content commit
 `1910e6ea856acb3368ded87109ac5b251e4f1f14` on `main`; raw archive and
 receipts remain ignored.
 
+The next step is development-only generic stability diagnostics, followed by
+an independently reviewed, separately frozen protocol on a new confirmation
+condition. The post-failure review found 69/256 nonlinear calibration and 60
+nonlinear ABC simulation failures, while all 64 selected particles forecast
+the development validation segment. Candidate diagnostics and their
+prior/ABC-target implications are recorded in the 2026-09-26 ledger; none
+has been implemented or used for a new run. Cascaded Tanks is an
+independent-system candidate, pending official source/split/size audit. The
+five-hour thread heartbeat is ACTIVE; it does not authorize adapting to or
+reusing the consumed Silverbox multisine input.
+
 ## Latest checkpoint: 2026-09-26T0405Z wake
 
 The first real Silverbox development run remains unresolved: both final ABC
