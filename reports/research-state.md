@@ -1,6 +1,58 @@
 # Automated science: current research state
 
-Updated: 2026-09-26 after the one V2 development run and locked final failure. This file records observed state, not inferred execution.
+Updated: 2026-09-26T14:07Z wake. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-26T14:07Z
+
+The Cascaded Tanks official test targets have not been parsed, materialized,
+or scored; the source adapter only skips their interleaved bytes. The last
+Silverbox multisine final is a consumed terminal failure with no RMSE. A
+fresh Luna preflight found no active research job and the exact required
+Qwen ID at the local oMLX endpoint; clean `main == origin/main` at
+`288cbc3e543cdb73a02fb82a8c9b16621b6d4956` before this wake's edits.
+The old Silverbox PID lock is stale and unheld. Detailed process, source,
+resource, and failure evidence is in
+`reports/research-ledger/2026-09-26T1407Z.md`.
+
+The primary wrote `reports/cascaded-tanks-inference-design-proposal-2026-09-26.md`
+for a distinct discrete-time S0/O2/C2 methods-control design. Independent
+Luna review led to a fixed latent-state scale convention, explicit
+cross-family identifiability controls, honest surrogate labels, and a
+state-only 50-sample test-initializer gate. **This is not a frozen inference
+protocol:** numeric priors, epsilon schedule, Qwen prompt, selection/refit,
+run ID, and final scorer remain to be specified and independently reviewed.
+No tank Qwen request, real-data ABC fit, development target score, or official
+test attempt occurred.
+
+One Luna operator built only a synthetic S0/O2/C2 simulator and tests in
+`core/real_data/cascaded_tanks_models.py` and
+`tests/test_cascaded_tanks_models.py`; the author reported 20 focused tests,
+Ruff and formatting passing. A separate Luna reviewer independently
+inspected its equations, indexing, failure semantics, and synthetic
+no-crossing/crossing/recovery and dry-floor controls, found no blocking
+defect, and cleared **synthetic-only** synchronization. The reviewer could
+not rerun tests in its own PATH; the passing runtime result is the author's.
+An ABC caller-array glue bridge has since been implemented and independently
+reviewed against the checked Gaussian reference. Its synthetic one-parameter
+control, forced-incomplete control, and seeded replay passed 3 focused tests
+in both author and reviewer environments. Its provenance explicitly says
+caller-array origin is unverified, and its intended scope is a synthetic
+integration control; it does not establish O2/C2 parameter recovery or a
+real-data ABC path. No real-data inference path or deferred scorer exists.
+Only reviewed compact
+work should be synced; the next scientific gate is synthetic known-parameter
+and cross-family control, then a genuinely frozen, reviewed real-data
+protocol before any run.
+
+Two independent Luna training-only passes found one 27-sample exact 10.0 V
+plateau at indices `[150,176]` and one declared high-to-low-input recovery
+episode `[178,191]`, with output below 9.5 V at index 185. Later development
+**input-only** forcing contains 54/256 values at or below the training-input
+Q25. The episode is far from the development boundary; O2/C2 structural
+identifiability remains unresolved, and the future protocol must report
+pre-target forecast separation before any development outcome is seen.
+Counts, formulas, scope, and hashes are in the 14:07Z ledger. No validation
+or official test output was inspected.
 
 ## Latest checkpoint: 2026-09-26T1100Z
 
