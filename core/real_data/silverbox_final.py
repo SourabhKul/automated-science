@@ -15,8 +15,6 @@ post-lock interface, not a general Silverbox test-data loader.
 from __future__ import annotations
 
 import base64
-from contextlib import contextmanager
-from dataclasses import dataclass, field
 import csv
 import fcntl
 import hashlib
@@ -24,17 +22,25 @@ import io
 import json
 import math
 import os
-from pathlib import Path
 import re
 import tempfile
 import time
-from typing import Any, Iterator, Literal, TextIO
 import zipfile
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Iterator, Literal
 
 import numpy as np
 
 from core import abc_smc_reference
-from core.real_data import silverbox, silverbox_controlled, silverbox_first_fit, silverbox_proposer
+from core.real_data import (
+    silverbox,
+    silverbox_controlled,
+    silverbox_first_fit,
+    silverbox_proposer,
+    silverbox_v2_manifest,
+)
 from core.real_data.silverbox import (
     MULTISINE_STOP,
     MULTISINE_TRAIN_STOP,
@@ -43,7 +49,6 @@ from core.real_data.silverbox import (
     SNLS_CSV_MEMBER,
     STATE_INITIALIZATION_WINDOW_LENGTH,
 )
-
 
 FINAL_RECEIPT_NAME = "final.json"
 FINAL_STARTED_NAME = "final_started.json"
@@ -121,6 +126,14 @@ class _MultisineFinalRecord:
 @dataclass(frozen=True)
 class _LockedModel:
     run_id: str
+    protocol_id: str
+    abc_attempts_per_population: int
+    preflight_manifest_sha256: str | None
+    preflight_verified_sha256: str | None
+    reviewed_git_commit: str | None
+    runtime_versions: dict[str, str] | None
+    code_sha256: dict[str, str] | None
+    expected_archive_bytes: int | None
     selected_hypothesis: Literal["linear", "nonlinear"]
     term_id: str
     source_sha256: str
@@ -172,6 +185,14 @@ def score_silverbox_final(
             )
 
         observed_source_sha256 = _sha256_bytes(archive_bytes)
+        if locked.expected_archive_bytes is not None and len(archive_bytes) != locked.expected_archive_bytes:
+            return _write_failure(
+                locked,
+                final_path,
+                "source_size_mismatch",
+                "archive bytes do not match the source size frozen in the v2 preflight manifest",
+                source_archive_sha256=observed_source_sha256,
+            )
         if observed_source_sha256 != locked.source_sha256:
             return _write_failure(
                 locked,
@@ -348,6 +369,17 @@ def _verify_locked_inputs(
         raise ValueError("selected development hypothesis is missing or invalid")
     if not isinstance(fit.run_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", fit.run_id):
         raise ValueError("frozen fit run id is invalid")
+    protocol_id = getattr(fit, "protocol_id", silverbox_first_fit.PROTOCOL_ID)
+    attempt_cap = silverbox_first_fit.protocol_attempt_cap(protocol_id)
+    manifest_sha256 = getattr(fit, "preflight_manifest_sha256", None)
+    if getattr(selection, "protocol_id", silverbox_first_fit.PROTOCOL_ID) != protocol_id:
+        raise ValueError("fit and selection handles name different Silverbox protocols")
+    if protocol_id == silverbox_first_fit.V2_PROTOCOL_ID:
+        _verify_hash(manifest_sha256, "v2 preflight manifest SHA-256")
+        if getattr(selection, "preflight_manifest_sha256", None) != manifest_sha256:
+            raise ValueError("fit and selection handles name different v2 manifests")
+    elif manifest_sha256 is not None or getattr(selection, "preflight_manifest_sha256", None) is not None:
+        raise ValueError("v1 fit or selection cannot carry a v2 preflight manifest")
 
     fit_path = Path(fit.receipt_path)
     selection_path = Path(selection.receipt_path)
@@ -369,8 +401,16 @@ def _verify_locked_inputs(
         or fit_receipt.get("status") != fit.status
     ):
         raise ValueError("fit handle metadata does not match its frozen receipt")
-    if fit_receipt.get("protocol_id") != silverbox_first_fit.PROTOCOL_ID:
-        raise ValueError("fit receipt protocol id is not the approved first-fit protocol")
+    if fit_receipt.get("protocol_id") != protocol_id:
+        raise ValueError("fit receipt protocol id does not match the frozen fit handle")
+    if protocol_id == silverbox_first_fit.V2_PROTOCOL_ID:
+        if (
+            fit_receipt.get("abc_attempts_per_population") != attempt_cap
+            or fit_receipt.get("preflight_manifest_sha256") != manifest_sha256
+        ):
+            raise ValueError("v2 fit receipt does not bind its frozen attempt cap and manifest")
+    elif fit_receipt.get("abc_attempts_per_population") is not None:
+        raise ValueError("v1 fit receipt cannot be relabeled with a v2 attempt cap")
     if fit.term_id not in silverbox_first_fit.TERM_IDS:
         raise ValueError("fit receipt term id is invalid")
     proposer_sha256 = _sha256_file(Path(silverbox_proposer.__file__))
@@ -382,7 +422,7 @@ def _verify_locked_inputs(
 
     selection_receipt = _load_content_hashed_json(selection_path, selection.receipt_sha256)
     if (
-        selection_receipt.get("protocol_id") != silverbox_first_fit.PROTOCOL_ID
+        selection_receipt.get("protocol_id") != protocol_id
         or selection_receipt.get("run_id") != fit.run_id
         or selection_receipt.get("source_sha256") != fit.source_sha256
         or selection_receipt.get("proposal_receipt_sha256") != fit.proposal_receipt_sha256
@@ -391,8 +431,16 @@ def _verify_locked_inputs(
         or selection_receipt.get("selected_hypothesis") != selection.selected_hypothesis
     ):
         raise ValueError("selection handle does not match a frozen selection for this fit")
+    if protocol_id == silverbox_first_fit.V2_PROTOCOL_ID:
+        if (
+            selection_receipt.get("abc_attempts_per_population") != attempt_cap
+            or selection_receipt.get("preflight_manifest_sha256") != manifest_sha256
+        ):
+            raise ValueError("v2 selection receipt does not bind its frozen attempt cap and manifest")
+    elif selection_receipt.get("abc_attempts_per_population") is not None:
+        raise ValueError("v1 selection receipt cannot be relabeled with a v2 attempt cap")
 
-    model_data = _verify_complete_fit(fit_receipt)
+    model_data = _verify_complete_fit(fit_receipt, protocol_id=protocol_id)
     _verify_selected_development_receipt(selection_receipt)
     proposal = _verify_orchestration_proposal(
         fit_path=fit_path,
@@ -401,13 +449,14 @@ def _verify_locked_inputs(
         term_id=fit.term_id,
         proposal_receipt_sha256=fit.proposal_receipt_sha256,
     )
-    _verify_terminal_run_receipts(
+    provenance = _verify_terminal_run_receipts(
         fit=fit,
         selection=selection,
         fit_path=fit_path,
         selection_path=selection_path,
         proposal_receipt_path=proposal["receipt_path"],
     )
+    expected_archive_bytes = provenance["archive_bytes"] if provenance is not None else None
     parameters, weights = model_data[selection.selected_hypothesis]
     scalers_raw = fit_receipt["training_scalers"]
     scalers = {
@@ -419,6 +468,14 @@ def _verify_locked_inputs(
     weights.setflags(write=False)
     return _LockedModel(
         run_id=fit.run_id,
+        protocol_id=protocol_id,
+        abc_attempts_per_population=attempt_cap,
+        preflight_manifest_sha256=manifest_sha256,
+        preflight_verified_sha256=(provenance["preflight_verified_sha256"] if provenance else None),
+        reviewed_git_commit=(provenance["reviewed_git_commit"] if provenance else None),
+        runtime_versions=(provenance["runtime_versions"] if provenance else None),
+        code_sha256=(provenance["code_sha256"] if provenance else None),
+        expected_archive_bytes=expected_archive_bytes,
         selected_hypothesis=selection.selected_hypothesis,
         term_id=fit.term_id,
         source_sha256=fit.source_sha256,
@@ -448,7 +505,7 @@ def _verify_terminal_run_receipts(
     fit_path: Path,
     selection_path: Path,
     proposal_receipt_path: Path,
-) -> None:
+) -> dict[str, Any] | None:
     """Require the orchestrator's terminal selected record to bind this lock.
 
     ``run_finished.json`` is a plain stage receipt, not a cryptographic
@@ -474,8 +531,80 @@ def _verify_terminal_run_receipts(
     selection_stage = load_stage("selection_completed.json")
     run_finished = load_stage("run_finished.json")
 
+    protocol_id = getattr(fit, "protocol_id", silverbox_first_fit.PROTOCOL_ID)
+    attempt_cap = silverbox_first_fit.protocol_attempt_cap(protocol_id)
+    manifest_sha256 = getattr(fit, "preflight_manifest_sha256", None)
+    if protocol_id == silverbox_first_fit.V2_PROTOCOL_ID:
+        _verify_hash(manifest_sha256, "v2 preflight manifest SHA-256")
+        for stage in (run_started, source_stage, proposal_stage, fit_stage, selection_stage, run_finished):
+            if (
+                stage.get("protocol_id") != protocol_id
+                or stage.get("abc_attempts_per_population") != attempt_cap
+                or stage.get("preflight_manifest_sha256") != manifest_sha256
+            ):
+                raise ValueError("v2 orchestration stage does not bind the frozen protocol, cap, and manifest")
+        manifest_path = stage_dir / "preflight_manifest.json"
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise ValueError("v2 orchestration is missing its immutable preflight manifest copy")
+        manifest_bytes = manifest_path.read_bytes()
+        if _sha256_bytes(manifest_bytes) != manifest_sha256:
+            raise ValueError("v2 preflight manifest bytes do not match the frozen handle digest")
+        manifest_raw, manifest_document, manifest_digest = silverbox_v2_manifest.read_manifest(manifest_path)
+        if manifest_raw != manifest_bytes or manifest_digest != manifest_sha256:
+            raise ValueError("v2 preflight manifest changed while verifying its receipt")
+        archive_bytes = source_stage.get("archive_bytes")
+        if type(archive_bytes) is not int or archive_bytes <= 0:
+            raise ValueError("v2 source stage has no valid archive byte count")
+        preflight_verified = load_stage("preflight_verified.json")
+        preflight_verified_path = stage_dir / "preflight_verified.json"
+        if preflight_verified_path.is_symlink() or not preflight_verified_path.is_file():
+            raise ValueError("v2 preflight verification receipt is not a regular run-local file")
+        preflight_verified_sha256 = _sha256_file(preflight_verified_path)
+        if (
+            preflight_verified.get("run_id") != fit.run_id
+            or preflight_verified.get("status") != "verified"
+            or preflight_verified.get("protocol_id") != protocol_id
+            or preflight_verified.get("abc_attempts_per_population") != attempt_cap
+            or preflight_verified.get("preflight_manifest_sha256") != manifest_sha256
+            or preflight_verified.get("reviewed_git_commit") != manifest_document.get("reviewed_git_commit")
+            or preflight_verified.get("reviewed_tree_clean") is not True
+            or preflight_verified.get("runtime_versions") != manifest_document.get("runtime")
+            or preflight_verified.get("code_sha256") != manifest_document.get("code_sha256")
+            or preflight_verified.get("archive_sha256") != fit.source_sha256
+            or preflight_verified.get("archive_bytes") != archive_bytes
+        ):
+            raise ValueError("v2 preflight verification receipt does not match its frozen manifest")
+        for stage in (proposal_stage, fit_stage, selection_stage, run_finished):
+            if stage.get("preflight_verified_sha256") != preflight_verified_sha256:
+                raise ValueError("v2 run stage does not bind its verified provenance receipt")
+        actual_environment = silverbox_v2_manifest.current_environment(
+            Path(__file__).resolve().parents[2]
+        )
+        silverbox_v2_manifest.verify_manifest(
+            manifest_document,
+            actual=actual_environment,
+            archive_sha256=fit.source_sha256,
+            archive_bytes=archive_bytes,
+        )
+        if (
+            preflight_verified.get("reviewed_git_commit") != actual_environment.get("reviewed_git_commit")
+            or preflight_verified.get("reviewed_tree_clean") is not actual_environment.get("reviewed_tree_clean")
+            or preflight_verified.get("runtime_versions") != actual_environment.get("runtime")
+            or preflight_verified.get("code_sha256") != actual_environment.get("code_sha256")
+        ):
+            raise ValueError("v2 actual provenance differs from the run's preflight verification receipt")
+        expected_archive_bytes: dict[str, Any] | None = {
+            "archive_bytes": archive_bytes,
+            "preflight_verified_sha256": preflight_verified_sha256,
+            "reviewed_git_commit": preflight_verified["reviewed_git_commit"],
+            "runtime_versions": preflight_verified["runtime_versions"],
+            "code_sha256": preflight_verified["code_sha256"],
+        }
+    else:
+        expected_archive_bytes = None
+
     if (
-        run_started.get("protocol_id") != silverbox_first_fit.PROTOCOL_ID
+        run_started.get("protocol_id") != protocol_id
         or run_started.get("run_id") != fit.run_id
         or run_started.get("status") != "started"
         or not _finite_number(run_started.get("started_monotonic"))
@@ -548,6 +677,7 @@ def _verify_terminal_run_receipts(
         or run_finished.get("selection_receipt_sha256") != selection.receipt_sha256
     ):
         raise ValueError("terminal run receipt is not selected or does not bind the frozen receipt chain")
+    return expected_archive_bytes
 
 
 def _require_stage_path(value: Any, expected: Path, label: str) -> None:
@@ -572,9 +702,23 @@ def _finite_number(value: Any) -> bool:
     )
 
 
-def _verify_complete_fit(receipt: dict[str, Any]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+def _verify_complete_fit(
+    receipt: dict[str, Any], *, protocol_id: str | None = None
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    protocol_id = protocol_id or receipt.get("protocol_id")
+    try:
+        attempt_cap = silverbox_first_fit.protocol_attempt_cap(protocol_id)
+    except ValueError as error:
+        raise ValueError("fit receipt names an unsupported Silverbox protocol") from error
     if receipt.get("status") != "complete":
         raise ValueError("fit receipt is not complete")
+    if receipt.get("protocol_id") != protocol_id:
+        raise ValueError("fit receipt protocol id does not match the selected protocol")
+    if protocol_id == silverbox_first_fit.V2_PROTOCOL_ID:
+        if receipt.get("abc_attempts_per_population") != attempt_cap:
+            raise ValueError("v2 fit receipt does not record its frozen 2,048 attempt cap")
+    elif receipt.get("abc_attempts_per_population") is not None:
+        raise ValueError("v1 fit receipt cannot carry a v2 attempt cap")
     budget = receipt.get("budget")
     if not isinstance(budget, dict) or budget.get("stop_reason") is not None:
         raise ValueError("fit receipt reports a stopped or missing pilot budget")
@@ -607,6 +751,8 @@ def _verify_complete_fit(receipt: dict[str, Any]) -> dict[str, tuple[np.ndarray,
     constants = receipt.get("protocol_constants")
     if not isinstance(constants, dict) or constants.get("abc_particles") != silverbox_first_fit.ABC_PARTICLES:
         raise ValueError("fit protocol constants do not match the approved particle count")
+    if constants.get("abc_attempts_per_population") != attempt_cap:
+        raise ValueError("fit protocol constants do not match the frozen attempt cap")
     if constants.get("linear_parameter_names") != list(silverbox_first_fit.LINEAR_PARAMETER_NAMES):
         raise ValueError("linear parameter schema differs from the approved protocol")
     if constants.get("nonlinear_parameter_names") != list(silverbox_first_fit.NONLINEAR_PARAMETER_NAMES):
@@ -639,6 +785,7 @@ def _verify_complete_fit(receipt: dict[str, Any]) -> dict[str, tuple[np.ndarray,
         if (
             not isinstance(calibration, dict)
             or calibration.get("status") != "complete"
+            or calibration.get("protocol_id") != protocol_id
             or int(calibration.get("finite_count", 0)) < silverbox_first_fit.CALIBRATION_MIN_FINITE
         ):
             raise ValueError(f"{hypothesis} calibration is incomplete")
@@ -648,6 +795,8 @@ def _verify_complete_fit(receipt: dict[str, Any]) -> dict[str, tuple[np.ndarray,
             not isinstance(abc_result, dict)
             or abc_result.get("status") != "complete"
             or abc_result.get("complete") is not True
+            or abc_result.get("max_attempts_per_population") != [attempt_cap] * silverbox_first_fit.ABC_POPULATIONS
+            or abc_result.get("max_attempts_per_population") != [attempt_cap] * silverbox_first_fit.ABC_POPULATIONS
             or not isinstance(populations, list)
             or len(populations) != silverbox_first_fit.ABC_POPULATIONS
         ):
@@ -658,7 +807,12 @@ def _verify_complete_fit(receipt: dict[str, Any]) -> dict[str, tuple[np.ndarray,
             if not isinstance(population, dict) or population.get("generation") != generation:
                 raise ValueError(f"{hypothesis} population sequence is malformed")
             diagnostics = population.get("diagnostics")
-            if not isinstance(diagnostics, dict) or diagnostics.get("complete") is not True:
+            if (
+                not isinstance(diagnostics, dict)
+                or diagnostics.get("complete") is not True
+                or diagnostics.get("max_attempts") != attempt_cap
+                or diagnostics.get("proposed", attempt_cap + 1) > attempt_cap
+            ):
                 raise ValueError(f"{hypothesis} population {generation} is incomplete")
             parameters = np.asarray(population.get("accepted_params"), dtype=float)
             weights = np.asarray(population.get("weights"), dtype=float)
@@ -947,7 +1101,7 @@ def _claim_final_attempt(run_dir: Path, started_path: Path, locked: _LockedModel
         _write_content_hashed_json(
             started_path,
             {
-                "protocol_id": silverbox_first_fit.PROTOCOL_ID,
+                **_protocol_receipt_fields(locked),
                 "run_id": locked.run_id,
                 "status": "started",
                 "fit_receipt_sha256": locked.fit_receipt_sha256,
@@ -1011,7 +1165,7 @@ def _write_failure(
 
 def _base_final_receipt(locked: _LockedModel) -> dict[str, Any]:
     return {
-        "protocol_id": silverbox_first_fit.PROTOCOL_ID,
+        **_protocol_receipt_fields(locked),
         "run_id": locked.run_id,
         "created_unix": time.time(),
         "scorer_implementation_sha256": _sha256_file(Path(__file__)),
@@ -1030,6 +1184,23 @@ def _base_final_receipt(locked: _LockedModel) -> dict[str, Any]:
         "selected_hypothesis": locked.selected_hypothesis,
         "term_id": locked.term_id,
     }
+
+
+def _protocol_receipt_fields(locked: _LockedModel) -> dict[str, Any]:
+    fields: dict[str, Any] = {"protocol_id": locked.protocol_id}
+    if locked.protocol_id == silverbox_first_fit.V2_PROTOCOL_ID:
+        fields.update(
+            {
+                "abc_attempts_per_population": locked.abc_attempts_per_population,
+                "preflight_manifest_sha256": locked.preflight_manifest_sha256,
+                "preflight_verified_sha256": locked.preflight_verified_sha256,
+                "reviewed_git_commit": locked.reviewed_git_commit,
+                "runtime_versions": locked.runtime_versions,
+                "code_sha256": locked.code_sha256,
+                "archive_bytes": locked.expected_archive_bytes,
+            }
+        )
+    return fields
 
 
 def _hypothesis_schema(hypothesis: str) -> tuple[tuple[str, ...], tuple[tuple[float, float], ...]]:

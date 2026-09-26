@@ -1,26 +1,17 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
 import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 
-from core.real_data.silverbox_controlled import (
-    SAMPLE_TIME_SECONDS,
-    TRAIN_SOURCE_START,
-    TRAIN_WINDOW_LENGTH,
-    TRAIN_WINDOW_RELATIVE_STARTS,
-    STATE_INITIALIZATION_LENGTH,
-    VALIDATION_SOURCE_START,
-    VALIDATION_SOURCE_STOP,
-    SilverboxControlledDevelopment,
-    SilverboxControlledSeries,
-)
+from core.real_data import silverbox
 from core.real_data.silverbox import (
     ARROW_FULL_START,
     ARROW_FULL_STOP,
@@ -31,7 +22,17 @@ from core.real_data.silverbox import (
     SAMPLE_COUNT,
     SNLS_CSV_MEMBER,
 )
-from core.real_data import silverbox
+from core.real_data.silverbox_controlled import (
+    SAMPLE_TIME_SECONDS,
+    STATE_INITIALIZATION_LENGTH,
+    TRAIN_SOURCE_START,
+    TRAIN_WINDOW_LENGTH,
+    TRAIN_WINDOW_RELATIVE_STARTS,
+    VALIDATION_SOURCE_START,
+    VALIDATION_SOURCE_STOP,
+    SilverboxControlledDevelopment,
+    SilverboxControlledSeries,
+)
 from core.real_data.silverbox_proposer import (
     ENDPOINT,
     FROZEN_REQUEST_PAYLOAD_SHA256,
@@ -224,6 +225,46 @@ class _FakeSelection:
     reason: str
 
 
+@dataclass(frozen=True)
+class _FakeV2Fit:
+    status: str
+    receipt_path: Path
+    receipt_sha256: str
+    protocol_id: str
+    preflight_manifest_sha256: str
+
+
+@dataclass(frozen=True)
+class _FakeV2Selection:
+    status: str
+    selected_hypothesis: str | None
+    receipt_path: Path
+    receipt_sha256: str
+    reason: str
+    protocol_id: str
+    preflight_manifest_sha256: str
+
+
+def _v2_manifest_for_archive(archive_sha256: str, archive_bytes: int) -> tuple[dict, dict]:
+    code_hashes = {name: format(index + 1, "064x") for index, name in enumerate(runner.silverbox_v2_manifest.CODE_FILES)}
+    environment = {
+        "reviewed_git_commit": "a" * 40,
+        "reviewed_tree_clean": True,
+        "runtime": dict(runner.silverbox_v2_manifest.PINNED_RUNTIME),
+        "code_sha256": code_hashes,
+    }
+    manifest = {
+        "protocol_id": runner.V2_PROTOCOL_ID,
+        "abc_attempts_per_population": 2_048,
+        "reviewed_git_commit": environment["reviewed_git_commit"],
+        "reviewed_tree_clean": True,
+        "source": {"archive_sha256": archive_sha256, "archive_bytes": archive_bytes},
+        "runtime": dict(environment["runtime"]),
+        "code_sha256": code_hashes,
+    }
+    return manifest, environment
+
+
 def _fake_fit_result(tmp_path: Path, status: str = "complete") -> _FakeFit:
     receipt = tmp_path / "fake-fit.json"
     receipt.write_text("synthetic fit receipt", encoding="utf-8")
@@ -298,11 +339,264 @@ def test_successful_bridge_verifies_bytes_and_calls_stages_in_order(tmp_path):
     ):
         receipt = json.loads((result.stage_directory / name).read_text(encoding="utf-8"))
         assert receipt["run_id"] == "synthetic-success"
-    proposal_stage = json.loads(
-        (result.stage_directory / "proposal_succeeded.json").read_text(encoding="utf-8")
+
+
+def test_v2_manifest_is_hashed_and_protocol_cap_propagate_through_run(tmp_path, monkeypatch):
+    archive, tracked_manifest, source_sha256 = _archive_and_manifest(tmp_path)
+    v2_manifest, environment = _v2_manifest_for_archive(source_sha256, archive.stat().st_size)
+    manifest_path = tmp_path / "caller-v2-preflight.json"
+    manifest_bytes = json.dumps(v2_manifest, sort_keys=True, separators=(",", ":")).encode()
+    manifest_path.write_bytes(manifest_bytes)
+    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    monkeypatch.setattr(runner.silverbox_v2_manifest, "current_environment", lambda _root: environment)
+
+    development = _development()
+    calls: dict[str, Any] = {"fit": [], "selection": []}
+
+    def fit(train_windows, term_id, **kwargs):
+        calls["fit"].append((train_windows, term_id, kwargs))
+        receipt = tmp_path / "synthetic-v2-fit.json"
+        receipt.write_text("synthetic v2 fit", encoding="utf-8")
+        return _FakeV2Fit(
+            "complete",
+            receipt,
+            hashlib.sha256(receipt.read_bytes()).hexdigest(),
+            runner.V2_PROTOCOL_ID,
+            manifest_sha256,
+        )
+
+    def select(fit_handle, validation):
+        calls["selection"].append((fit_handle, validation))
+        receipt = tmp_path / "synthetic-v2-selection.json"
+        receipt.write_text("synthetic v2 selection", encoding="utf-8")
+        return _FakeV2Selection(
+            "selected",
+            "linear",
+            receipt,
+            hashlib.sha256(receipt.read_bytes()).hexdigest(),
+            "synthetic-only",
+            runner.V2_PROTOCOL_ID,
+            manifest_sha256,
+        )
+
+    result = runner.run_silverbox_development(
+        archive_path=archive,
+        manifest_path=tracked_manifest,
+        receipt_root=tmp_path / "v2-artifacts",
+        loader=lambda _path: development,
+        proposal_request=_fake_proposal,
+        fit=fit,
+        select=select,
+        monotonic=lambda: 400.0,
+        run_id_factory=lambda: "synthetic-v2-run",
+        protocol_id=runner.V2_PROTOCOL_ID,
+        preflight_manifest_path=manifest_path,
     )
-    assert proposal_stage["proposal_receipt_sha256"] == result.proposal_receipt_sha256
-    assert proposal_stage["model_id"] == MODEL_ID
+    assert result.status == "selected"
+    assert result.protocol_id == runner.V2_PROTOCOL_ID
+    assert result.abc_attempts_per_population == 2_048
+    assert result.preflight_manifest_sha256 == manifest_sha256
+    assert calls["fit"][0][0] is development.train_windows
+    assert calls["fit"][0][2]["protocol_id"] == runner.V2_PROTOCOL_ID
+    assert calls["fit"][0][2]["preflight_manifest_sha256"] == manifest_sha256
+    assert calls["selection"][0][1] is development.validation
+    assert (result.stage_directory / "preflight_manifest.json").read_bytes() == manifest_bytes
+    for filename in (
+        "run_started.json",
+        "source_verified.json",
+        "preflight_verified.json",
+        "proposal_succeeded.json",
+        "fit_completed.json",
+        "selection_completed.json",
+        "run_finished.json",
+    ):
+        receipt = json.loads((result.stage_directory / filename).read_text(encoding="utf-8"))
+        assert receipt["protocol_id"] == runner.V2_PROTOCOL_ID
+        assert receipt["abc_attempts_per_population"] == 2_048
+        assert receipt["preflight_manifest_sha256"] == manifest_sha256
+    verified = json.loads((result.stage_directory / "preflight_verified.json").read_text())
+    assert verified["reviewed_git_commit"] == environment["reviewed_git_commit"]
+    assert verified["runtime_versions"] == environment["runtime"]
+    assert verified["code_sha256"] == environment["code_sha256"]
+    terminal = json.loads((result.stage_directory / "run_finished.json").read_text())
+    for filename in ("proposal_succeeded.json", "fit_completed.json", "selection_completed.json"):
+        stage = json.loads((result.stage_directory / filename).read_text())
+        assert stage["preflight_verified_sha256"] == terminal["preflight_verified_sha256"]
+
+
+@pytest.mark.parametrize("mismatch", ["commit", "dirty", "runtime", "code", "source"])
+def test_v2_preflight_provenance_mismatch_blocks_loader_and_qwen(tmp_path, monkeypatch, mismatch):
+    archive, tracked_manifest, source_sha256 = _archive_and_manifest(tmp_path)
+    manifest_document, environment = _v2_manifest_for_archive(source_sha256, archive.stat().st_size)
+    if mismatch == "source":
+        manifest_document["source"]["archive_sha256"] = "f" * 64
+    manifest_path = tmp_path / f"caller-v2-{mismatch}.json"
+    manifest_path.write_text(json.dumps(manifest_document), encoding="utf-8")
+    observed = json.loads(json.dumps(environment))
+    if mismatch == "commit":
+        observed["reviewed_git_commit"] = "b" * 40
+    elif mismatch == "dirty":
+        observed["reviewed_tree_clean"] = False
+    elif mismatch == "runtime":
+        observed["runtime"]["numpy"] = "0.0.0"
+    elif mismatch == "code":
+        observed["code_sha256"]["fit"] = "0" * 64
+    monkeypatch.setattr(runner.silverbox_v2_manifest, "current_environment", lambda _root: observed)
+    calls: list[str] = []
+
+    result = runner.run_silverbox_development(
+        archive_path=archive,
+        manifest_path=tracked_manifest,
+        receipt_root=tmp_path / f"v2-denial-{mismatch}",
+        loader=lambda _path: calls.append("loader"),
+        proposal_request=lambda **kwargs: calls.append("qwen"),
+        fit=lambda *args, **kwargs: pytest.fail("preflight mismatch must block fit"),
+        select=lambda *args, **kwargs: pytest.fail("preflight mismatch must block selection"),
+        monotonic=lambda: 450.0,
+        run_id_factory=lambda: f"synthetic-v2-denial-{mismatch}",
+        protocol_id=runner.V2_PROTOCOL_ID,
+        preflight_manifest_path=manifest_path,
+    )
+    assert result.status == "unresolved"
+    assert result.reason == "v2_preflight_mismatch"
+    assert calls == []
+    failure = json.loads((result.stage_directory / "run_finished.json").read_text())
+    assert failure["protocol_id"] == runner.V2_PROTOCOL_ID
+    assert failure["abc_attempts_per_population"] == 2_048
+    assert failure["preflight_manifest_sha256"] == result.preflight_manifest_sha256
+
+
+def test_v2_incomplete_fit_never_calls_selection_or_reads_validation_targets(tmp_path, monkeypatch):
+    archive, tracked_manifest, source_sha256 = _archive_and_manifest(tmp_path)
+    manifest_document, environment = _v2_manifest_for_archive(source_sha256, archive.stat().st_size)
+    manifest_path = tmp_path / "caller-v2-incomplete.json"
+    manifest_bytes = json.dumps(manifest_document, sort_keys=True, separators=(",", ":")).encode()
+    manifest_path.write_bytes(manifest_bytes)
+    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    monkeypatch.setattr(runner.silverbox_v2_manifest, "current_environment", lambda _root: environment)
+    development = _development()
+    selection_calls: list[str] = []
+
+    def incomplete_fit(*args, **kwargs):
+        assert kwargs["protocol_id"] == runner.V2_PROTOCOL_ID
+        assert kwargs["preflight_manifest_sha256"] == manifest_sha256
+        receipt = tmp_path / "synthetic-v2-incomplete-fit.json"
+        receipt.write_text("incomplete", encoding="utf-8")
+        return _FakeV2Fit(
+            "incomplete",
+            receipt,
+            hashlib.sha256(receipt.read_bytes()).hexdigest(),
+            runner.V2_PROTOCOL_ID,
+            manifest_sha256,
+        )
+
+    result = runner.run_silverbox_development(
+        archive_path=archive,
+        manifest_path=tracked_manifest,
+        receipt_root=tmp_path / "v2-incomplete-artifacts",
+        loader=lambda _path: development,
+        proposal_request=_fake_proposal,
+        fit=incomplete_fit,
+        select=lambda *args, **kwargs: selection_calls.append("selection"),
+        monotonic=lambda: 480.0,
+        run_id_factory=lambda: "synthetic-v2-incomplete",
+        protocol_id=runner.V2_PROTOCOL_ID,
+        preflight_manifest_path=manifest_path,
+    )
+    assert result.status == "unresolved"
+    assert result.reason == "fit_incomplete"
+    assert selection_calls == []
+    terminal = json.loads((result.stage_directory / "run_finished.json").read_text())
+    assert terminal["validation_accessed"] is False
+
+
+def test_v2_rechecks_provenance_immediately_before_single_proposal(tmp_path, monkeypatch):
+    archive, tracked_manifest, source_sha256 = _archive_and_manifest(tmp_path)
+    manifest_document, matching_environment = _v2_manifest_for_archive(
+        source_sha256, archive.stat().st_size
+    )
+    manifest_path = tmp_path / "caller-v2-environment-changed.json"
+    manifest_path.write_text(json.dumps(manifest_document), encoding="utf-8")
+    dirty_environment = json.loads(json.dumps(matching_environment))
+    dirty_environment["reviewed_tree_clean"] = False
+    environments = iter((matching_environment, dirty_environment))
+    monkeypatch.setattr(
+        runner.silverbox_v2_manifest,
+        "current_environment",
+        lambda _root: next(environments),
+    )
+    calls: list[str] = []
+
+    result = runner.run_silverbox_development(
+        archive_path=archive,
+        manifest_path=tracked_manifest,
+        receipt_root=tmp_path / "v2-env-change-artifacts",
+        loader=lambda _path: (_development()),
+        proposal_request=lambda **kwargs: calls.append("qwen"),
+        fit=lambda *args, **kwargs: pytest.fail("changed provenance must block fit"),
+        select=lambda *args, **kwargs: pytest.fail("changed provenance must block selection"),
+        monotonic=lambda: 490.0,
+        run_id_factory=lambda: "synthetic-v2-env-change",
+        protocol_id=runner.V2_PROTOCOL_ID,
+        preflight_manifest_path=manifest_path,
+    )
+    assert result.status == "unresolved"
+    assert result.reason == "v2_preflight_changed_before_proposal"
+    assert calls == []
+    assert not (result.stage_directory / "proposal_succeeded.json").exists()
+    verified = json.loads((result.stage_directory / "preflight_verified.json").read_text())
+    terminal = json.loads((result.stage_directory / "run_finished.json").read_text())
+    assert verified["status"] == "verified"
+    assert terminal["preflight_verified_sha256"] == hashlib.sha256(
+        (result.stage_directory / "preflight_verified.json").read_bytes()
+    ).hexdigest()
+
+
+def test_v2_archive_mutation_during_loader_blocks_proposal(tmp_path, monkeypatch):
+    archive, tracked_manifest, source_sha256 = _archive_and_manifest(tmp_path)
+    original_size = archive.stat().st_size
+    manifest_document, environment = _v2_manifest_for_archive(source_sha256, original_size)
+    manifest_path = tmp_path / "caller-v2-archive-mutation.json"
+    manifest_path.write_text(json.dumps(manifest_document), encoding="utf-8")
+    monkeypatch.setattr(
+        runner.silverbox_v2_manifest,
+        "current_environment",
+        lambda _root: environment,
+    )
+    proposal_calls: list[str] = []
+
+    def mutate_archive_during_load(path):
+        assert path.resolve() == archive.resolve()
+        archive.write_bytes(b"mutated after initial source verification")
+        return _development()
+
+    result = runner.run_silverbox_development(
+        archive_path=archive,
+        manifest_path=tracked_manifest,
+        receipt_root=tmp_path / "v2-archive-mutation-artifacts",
+        loader=mutate_archive_during_load,
+        proposal_request=lambda **kwargs: proposal_calls.append("qwen"),
+        fit=lambda *args, **kwargs: pytest.fail("archive mutation must block fit"),
+        select=lambda *args, **kwargs: pytest.fail("archive mutation must block selection"),
+        monotonic=lambda: 495.0,
+        run_id_factory=lambda: "synthetic-v2-archive-mutation",
+        protocol_id=runner.V2_PROTOCOL_ID,
+        preflight_manifest_path=manifest_path,
+    )
+
+    assert result.status == "unresolved"
+    assert result.reason == "v2_preflight_changed_before_proposal"
+    assert proposal_calls == []
+    assert not (result.stage_directory / "proposal_dispatching.json").exists()
+    assert not (result.stage_directory / "proposal_receipts").exists()
+    source_verified = json.loads((result.stage_directory / "source_verified.json").read_text())
+    assert source_verified["archive_sha256"] == source_sha256
+    assert source_verified["archive_bytes"] == original_size
+    terminal = json.loads((result.stage_directory / "run_finished.json").read_text())
+    assert terminal["status"] == "unresolved"
+    assert terminal["reason"] == "v2_preflight_changed_before_proposal"
+    assert terminal["protocol_id"] == runner.V2_PROTOCOL_ID
+    assert terminal["source_sha256"] == source_sha256
 
 
 def test_runner_default_loader_never_parses_or_exposes_sealed_rows(monkeypatch, tmp_path):

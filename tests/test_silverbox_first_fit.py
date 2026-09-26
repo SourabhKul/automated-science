@@ -3,13 +3,20 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import zipfile
 from dataclasses import replace
 from pathlib import Path
-import zipfile
 
 import numpy as np
 import pytest
 
+import core.real_data.silverbox_first_fit as first_fit
+from core.real_data import silverbox_controlled
+from core.real_data.silverbox import (
+    REQUIRED_ARCHIVE_MEMBERS,
+    SAMPLE_COUNT,
+    SNLS_CSV_MEMBER,
+)
 from core.real_data.silverbox_controlled import (
     SAMPLE_TIME_SECONDS,
     TRAIN_SOURCE_START,
@@ -21,9 +28,6 @@ from core.real_data.silverbox_controlled import (
     SilverboxControlledValidation,
     load_silverbox_controlled_development,
 )
-from core.real_data.silverbox import REQUIRED_ARCHIVE_MEMBERS, SAMPLE_COUNT, SNLS_CSV_MEMBER
-from core.real_data import silverbox_controlled
-import core.real_data.silverbox_first_fit as first_fit
 
 
 def _train_windows() -> tuple[SilverboxControlledSeries, ...]:
@@ -97,9 +101,10 @@ def _write_source_bound_development_archive(path: Path) -> str:
 
 def _complete_fake_abc(prior_sampler, simulator, discrepancy, **kwargs):
     """Return two complete populations and exercise the callbacks/simulator."""
+    attempt_cap = kwargs["max_attempts_per_population"]
     expected = {
         "target_samples": 64,
-        "max_attempts_per_population": 512,
+        "max_attempts_per_population": attempt_cap,
         "covariance_scale": 2.0,
         "lambda_noise": 0.01,
         "nugget": 1e-9,
@@ -171,7 +176,7 @@ def _complete_fake_abc(prior_sampler, simulator, discrepancy, **kwargs):
                 "failed_simulations": 0,
                 "failed_discrepancies": 0,
                 "weight_failures": 0,
-                "max_attempts": 512,
+                "max_attempts": attempt_cap,
                 "complete": True,
                 "termination_reason": "target_reached",
                 "ancestor_indices": [None] * 65 if generation == 0 else [0] * 65,
@@ -187,7 +192,7 @@ def _complete_fake_abc(prior_sampler, simulator, discrepancy, **kwargs):
         "canonical_runner_integrated": False,
         "target_samples": 64,
         "epsilon_schedule": [float(value) for value in kwargs["epsilon_schedule"]],
-        "max_attempts_per_population": [512, 512],
+        "max_attempts_per_population": [attempt_cap, attempt_cap],
         "seed": kwargs["seed"],
         "accepted_params": populations[-1]["accepted_params"],
         "distances": populations[-1]["distances"],
@@ -388,6 +393,8 @@ def test_calibration_and_reference_call_contract_and_separate_validation_selecti
     assert selection.selected_hypothesis == "nonlinear"
     assert validation.target_loaded is True
     assert len(target_load_calls) == 1
+
+
     target = validation.load_target_y(fit)
     assert len(target_load_calls) == 1
     assert not target.flags.writeable
@@ -463,6 +470,61 @@ def test_calibration_and_reference_call_contract_and_separate_validation_selecti
     with pytest.raises(ValueError):
         validation.load_target_y(replace(fit, run_id="different-cached-fit"))
     assert len(target_load_calls) == 1
+
+
+def test_v2_fit_receipts_record_2048_cap_and_v1_receipts_cannot_be_relabelled(monkeypatch, tmp_path):
+    monkeypatch.setattr(first_fit, "simulate_controlled_ar2", lambda input_u, initialization_y, parameters, **kwargs: np.full(len(input_u) - 50, 0.25))
+    monkeypatch.setattr(first_fit, "run_gaussian_abc_smc_reference", _complete_fake_abc)
+    source_archive = tmp_path / "v2-source-bound.zip"
+    source_sha = _write_source_bound_development_archive(source_archive)
+    development = load_silverbox_controlled_development(source_archive)
+    proposal_sha = hashlib.sha256(b"synthetic-v2-proposal").hexdigest()
+    manifest_sha = hashlib.sha256(b"caller-frozen-v2-manifest").hexdigest()
+
+    v2_fit = first_fit.fit_silverbox_development(
+        development.train_windows,
+        "u_cubed",
+        source_sha256=source_sha,
+        proposal_receipt_sha256=proposal_sha,
+        run_id="synthetic-v2-complete",
+        receipt_dir=tmp_path,
+        protocol_id=first_fit.V2_PROTOCOL_ID,
+        preflight_manifest_sha256=manifest_sha,
+    )
+    assert v2_fit.status == "complete"
+    v2_body = json.loads(v2_fit.receipt_path.read_text())
+    assert v2_body["protocol_id"] == first_fit.V2_PROTOCOL_ID
+    assert v2_body["abc_attempts_per_population"] == 2_048
+    assert v2_body["preflight_manifest_sha256"] == manifest_sha
+    assert v2_body["protocol_constants"]["abc_attempts_per_population"] == 2_048
+    for family in v2_body["hypotheses"].values():
+        assert family["abc_result"]["max_attempts_per_population"] == [2_048, 2_048]
+        assert [row["diagnostics"]["max_attempts"] for row in family["abc_result"]["populations"]] == [2_048, 2_048]
+    first_fit._verify_complete_fit_receipt(v2_fit, v2_body)
+    v2_selection = first_fit.select_silverbox_development(v2_fit, development.validation)
+    assert v2_selection.protocol_id == first_fit.V2_PROTOCOL_ID
+    assert v2_selection.preflight_manifest_sha256 == manifest_sha
+    selection_body = json.loads(v2_selection.receipt_path.read_text())
+    assert selection_body["protocol_id"] == first_fit.V2_PROTOCOL_ID
+    assert selection_body["abc_attempts_per_population"] == 2_048
+    assert selection_body["preflight_manifest_sha256"] == manifest_sha
+
+    v1_fit = first_fit.fit_silverbox_development(
+        development.train_windows,
+        "u_cubed",
+        source_sha256=source_sha,
+        proposal_receipt_sha256=proposal_sha,
+        run_id="synthetic-v1-stays-v1",
+        receipt_dir=tmp_path,
+    )
+    v1_body = json.loads(v1_fit.receipt_path.read_text())
+    assert v1_body["protocol_id"] == first_fit.PROTOCOL_ID
+    assert "abc_attempts_per_population" not in v1_body
+    with pytest.raises(ValueError, match="protocol"):
+        first_fit._verify_complete_fit_receipt(
+            replace(v1_fit, protocol_id=first_fit.V2_PROTOCOL_ID, preflight_manifest_sha256=manifest_sha),
+            v1_body,
+        )
 
 
 def test_public_target_loader_rejects_minimal_content_hashed_fit_handle(monkeypatch, tmp_path):

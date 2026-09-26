@@ -1,6 +1,34 @@
 # Automated science: current research state
 
-Updated: 2026-09-25 after the first real Silverbox development pilot. This file records observed state, not inferred execution.
+Updated: 2026-09-26 after the reviewed Silverbox v2 implementation, before any v2 run. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-26T0405Z wake
+
+The first real Silverbox development run remains unresolved: both final ABC
+populations exhausted the frozen v1 512-attempt cap and no validation metric or
+sealed score was produced. Luna's fresh read-only preflight found no competing
+research job, a clean local checkout equal to `origin/main` at
+`0bc1c80cb354babfcfaf1a7fe7bfcc27b9c31b92` before v2 edits, ample local
+memory/disk, the unchanged official archive digest, and HTTP 200 from oMLX
+advertising the exact fixed Qwen ID. The stale v1 lock-file path is not an
+active process or OS lock. Details are in
+`reports/research-ledger/2026-09-26T0405Z.md`.
+
+An opt-in v2 implementation for proposal ID
+`silverbox_first_fit_v2_2048_20260925` and 2,048 ABC attempts/population was
+developed locally. It carries a caller-frozen manifest of reviewed Git
+revision, clean tree, archive, code hashes, and runtime through the fit,
+selection, terminal, and multisine-only final gates. V1 retains its 512 cap
+and historical receipts; no old result is relabeled. Independent read-only
+review found a pre-Qwen archive rehash gap; the author fixed it and a synthetic
+archive-mutation test now blocks proposal dispatch. Reviewers approved the
+result after 114 focused runner/scorer tests and 113 inference/protocol tests,
+respectively. Those are control tests, not evidence that v2 inference is
+correct or that it will complete on real data. No v2 Qwen request, ABC fit,
+validation selection, or sealed score has run. The code and compact report
+still need one-owner Git synchronization; only after that can the exact
+run manifest be frozen and one v2 pilot executed. The proposed protocol is
+`reports/silverbox-second-development-protocol-proposal-2026-09-25.md`.
 
 ## Latest checkpoint: 2026-09-25T1802Z wake
 

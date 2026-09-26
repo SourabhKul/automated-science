@@ -2,8 +2,15 @@
 
 Reproducible explicit runtime invocation (from the repository root):
 
-    uv run --python 3.12 --with numpy==2.4.4 --with psutil==7.2.2 \
+    uv run --python 3.12.11 --with numpy==2.4.4 --with psutil==7.2.2 \
       python scripts/run_silverbox_development.py
+
+For the proposed v2 protocol, pass a caller-prepared frozen provenance input:
+
+    uv run --python 3.12.11 --with numpy==2.4.4 --with psutil==7.2.2 \
+      python scripts/run_silverbox_development.py \
+      --protocol-id silverbox_first_fit_v2_2048_20260925 \
+      --preflight-manifest /path/to/reviewed-silverbox-v2-manifest.json
 
 The bridge verifies the archive against the tracked manifest before making
 one fixed-model proposal request. It does not expose any sealed scoring API.
@@ -13,20 +20,21 @@ from __future__ import annotations
 
 import argparse
 import base64
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import re
 import tempfile
 import time
 import uuid
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+from core.real_data import silverbox_v2_manifest
 from core.real_data.silverbox_controlled import (
     SilverboxControlledDevelopment,
     load_silverbox_controlled_development,
@@ -36,7 +44,14 @@ from core.real_data.silverbox_first_fit import (
     FrozenSilverboxFit,
     SilverboxSelection,
     fit_silverbox_development,
+    protocol_attempt_cap,
     select_silverbox_development,
+)
+from core.real_data.silverbox_first_fit import (
+    PROTOCOL_ID as FIRST_FIT_V1_PROTOCOL_ID,
+)
+from core.real_data.silverbox_first_fit import (
+    V2_PROTOCOL_ID as FIRST_FIT_V2_PROTOCOL_ID,
 )
 from core.real_data.silverbox_proposer import (
     ALLOWED_TERM_IDS,
@@ -49,13 +64,14 @@ from core.real_data.silverbox_proposer import (
     request_silverbox_proposal,
 )
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST_PATH = REPOSITORY_ROOT / "data/real/silverbox/manifest.json"
 DEFAULT_RECEIPT_ROOT = REPOSITORY_ROOT / "artifacts/silverbox_first_fit"
 PROPOSAL_MAX_WALL_SECONDS = REQUEST_TIMEOUT_SECONDS
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
+V1_PROTOCOL_ID = FIRST_FIT_V1_PROTOCOL_ID
+V2_PROTOCOL_ID = FIRST_FIT_V2_PROTOCOL_ID
 
 
 @dataclass(frozen=True)
@@ -70,6 +86,9 @@ class SilverboxDevelopmentRun:
     proposal_receipt_sha256: str | None = None
     fit: FrozenSilverboxFit | Any | None = None
     selection: SilverboxSelection | Any | None = None
+    protocol_id: str = V1_PROTOCOL_ID
+    abc_attempts_per_population: int = 512
+    preflight_manifest_sha256: str | None = None
 
 
 def run_silverbox_development(
@@ -83,6 +102,8 @@ def run_silverbox_development(
     select: Callable[..., SilverboxSelection] | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     run_id_factory: Callable[[], str] | None = None,
+    protocol_id: str = V1_PROTOCOL_ID,
+    preflight_manifest_path: str | Path | None = None,
 ) -> SilverboxDevelopmentRun:
     """Execute one bounded proposal → train-only fit → development selection.
 
@@ -99,16 +120,76 @@ def run_silverbox_development(
     if not isinstance(run_id, str) or not _RUN_ID_RE.fullmatch(run_id):
         raise ValueError("run_id must be a filesystem-safe 1–128 character identifier")
 
+    if protocol_id == V1_PROTOCOL_ID:
+        attempt_cap = protocol_attempt_cap(protocol_id)
+        if preflight_manifest_path is not None:
+            raise ValueError("v1 runs do not accept a v2 preflight manifest")
+    elif protocol_id == V2_PROTOCOL_ID:
+        attempt_cap = protocol_attempt_cap(protocol_id)
+    else:
+        raise ValueError(f"unsupported Silverbox development protocol: {protocol_id!r}")
+
+    manifest_bytes: bytes | None = None
+    manifest_document: dict[str, Any] | None = None
+    manifest_sha256: str | None = None
+    manifest_error: Exception | None = None
+    preflight_actual: dict[str, Any] | None = None
+    preflight_verified_sha256: str | None = None
+    if protocol_id == V2_PROTOCOL_ID:
+        if preflight_manifest_path is None:
+            manifest_error = ValueError("v2 requires a caller-frozen preflight manifest")
+        else:
+            try:
+                manifest_bytes, manifest_document, manifest_sha256 = silverbox_v2_manifest.read_manifest(
+                    preflight_manifest_path
+                )
+            except Exception as error:
+                manifest_error = error
+
     root = Path(receipt_root)
     stage_directory = root / "_orchestration" / run_id
     root.mkdir(parents=True, exist_ok=True)
     if (root / run_id).exists():
         raise FileExistsError(f"fit receipt directory already exists for run ID {run_id}")
     stage_directory.mkdir(parents=True, exist_ok=False)
-    _write_stage_receipt(
+
+    def with_v2_binding(payload: Mapping[str, Any]) -> dict[str, Any]:
+        result = dict(payload)
+        if protocol_id == V2_PROTOCOL_ID:
+            result.update(
+                {
+                    "protocol_id": protocol_id,
+                    "abc_attempts_per_population": attempt_cap,
+                    "preflight_manifest_sha256": manifest_sha256,
+                    **(
+                        {"preflight_verified_sha256": preflight_verified_sha256}
+                        if preflight_verified_sha256 is not None
+                        else {}
+                    ),
+                }
+            )
+        return result
+
+    def write_stage(path: Path, payload: Mapping[str, Any]) -> str:
+        return _write_stage_receipt(path, with_v2_binding(payload))
+
+    def finish_unresolved(*args: Any, **kwargs: Any) -> SilverboxDevelopmentRun:
+        return _finish_unresolved(
+            *args,
+            protocol_id=protocol_id,
+            attempt_cap=attempt_cap,
+            preflight_manifest_sha256=manifest_sha256,
+            preflight_verified_sha256=preflight_verified_sha256,
+            **kwargs,
+        )
+
+    if manifest_bytes is not None:
+        _write_exact_atomic(stage_directory / "preflight_manifest.json", manifest_bytes)
+
+    write_stage(
         stage_directory / "run_started.json",
         {
-            "protocol_id": "silverbox-first-fit-2026-09-25",
+            "protocol_id": protocol_id,
             "run_id": run_id,
             "status": "started",
             "started_unix": started_unix,
@@ -122,7 +203,7 @@ def run_silverbox_development(
             manifest_path=Path(manifest_path), archive_path=None if archive_path is None else Path(archive_path)
         )
     except Exception as error:
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "source_manifest_or_archive_verification_failed",
@@ -133,7 +214,7 @@ def run_silverbox_development(
                 "validation_accessed": False,
             },
         )
-    _write_stage_receipt(
+    write_stage(
         stage_directory / "source_verified.json",
         {
             "run_id": run_id,
@@ -144,6 +225,51 @@ def run_silverbox_development(
             "archive_sha256": source_sha256,
         },
     )
+
+    if protocol_id == V2_PROTOCOL_ID:
+        if manifest_error is not None or manifest_document is None:
+            return finish_unresolved(
+                run_id,
+                stage_directory,
+                "v2_preflight_manifest_unavailable",
+                "preflight_failed.json",
+                {"error_type": type(manifest_error).__name__ if manifest_error else "ValueError",
+                 "error": str(manifest_error or "manifest missing"), "validation_accessed": False},
+                source_sha256=source_sha256,
+            )
+        try:
+            copied_digest = _sha256_file(stage_directory / "preflight_manifest.json")[0]
+            if copied_digest != manifest_sha256:
+                raise ValueError("copied preflight manifest bytes changed")
+            preflight_actual = silverbox_v2_manifest.current_environment(REPOSITORY_ROOT)
+            silverbox_v2_manifest.verify_manifest(
+                manifest_document,
+                actual=preflight_actual,
+                archive_sha256=source_sha256,
+                archive_bytes=expected_bytes,
+            )
+            preflight_verified_sha256 = write_stage(
+                stage_directory / "preflight_verified.json",
+                {
+                    "run_id": run_id,
+                    "status": "verified",
+                    "reviewed_git_commit": preflight_actual["reviewed_git_commit"],
+                    "reviewed_tree_clean": preflight_actual["reviewed_tree_clean"],
+                    "runtime_versions": preflight_actual["runtime"],
+                    "code_sha256": preflight_actual["code_sha256"],
+                    "archive_sha256": source_sha256,
+                    "archive_bytes": expected_bytes,
+                },
+            )
+        except Exception as error:
+            return finish_unresolved(
+                run_id,
+                stage_directory,
+                "v2_preflight_mismatch",
+                "preflight_failed.json",
+                {"error_type": type(error).__name__, "error": str(error), "validation_accessed": False},
+                source_sha256=source_sha256,
+            )
 
     try:
         if loader is None:
@@ -158,7 +284,7 @@ def run_silverbox_development(
         if not isinstance(train_windows, tuple) or len(train_windows) != 4:
             raise ValueError("development loader did not return the four fixed training windows")
     except Exception as error:
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "development_data_load_failed",
@@ -166,7 +292,7 @@ def run_silverbox_development(
             {"error_type": type(error).__name__, "error": str(error), "validation_accessed": False},
             source_sha256=source_sha256,
         )
-    _write_stage_receipt(
+    write_stage(
         stage_directory / "data_loaded.json",
         {
             "run_id": run_id,
@@ -180,7 +306,7 @@ def run_silverbox_development(
     )
 
     if _pilot_expired(started_monotonic, monotonic()):
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "wall_time_limit_before_proposal",
@@ -189,13 +315,46 @@ def run_silverbox_development(
             source_sha256=source_sha256,
         )
 
+    if protocol_id == V2_PROTOCOL_ID:
+        try:
+            # The source archive is part of the reviewed v2 execution input.
+            # Rehash the same resolved path after development loading and
+            # immediately before the sole proposal dispatch; the initial
+            # preflight digest alone would not detect a replacement during
+            # loader execution.
+            rechecked_archive, rechecked_sha256, rechecked_bytes = _verify_archive(
+                manifest_path=Path(manifest_path), archive_path=verified_archive
+            )
+            if rechecked_archive != verified_archive:
+                raise ValueError("resolved archive path changed before proposal dispatch")
+            if rechecked_sha256 != source_sha256 or rechecked_bytes != expected_bytes:
+                raise ValueError("archive bytes changed after initial v2 source verification")
+            current_actual = _verify_v2_manifest_current(
+                stage_directory,
+                manifest_document,
+                manifest_sha256,
+                rechecked_sha256,
+                rechecked_bytes,
+            )
+            if current_actual != preflight_actual:
+                raise ValueError("verified Git, code, or runtime state changed before proposal dispatch")
+        except Exception as error:
+            return finish_unresolved(
+                run_id,
+                stage_directory,
+                "v2_preflight_changed_before_proposal",
+                "preflight_failed.json",
+                {"error_type": type(error).__name__, "error": str(error), "validation_accessed": False},
+                source_sha256=source_sha256,
+            )
+
     request_fn = proposal_request or request_silverbox_proposal
     proposal_receipt_directory = stage_directory / "proposal_receipts"
     # This directory is an empty, run-local capability: the one proposal call
     # is allowed to place exactly one receipt here, and the verifier rejects
     # any receipt that resolves elsewhere.
     proposal_receipt_directory.mkdir(parents=False, exist_ok=False)
-    _write_stage_receipt(
+    write_stage(
         stage_directory / "proposal_dispatching.json",
         {"run_id": run_id, "status": "dispatching", "model_id": MODEL_ID},
     )
@@ -211,7 +370,7 @@ def run_silverbox_development(
         receipt_path = getattr(error, "receipt_path", None)
         if receipt_path is None and proposal_result is not None:
             receipt_path = getattr(proposal_result, "receipt_path", None)
-        _write_stage_receipt(
+        write_stage(
             stage_directory / "proposal_failed.json",
             {
                 "run_id": run_id,
@@ -224,7 +383,7 @@ def run_silverbox_development(
                 "validation_accessed": False,
             },
         )
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "terminal_qwen_proposal_failure",
@@ -235,7 +394,7 @@ def run_silverbox_development(
 
     proposal_sha256 = proposal_receipt["receipt_sha256"]
     if request_elapsed >= PROPOSAL_MAX_WALL_SECONDS:
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "proposal_request_wall_time_limit",
@@ -250,7 +409,7 @@ def run_silverbox_development(
             source_sha256=source_sha256,
             proposal_receipt_sha256=proposal_sha256,
         )
-    _write_stage_receipt(
+    write_stage(
         stage_directory / "proposal_succeeded.json",
         {
             "run_id": run_id,
@@ -268,7 +427,7 @@ def run_silverbox_development(
     )
 
     if _pilot_expired(started_monotonic, monotonic()):
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "wall_time_limit_before_fit",
@@ -280,17 +439,24 @@ def run_silverbox_development(
 
     fit_fn = fit or fit_silverbox_development
     try:
+        fit_kwargs = {
+            "source_sha256": source_sha256,
+            "proposal_receipt_sha256": proposal_sha256,
+            "run_id": run_id,
+            "receipt_dir": root,
+            "pilot_started_monotonic": started_monotonic,
+        }
+        if protocol_id == V2_PROTOCOL_ID:
+            fit_kwargs.update(
+                {"protocol_id": protocol_id, "preflight_manifest_sha256": manifest_sha256}
+            )
         fit_result = fit_fn(
             train_windows,
             proposal_receipt["term_id"],
-            source_sha256=source_sha256,
-            proposal_receipt_sha256=proposal_sha256,
-            run_id=run_id,
-            receipt_dir=root,
-            pilot_started_monotonic=started_monotonic,
+            **fit_kwargs,
         )
     except Exception as error:
-        _write_stage_receipt(
+        write_stage(
             stage_directory / "fit_failed.json",
             {
                 "run_id": run_id,
@@ -301,7 +467,7 @@ def run_silverbox_development(
                 "validation_accessed": False,
             },
         )
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "fit_failed",
@@ -312,10 +478,14 @@ def run_silverbox_development(
         )
 
     fit_status = getattr(fit_result, "status", None)
+    fit_protocol_matches = protocol_id == V1_PROTOCOL_ID or (
+        getattr(fit_result, "protocol_id", None) == protocol_id
+        and getattr(fit_result, "preflight_manifest_sha256", None) == manifest_sha256
+    )
     fit_receipt_path = getattr(fit_result, "receipt_path", None)
     fit_receipt_sha256 = getattr(fit_result, "receipt_sha256", None)
     fit_deadline_exceeded = _pilot_expired(started_monotonic, monotonic())
-    _write_stage_receipt(
+    write_stage(
         stage_directory / "fit_completed.json",
         {
             "run_id": run_id,
@@ -328,8 +498,20 @@ def run_silverbox_development(
         },
     )
 
+    if not fit_protocol_matches:
+        return finish_unresolved(
+            run_id,
+            stage_directory,
+            "fit_protocol_binding_mismatch",
+            "selection_skipped.json",
+            {"status": "unresolved", "fit_status": fit_status, "validation_accessed": False},
+            source_sha256=source_sha256,
+            proposal_receipt_sha256=proposal_sha256,
+            fit=fit_result,
+        )
+
     if fit_deadline_exceeded:
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "wall_time_limit_after_fit",
@@ -347,7 +529,7 @@ def run_silverbox_development(
 
     if fit_status != "complete":
         reason = "fit_incomplete" if fit_status == "incomplete" else "fit_returned_invalid_status"
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             reason,
@@ -364,7 +546,7 @@ def run_silverbox_development(
         )
 
     if _pilot_expired(started_monotonic, monotonic()):
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "wall_time_limit_before_selection",
@@ -379,7 +561,7 @@ def run_silverbox_development(
     try:
         selection_result = select_fn(fit_result, development.validation)
     except Exception as error:
-        _write_stage_receipt(
+        write_stage(
             stage_directory / "selection_failed.json",
             {
                 "run_id": run_id,
@@ -390,7 +572,7 @@ def run_silverbox_development(
                 "validation_accessed": True,
             },
         )
-        return _finish_unresolved(
+        return finish_unresolved(
             run_id,
             stage_directory,
             "development_selection_failed",
@@ -402,9 +584,22 @@ def run_silverbox_development(
         )
 
     selection_status = getattr(selection_result, "status", None)
+    selection_protocol_matches = protocol_id == V1_PROTOCOL_ID or (
+        getattr(selection_result, "protocol_id", None) == protocol_id
+        and getattr(selection_result, "preflight_manifest_sha256", None) == manifest_sha256
+    )
     selection_api_status = selection_status
-    selection_reason = getattr(selection_result, "reason", "selection_returned_invalid_status")
-    selection_selected_hypothesis = getattr(selection_result, "selected_hypothesis", None)
+    selection_reason = (
+        getattr(selection_result, "reason", "selection_returned_invalid_status")
+        if selection_protocol_matches
+        else "selection_protocol_binding_mismatch"
+    )
+    selection_selected_hypothesis = (
+        getattr(selection_result, "selected_hypothesis", None) if selection_protocol_matches else None
+    )
+    if not selection_protocol_matches:
+        selection_status = "unresolved"
+        selection_api_status = "unresolved"
     selection_deadline_exceeded = _pilot_expired(started_monotonic, monotonic())
     if selection_deadline_exceeded:
         selection_status = "unresolved"
@@ -425,7 +620,7 @@ def run_silverbox_development(
         "validation_accessed": True,
     }
     selection_stage_path = stage_directory / "selection_completed.json"
-    _write_stage_receipt(selection_stage_path, selection_stage_payload)
+    write_stage(selection_stage_path, selection_stage_payload)
     status = "selected" if selection_status == "selected" else "unresolved"
     run_finished_deadline_exceeded = _pilot_expired(started_monotonic, monotonic())
     if run_finished_deadline_exceeded:
@@ -436,12 +631,12 @@ def run_silverbox_development(
         selection_stage_payload.update(
             {"status": "unresolved", "reason": "wall_time_limit", "selected_hypothesis": None}
         )
-        _write_stage_receipt(selection_stage_path, selection_stage_payload)
+        write_stage(selection_stage_path, selection_stage_payload)
 
     run_finished_path = stage_directory / "run_finished.json"
 
     def write_run_finished() -> None:
-        _write_stage_receipt(
+        write_stage(
             run_finished_path,
             {
                 "run_id": run_id,
@@ -466,7 +661,7 @@ def run_silverbox_development(
         selection_stage_payload.update(
             {"status": "unresolved", "reason": "wall_time_limit", "selected_hypothesis": None}
         )
-        _write_stage_receipt(selection_stage_path, selection_stage_payload)
+        write_stage(selection_stage_path, selection_stage_payload)
         write_run_finished()
     return SilverboxDevelopmentRun(
         run_id,
@@ -478,10 +673,13 @@ def run_silverbox_development(
         fit_result,
         (
             None
-            if selection_api_status == "selected"
-            and selection_blocked_by_deadline
+            if not selection_protocol_matches
+            or (selection_api_status == "selected" and selection_blocked_by_deadline)
             else selection_result
         ),
+        protocol_id,
+        attempt_cap,
+        manifest_sha256,
     )
 
 
@@ -674,8 +872,27 @@ def _finish_unresolved(
     source_sha256: str | None = None,
     proposal_receipt_sha256: str | None = None,
     fit: Any = None,
+    protocol_id: str = V1_PROTOCOL_ID,
+    attempt_cap: int = 512,
+    preflight_manifest_sha256: str | None = None,
+    preflight_verified_sha256: str | None = None,
 ) -> SilverboxDevelopmentRun:
     payload = {"run_id": run_id, "reason": reason, **dict(stage_payload)}
+    v2_binding = (
+        {
+            "protocol_id": protocol_id,
+            "abc_attempts_per_population": attempt_cap,
+            "preflight_manifest_sha256": preflight_manifest_sha256,
+            **(
+                {"preflight_verified_sha256": preflight_verified_sha256}
+                if preflight_verified_sha256 is not None
+                else {}
+            ),
+        }
+        if protocol_id == V2_PROTOCOL_ID
+        else {}
+    )
+    payload.update(v2_binding)
     if stage_filename is not None:
         _write_stage_receipt(stage_directory / stage_filename, payload)
     _write_stage_receipt(
@@ -689,6 +906,7 @@ def _finish_unresolved(
             "fit_receipt_sha256": getattr(fit, "receipt_sha256", None),
             "validation_accessed": bool(payload.get("validation_accessed", False)),
             "finished_unix": time.time(),
+            **v2_binding,
         },
     )
     return SilverboxDevelopmentRun(
@@ -700,7 +918,53 @@ def _finish_unresolved(
         proposal_receipt_sha256,
         fit,
         None,
+        protocol_id,
+        attempt_cap,
+        preflight_manifest_sha256,
     )
+
+
+def _write_exact_atomic(path: Path, raw: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as temporary:
+            temporary.write(raw)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.chmod(temporary_path, 0o444)
+        os.replace(temporary_path, path)
+        directory_descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def _verify_v2_manifest_current(
+    stage_directory: Path,
+    manifest: dict[str, Any] | None,
+    manifest_sha256: str | None,
+    archive_sha256: str,
+    archive_bytes: int,
+) -> dict[str, Any]:
+    if manifest is None or manifest_sha256 is None:
+        raise ValueError("v2 preflight manifest is unavailable")
+    staged_manifest = stage_directory / "preflight_manifest.json"
+    if staged_manifest.is_symlink() or _sha256_file(staged_manifest)[0] != manifest_sha256:
+        raise ValueError("staged caller manifest bytes changed during the run")
+    actual = silverbox_v2_manifest.current_environment(REPOSITORY_ROOT)
+    silverbox_v2_manifest.verify_manifest(
+        manifest,
+        actual=actual,
+        archive_sha256=archive_sha256,
+        archive_bytes=archive_bytes,
+    )
+    return actual
 
 
 def _write_stage_receipt(path: Path, payload: Mapping[str, Any]) -> str:
@@ -795,6 +1059,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, help="path to the official archive verified against the manifest")
     parser.add_argument(
+        "--protocol-id",
+        choices=(V1_PROTOCOL_ID, V2_PROTOCOL_ID),
+        default=V1_PROTOCOL_ID,
+        help="fixed development protocol; v2 additionally requires --preflight-manifest",
+    )
+    parser.add_argument(
+        "--preflight-manifest",
+        type=Path,
+        help="caller-prepared immutable v2 commit/source/code/runtime pin manifest",
+    )
+    parser.add_argument(
         "--receipt-root",
         type=Path,
         default=DEFAULT_RECEIPT_ROOT,
@@ -805,7 +1080,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    outcome = run_silverbox_development(archive_path=args.archive, receipt_root=args.receipt_root)
+    outcome = run_silverbox_development(
+        archive_path=args.archive,
+        receipt_root=args.receipt_root,
+        protocol_id=args.protocol_id,
+        preflight_manifest_path=args.preflight_manifest,
+    )
     print(
         json.dumps(
             {
@@ -817,6 +1097,9 @@ def main(argv: list[str] | None = None) -> int:
                 "proposal_receipt_sha256": outcome.proposal_receipt_sha256,
                 "fit_receipt_sha256": getattr(outcome.fit, "receipt_sha256", None),
                 "selection_receipt_sha256": getattr(outcome.selection, "receipt_sha256", None),
+                "protocol_id": outcome.protocol_id,
+                "abc_attempts_per_population": outcome.abc_attempts_per_population,
+                "preflight_manifest_sha256": outcome.preflight_manifest_sha256,
             },
             ensure_ascii=False,
             sort_keys=True,

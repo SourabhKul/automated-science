@@ -5,16 +5,22 @@ import csv
 import hashlib
 import io
 import json
-from pathlib import Path
 import time
 import zipfile
+from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from core import abc_smc_reference
-from core.real_data import silverbox_controlled, silverbox_first_fit, silverbox_proposer
 import core.real_data.silverbox_final as silverbox_final
+from core import abc_smc_reference
+from core.real_data import (
+    silverbox_controlled,
+    silverbox_first_fit,
+    silverbox_proposer,
+    silverbox_v2_manifest,
+)
 
 
 def _synthetic_archive(path: Path) -> tuple[Path, bytes, np.ndarray, np.ndarray]:
@@ -171,6 +177,7 @@ def _complete_receipts(tmp_path: Path, archive_bytes: bytes, *, selected: str = 
 
     protocol_constants = {
         "abc_particles": silverbox_first_fit.ABC_PARTICLES,
+        "abc_attempts_per_population": silverbox_first_fit.ABC_ATTEMPTS_PER_POPULATION,
         "linear_parameter_names": list(silverbox_first_fit.LINEAR_PARAMETER_NAMES),
         "nonlinear_parameter_names": list(silverbox_first_fit.NONLINEAR_PARAMETER_NAMES),
         "linear_bounds": [list(row) for row in silverbox_first_fit.LINEAR_BOUNDS],
@@ -191,17 +198,28 @@ def _complete_receipts(tmp_path: Path, archive_bytes: bytes, *, selected: str = 
                     "generation": generation,
                     "accepted_params": params.tolist(),
                     "weights": weights.tolist(),
-                    "diagnostics": {"complete": True},
+                    "diagnostics": {
+                        "complete": True,
+                        "max_attempts": silverbox_first_fit.ABC_ATTEMPTS_PER_POPULATION,
+                        "proposed": silverbox_first_fit.ABC_PARTICLES,
+                    },
                 }
             )
         hypotheses[hypothesis] = {
             "status": "complete",
             "parameter_names": list(names),
             "bounds": [list(row) for row in bounds],
-            "calibration": {"status": "complete", "finite_count": 256},
+            "calibration": {
+                "protocol_id": silverbox_first_fit.PROTOCOL_ID,
+                "status": "complete",
+                "finite_count": 256,
+            },
             "abc_result": {
                 "status": "complete",
                 "complete": True,
+                "max_attempts_per_population": [
+                    silverbox_first_fit.ABC_ATTEMPTS_PER_POPULATION
+                ] * silverbox_first_fit.ABC_POPULATIONS,
                 "populations": populations,
             },
         }
@@ -334,6 +352,129 @@ def _complete_receipts(tmp_path: Path, archive_bytes: bytes, *, selected: str = 
     return fit, selection, fit_body, selection_body
 
 
+def _convert_receipts_to_synthetic_v2(tmp_path: Path, archive_bytes: bytes, monkeypatch):
+    fit, selection, fit_body, selection_body = _complete_receipts(tmp_path, archive_bytes)
+    source_sha = hashlib.sha256(archive_bytes).hexdigest()
+    protocol_id = silverbox_first_fit.V2_PROTOCOL_ID
+    manifest_hashes = {
+        name: format(index + 1, "064x")
+        for index, name in enumerate(silverbox_v2_manifest.CODE_FILES)
+    }
+    actual = {
+        "reviewed_git_commit": "a" * 40,
+        "reviewed_tree_clean": True,
+        "runtime": dict(silverbox_v2_manifest.PINNED_RUNTIME),
+        "code_sha256": manifest_hashes,
+    }
+    manifest = {
+        "protocol_id": protocol_id,
+        "abc_attempts_per_population": 2_048,
+        "reviewed_git_commit": actual["reviewed_git_commit"],
+        "reviewed_tree_clean": True,
+        "source": {"archive_sha256": source_sha, "archive_bytes": len(archive_bytes)},
+        "runtime": dict(actual["runtime"]),
+        "code_sha256": manifest_hashes,
+    }
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+    monkeypatch.setattr(
+        silverbox_final.silverbox_v2_manifest,
+        "current_environment",
+        lambda _root: actual,
+    )
+
+    fit_body.pop("receipt_sha256", None)
+    fit_body["protocol_id"] = protocol_id
+    fit_body["abc_attempts_per_population"] = 2_048
+    fit_body["preflight_manifest_sha256"] = manifest_sha
+    fit_body["protocol_constants"]["abc_attempts_per_population"] = 2_048
+    for family in fit_body["hypotheses"].values():
+        family["calibration"]["protocol_id"] = protocol_id
+        family["abc_result"]["max_attempts_per_population"] = [2_048, 2_048]
+        for population in family["abc_result"]["populations"]:
+            population["diagnostics"]["max_attempts"] = 2_048
+    fit_path, fit_sha = _write_content_hashed(fit.receipt_path, fit_body)
+    fit = replace(
+        fit,
+        receipt_path=fit_path,
+        receipt_sha256=fit_sha,
+        protocol_id=protocol_id,
+        preflight_manifest_sha256=manifest_sha,
+    )
+
+    selection_body.pop("receipt_sha256", None)
+    selection_body.update(
+        {
+            "protocol_id": protocol_id,
+            "abc_attempts_per_population": 2_048,
+            "preflight_manifest_sha256": manifest_sha,
+            "fit_receipt_sha256": fit_sha,
+        }
+    )
+    selection_path, selection_sha = _write_content_hashed(selection.receipt_path, selection_body)
+    selection = replace(
+        selection,
+        receipt_path=selection_path,
+        receipt_sha256=selection_sha,
+        protocol_id=protocol_id,
+        preflight_manifest_sha256=manifest_sha,
+    )
+
+    stage_dir = _orchestration_dir(fit)
+    (stage_dir / "preflight_manifest.json").write_bytes(manifest_bytes)
+    verified_payload = {
+        "run_id": fit.run_id,
+        "status": "verified",
+        "reviewed_git_commit": actual["reviewed_git_commit"],
+        "reviewed_tree_clean": True,
+        "runtime_versions": actual["runtime"],
+        "code_sha256": actual["code_sha256"],
+        "archive_sha256": source_sha,
+        "archive_bytes": len(archive_bytes),
+        "protocol_id": protocol_id,
+        "abc_attempts_per_population": 2_048,
+        "preflight_manifest_sha256": manifest_sha,
+    }
+    verified_bytes = (json.dumps(verified_payload, sort_keys=True, indent=2) + "\n").encode()
+    verified_sha = hashlib.sha256(verified_bytes).hexdigest()
+    (stage_dir / "preflight_verified.json").write_bytes(verified_bytes)
+    stage_values = {
+        "run_started.json": {},
+        "source_verified.json": {"archive_bytes": len(archive_bytes)},
+        "proposal_succeeded.json": {},
+        "fit_completed.json": {"fit_receipt_sha256": fit_sha, "fit_receipt_path": str(fit_path)},
+        "selection_completed.json": {
+            "selection_receipt_sha256": selection_sha,
+            "selection_receipt_path": str(selection_path),
+            "fit_receipt_sha256": fit_sha,
+        },
+        "run_finished.json": {
+            "fit_receipt_sha256": fit_sha,
+            "selection_receipt_sha256": selection_sha,
+        },
+    }
+    for filename, updates in stage_values.items():
+        path = stage_dir / filename
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload.update(updates)
+        payload.update(
+            {
+                "protocol_id": protocol_id,
+                "abc_attempts_per_population": 2_048,
+                "preflight_manifest_sha256": manifest_sha,
+            }
+        )
+        if filename in {
+            "proposal_succeeded.json",
+            "fit_completed.json",
+            "selection_completed.json",
+            "run_finished.json",
+        }:
+            payload["preflight_verified_sha256"] = verified_sha
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    return fit, selection, fit_body, selection_body, manifest_sha, stage_dir
+
+
 def _orchestration_dir(fit: silverbox_first_fit.FrozenSilverboxFit) -> Path:
     return fit.receipt_path.parent.parent / "_orchestration" / fit.run_id
 
@@ -375,6 +516,71 @@ def _assert_denied_before_archive_access(
 @pytest.fixture
 def synthetic_source(tmp_path):
     return _synthetic_archive(tmp_path / "index-coded-silverbox.zip")
+
+
+def test_v2_final_gate_requires_matching_fit_selection_stage_manifest_and_cap(
+    monkeypatch, tmp_path, synthetic_source
+):
+    archive_path, archive_bytes, _, _ = synthetic_source
+    fit, selection, _, _, manifest_sha, stage_dir = _convert_receipts_to_synthetic_v2(
+        tmp_path, archive_bytes, monkeypatch
+    )
+    locked = silverbox_final._verify_locked_inputs(fit, selection)
+    assert locked.protocol_id == silverbox_first_fit.V2_PROTOCOL_ID
+    assert locked.abc_attempts_per_population == 2_048
+    assert locked.preflight_manifest_sha256 == manifest_sha
+    assert locked.expected_archive_bytes == len(archive_bytes)
+    final_binding = silverbox_final._protocol_receipt_fields(locked)
+    assert final_binding["preflight_verified_sha256"] == locked.preflight_verified_sha256
+    assert final_binding["reviewed_git_commit"] == "a" * 40
+    assert final_binding["runtime_versions"] == silverbox_v2_manifest.PINNED_RUNTIME
+    assert final_binding["code_sha256"] == locked.code_sha256
+    assert final_binding["archive_bytes"] == len(archive_bytes)
+
+    run_finished_path = stage_dir / "run_finished.json"
+    run_finished = json.loads(run_finished_path.read_text(encoding="utf-8"))
+    run_finished["abc_attempts_per_population"] = 512
+    run_finished_path.write_text(json.dumps(run_finished), encoding="utf-8")
+    with pytest.raises(ValueError, match="protocol, cap, and manifest"):
+        silverbox_final._verify_locked_inputs(fit, selection)
+    assert not (fit.receipt_path.parent / silverbox_final.FINAL_STARTED_NAME).exists()
+
+
+def test_v1_receipts_are_denied_when_handles_claim_v2_before_archive_access(
+    monkeypatch, tmp_path, synthetic_source
+):
+    archive_path, archive_bytes, _, _ = synthetic_source
+    fit, selection, _, _ = _complete_receipts(tmp_path, archive_bytes)
+    manifest_sha = "a" * 64
+    mislabeled_fit = replace(
+        fit,
+        protocol_id=silverbox_first_fit.V2_PROTOCOL_ID,
+        preflight_manifest_sha256=manifest_sha,
+    )
+    mislabeled_selection = replace(
+        selection,
+        protocol_id=silverbox_first_fit.V2_PROTOCOL_ID,
+        preflight_manifest_sha256=manifest_sha,
+    )
+    with pytest.raises(ValueError, match="fit receipt protocol id"):
+        silverbox_final.score_silverbox_final(mislabeled_fit, mislabeled_selection, archive_path)
+    assert not (fit.receipt_path.parent / silverbox_final.FINAL_STARTED_NAME).exists()
+
+
+def test_v2_selection_receipt_with_v1_cap_is_denied_before_archive_access(
+    monkeypatch, tmp_path, synthetic_source
+):
+    _, archive_bytes, _, _ = synthetic_source
+    fit, selection, _, selection_body, _, _ = _convert_receipts_to_synthetic_v2(
+        tmp_path, archive_bytes, monkeypatch
+    )
+    selection_body.pop("receipt_sha256", None)
+    selection_body["abc_attempts_per_population"] = 512
+    path, digest = _write_content_hashed(selection.receipt_path, selection_body)
+    selection = replace(selection, receipt_path=path, receipt_sha256=digest)
+    with pytest.raises(ValueError, match="v2 selection receipt"):
+        silverbox_final._verify_locked_inputs(fit, selection)
+    assert not (fit.receipt_path.parent / silverbox_final.FINAL_STARTED_NAME).exists()
 
 
 def test_final_scorer_uses_only_multisine_and_scores_all_particle_medians(monkeypatch, tmp_path, synthetic_source):

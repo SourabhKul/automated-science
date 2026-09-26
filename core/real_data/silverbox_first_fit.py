@@ -9,18 +9,18 @@ sealed-test scorer.
 
 from __future__ import annotations
 
-from collections import Counter
-from contextlib import contextmanager
-from dataclasses import dataclass
 import fcntl
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import re
 import tempfile
 import time
+from collections import Counter
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
@@ -44,8 +44,8 @@ from core.real_data.silverbox_controlled import (
     SilverboxControlledValidation,
 )
 
-
 PROTOCOL_ID = "silverbox-first-fit-2026-09-25"
+V2_PROTOCOL_ID = "silverbox_first_fit_v2_2048_20260925"
 TERM_IDS = ("y_cubed", "u_cubed", "u_y_product")
 TermId = Literal["y_cubed", "u_cubed", "u_y_product"]
 HYPOTHESES = ("linear", "nonlinear")
@@ -61,6 +61,7 @@ CALIBRATION_QUANTILES = (0.50, 0.20)
 ABC_PARTICLES = 64
 ABC_POPULATIONS = 2
 ABC_ATTEMPTS_PER_POPULATION = 512
+V2_ABC_ATTEMPTS_PER_POPULATION = 2_048
 ABC_COVARIANCE_SCALE = 2.0
 ABC_LAMBDA_NOISE = 0.01
 ABC_NUGGET = 1e-9
@@ -68,6 +69,10 @@ PILOT_WALL_SECONDS = 600.0
 PILOT_ADDITIONAL_MEMORY_BYTES = 2 * 1024**3
 NONLINEAR_PROMOTION_MARGIN = 0.05
 DEFAULT_RECEIPT_DIR = Path("artifacts/silverbox_first_fit")
+PROTOCOL_ATTEMPT_CAPS = {
+    PROTOCOL_ID: ABC_ATTEMPTS_PER_POPULATION,
+    V2_PROTOCOL_ID: V2_ABC_ATTEMPTS_PER_POPULATION,
+}
 
 
 class SimulationFailure(RuntimeError):
@@ -90,6 +95,8 @@ class FrozenSilverboxFit:
     term_id: TermId
     source_sha256: str
     proposal_receipt_sha256: str
+    protocol_id: str = PROTOCOL_ID
+    preflight_manifest_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -101,6 +108,8 @@ class SilverboxSelection:
     receipt_path: Path
     receipt_sha256: str
     reason: str
+    protocol_id: str = PROTOCOL_ID
+    preflight_manifest_sha256: str | None = None
 
 
 class _PilotBudget:
@@ -142,6 +151,22 @@ class _PilotBudget:
             "process_id": os.getpid(),
             "stop_reason": self.stop_reason,
         }
+
+
+def protocol_attempt_cap(protocol_id: str) -> int:
+    """Return the fixed ABC attempt cap for one explicitly named protocol."""
+
+    try:
+        return PROTOCOL_ATTEMPT_CAPS[protocol_id]
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"unsupported Silverbox fit protocol: {protocol_id!r}") from error
+
+
+def _protocol_receipt_fields(protocol_id: str) -> dict[str, Any]:
+    fields: dict[str, Any] = {"protocol_id": protocol_id}
+    if protocol_id == V2_PROTOCOL_ID:
+        fields["abc_attempts_per_population"] = V2_ABC_ATTEMPTS_PER_POPULATION
+    return fields
 
 
 def train_only_scalers(
@@ -254,6 +279,8 @@ def fit_silverbox_development(
     run_id: str,
     receipt_dir: str | Path = DEFAULT_RECEIPT_DIR,
     pilot_started_monotonic: float | None = None,
+    protocol_id: str = PROTOCOL_ID,
+    preflight_manifest_sha256: str | None = None,
 ) -> FrozenSilverboxFit:
     """Run one exclusive, train-only pilot fit with the upstream term choice.
 
@@ -266,6 +293,13 @@ def fit_silverbox_development(
     _validate_term_id(term_id)
     _validate_sha256(source_sha256, "source_sha256")
     _validate_proposal_receipt_sha256(proposal_receipt_sha256)
+    attempt_cap = protocol_attempt_cap(protocol_id)
+    if protocol_id == V2_PROTOCOL_ID:
+        _validate_sha256(preflight_manifest_sha256, "preflight_manifest_sha256")
+        if preflight_manifest_sha256 != preflight_manifest_sha256.lower():
+            raise ValueError("preflight_manifest_sha256 must be lowercase for v2")
+    elif preflight_manifest_sha256 is not None:
+        raise ValueError("a v2 preflight manifest cannot be attached to a v1 fit")
     normalized_source_hash = source_sha256.lower()
     if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", run_id):
         raise ValueError("run_id must be a filesystem-safe 1–128 character identifier")
@@ -286,6 +320,9 @@ def fit_silverbox_development(
             proposal_receipt_sha256=proposal_receipt_sha256,
             run_id=run_id,
             receipt_dir=receipt_dir,
+            protocol_id=protocol_id,
+            attempt_cap=attempt_cap,
+            preflight_manifest_sha256=preflight_manifest_sha256,
             pilot_started_monotonic=(
                 None if pilot_started_monotonic is None else float(pilot_started_monotonic)
             ),
@@ -300,6 +337,9 @@ def _fit_silverbox_development_locked(
     proposal_receipt_sha256: str,
     run_id: str,
     receipt_dir: str | Path,
+    protocol_id: str,
+    attempt_cap: int,
+    preflight_manifest_sha256: str | None,
     pilot_started_monotonic: float | None = None,
 ) -> FrozenSilverboxFit:
     """Calibrate and fit both fixed hypotheses from training windows only.
@@ -331,6 +371,9 @@ def _fit_silverbox_development_locked(
         started_unix,
         started_monotonic,
         rss_baseline,
+        protocol_id=protocol_id,
+        attempt_cap=attempt_cap,
+        preflight_manifest_sha256=preflight_manifest_sha256,
     )
     _write_signed_json(run_dir / "fit_started.json", {**metadata, "status": "started"})
 
@@ -347,13 +390,23 @@ def _fit_silverbox_development_locked(
         }
         path, digest = _write_signed_json(run_dir / "fit.json", receipt)
         return FrozenSilverboxFit(
-            run_id, path, digest, "incomplete", term_id, source_sha256, proposal_receipt_sha256
+            run_id,
+            path,
+            digest,
+            "incomplete",
+            term_id,
+            source_sha256,
+            proposal_receipt_sha256,
+            protocol_id,
+            preflight_manifest_sha256,
         )
 
     family_results: dict[str, dict[str, Any]] = {}
     for hypothesis in HYPOTHESES:
         if budget.check():
-            family_results[hypothesis] = _not_started_family(hypothesis, budget.stop_reason)
+            family_results[hypothesis] = _not_started_family(
+                hypothesis, budget.stop_reason, protocol_id=protocol_id
+            )
             _write_signed_json(run_dir / f"{hypothesis}_calibration.json", family_results[hypothesis]["calibration"])
             continue
         family_results[hypothesis] = _fit_hypothesis(
@@ -363,6 +416,8 @@ def _fit_silverbox_development_locked(
             scalers,
             budget,
             run_dir,
+            protocol_id=protocol_id,
+            attempt_cap=attempt_cap,
         )
 
     budget.check()
@@ -402,6 +457,8 @@ def _fit_silverbox_development_locked(
         term_id,
         source_sha256,
         proposal_receipt_sha256,
+        protocol_id,
+        preflight_manifest_sha256,
     )
 
 
@@ -423,12 +480,28 @@ def select_silverbox_development(
         raise ValueError("fit handle does not match its frozen receipt")
     if fit_receipt.get("proposal_receipt_sha256") != fit.proposal_receipt_sha256:
         raise ValueError("fit handle does not match its upstream proposal receipt binding")
+    protocol_id = getattr(fit, "protocol_id", PROTOCOL_ID)
+    protocol_attempt_cap(protocol_id)
+    if fit_receipt.get("protocol_id") != protocol_id:
+        raise ValueError("fit handle protocol does not match its frozen receipt")
+    manifest_sha256 = getattr(fit, "preflight_manifest_sha256", None)
+    if protocol_id == V2_PROTOCOL_ID:
+        _validate_sha256(manifest_sha256, "preflight_manifest_sha256")
+        if fit_receipt.get("preflight_manifest_sha256") != manifest_sha256:
+            raise ValueError("fit handle preflight manifest does not match its frozen receipt")
+    elif manifest_sha256 is not None or "preflight_manifest_sha256" in fit_receipt:
+        raise ValueError("v1 fit cannot carry a v2 preflight manifest binding")
     run_dir = fit.receipt_path.parent
     selection_path = run_dir / "selection.json"
     if selection_path.exists() or (run_dir / "selection_started.json").exists():
         raise ValueError("this frozen fit already has a development selection attempt")
     started_receipt = {
-        "protocol_id": PROTOCOL_ID,
+        **_protocol_receipt_fields(protocol_id),
+        **(
+            {"preflight_manifest_sha256": manifest_sha256}
+            if protocol_id == V2_PROTOCOL_ID
+            else {}
+        ),
         "run_id": fit.run_id,
         "fit_receipt_sha256": fit.receipt_sha256,
         "status": "started",
@@ -440,6 +513,11 @@ def select_silverbox_development(
     reason: str | None = None
     if fit.status != "complete" or fit_receipt.get("status") != "complete":
         reason = "fit_incomplete"
+    if reason is None:
+        try:
+            _verify_complete_fit_receipt(fit, fit_receipt)
+        except Exception as error:
+            reason = f"fit_receipt_invalid: {type(error).__name__}: {error}"
     if reason is None and not _fit_code_hashes_match(fit_receipt):
         reason = "fit_code_hash_mismatch"
     budget_info = fit_receipt.get("budget", {})
@@ -456,7 +534,7 @@ def select_silverbox_development(
     if reason is not None:
         receipt = _unresolved_selection_receipt(fit, reason)
         path, digest = _write_signed_json(selection_path, receipt)
-        return SilverboxSelection("unresolved", None, path, digest, reason)
+        return SilverboxSelection("unresolved", None, path, digest, reason, protocol_id, manifest_sha256)
 
     try:
         _validate_validation_series(validation_series)
@@ -465,7 +543,7 @@ def select_silverbox_development(
         receipt = _unresolved_selection_receipt(fit, reason)
         receipt["validation_accessed"] = True
         path, digest = _write_signed_json(selection_path, receipt)
-        return SilverboxSelection("unresolved", None, path, digest, reason)
+        return SilverboxSelection("unresolved", None, path, digest, reason, protocol_id, manifest_sha256)
 
     wall_started_monotonic = float(budget_info.get("wall_started_monotonic", time.monotonic()))
 
@@ -487,7 +565,9 @@ def select_silverbox_development(
             }
         )
         path, digest = _write_signed_json(selection_path, receipt)
-        return SilverboxSelection("unresolved", None, path, digest, "wall_time_limit")
+        return SilverboxSelection(
+            "unresolved", None, path, digest, "wall_time_limit", protocol_id, manifest_sha256
+        )
 
     if selection_wall_time_expired():
         return unresolved_for_selection_wall_time({})
@@ -582,7 +662,9 @@ def select_silverbox_development(
             }
         )
         path, digest = _write_signed_json(selection_path, receipt)
-        return SilverboxSelection("unresolved", None, path, digest, "validation_forecast_failure")
+        return SilverboxSelection(
+            "unresolved", None, path, digest, "validation_forecast_failure", protocol_id, manifest_sha256
+        )
 
     # Validation target outputs are first opened here, only after the frozen
     # fit receipt was verified and every particle of both models passed.
@@ -606,7 +688,7 @@ def select_silverbox_development(
             }
         )
         path, digest = _write_signed_json(selection_path, receipt)
-        return SilverboxSelection("unresolved", None, path, digest, reason)
+        return SilverboxSelection("unresolved", None, path, digest, reason, protocol_id, manifest_sha256)
     forecast_arrays = {
         name: np.asarray(forecasts[name]["pointwise_weighted_median"], dtype=float)
         for name in HYPOTHESES
@@ -637,7 +719,12 @@ def select_silverbox_development(
         reason = "linear_retained_by_five_percent_rule"
 
     receipt = {
-        "protocol_id": PROTOCOL_ID,
+        **_protocol_receipt_fields(protocol_id),
+        **(
+            {"preflight_manifest_sha256": manifest_sha256}
+            if protocol_id == V2_PROTOCOL_ID
+            else {}
+        ),
         "run_id": fit.run_id,
         "source_sha256": fit.source_sha256,
         "proposal_receipt_sha256": fit.proposal_receipt_sha256,
@@ -682,8 +769,10 @@ def select_silverbox_development(
         receipt["selected_hypothesis"] = None
         path, digest = _write_signed_json(selection_path, receipt)
     if receipt["status"] == "unresolved" and receipt["reason"] == "wall_time_limit":
-        return SilverboxSelection("unresolved", None, path, digest, "wall_time_limit")
-    return SilverboxSelection(outcome, selected, path, digest, reason)
+        return SilverboxSelection(
+            "unresolved", None, path, digest, "wall_time_limit", protocol_id, manifest_sha256
+        )
+    return SilverboxSelection(outcome, selected, path, digest, reason, protocol_id, manifest_sha256)
 
 
 def pointwise_weighted_median(trajectories: Any, weights: Any) -> np.ndarray:
@@ -724,6 +813,9 @@ def _fit_hypothesis(
     scalers: dict[str, Any],
     budget: _PilotBudget,
     run_dir: Path,
+    *,
+    protocol_id: str = PROTOCOL_ID,
+    attempt_cap: int = ABC_ATTEMPTS_PER_POPULATION,
 ) -> dict[str, Any]:
     parameter_names = LINEAR_PARAMETER_NAMES if hypothesis == "linear" else NONLINEAR_PARAMETER_NAMES
     bounds = np.asarray(LINEAR_BOUNDS if hypothesis == "linear" else NONLINEAR_BOUNDS, dtype=float)
@@ -774,7 +866,7 @@ def _fit_hypothesis(
     calibration_complete_budget = simulation_attempts == CALIBRATION_DRAWS and budget.stop_reason is None
     calibration_ok = calibration_complete_budget and len(finite_discrepancies) >= CALIBRATION_MIN_FINITE
     calibration: dict[str, Any] = {
-        "protocol_id": PROTOCOL_ID,
+        "protocol_id": protocol_id,
         "run_id": run_dir.name,
         "hypothesis": hypothesis,
         "seed": CALIBRATION_SEEDS[hypothesis],
@@ -832,7 +924,7 @@ def _fit_hypothesis(
             _write_signed_json(
                 path,
                 {
-                    "protocol_id": PROTOCOL_ID,
+                    "protocol_id": protocol_id,
                     "run_id": run_dir.name,
                     "hypothesis": hypothesis,
                     "generation": generation,
@@ -845,7 +937,7 @@ def _fit_hypothesis(
             _write_signed_json(
                 path,
                 {
-                    "protocol_id": PROTOCOL_ID,
+                    "protocol_id": protocol_id,
                     "run_id": run_dir.name,
                     "hypothesis": hypothesis,
                     "generation": generation,
@@ -863,7 +955,7 @@ def _fit_hypothesis(
             discrepancy,
             target_samples=ABC_PARTICLES,
             epsilon_schedule=calibration["epsilon_schedule"],
-            max_attempts_per_population=ABC_ATTEMPTS_PER_POPULATION,
+            max_attempts_per_population=attempt_cap,
             bounds=bounds,
             prior_logpdf=prior_logpdf,
             covariance_scale=ABC_COVARIANCE_SCALE,
@@ -1011,17 +1103,21 @@ def _fit_metadata(
     started_unix: float,
     started_monotonic: float,
     rss_baseline: int | None,
+    *,
+    protocol_id: str = PROTOCOL_ID,
+    attempt_cap: int = ABC_ATTEMPTS_PER_POPULATION,
+    preflight_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     controlled_hash, abc_hash = _controlled_and_abc_hashes()
     return {
-        "protocol_id": PROTOCOL_ID,
+        **_protocol_receipt_fields(protocol_id),
         "run_id": run_id,
         "source_sha256": source_sha256.lower(),
         "proposal_receipt_sha256": proposal_receipt_sha256,
         "term_id": term_id,
         "source_indices": [[window.source_start, window.source_stop] for window in train_windows],
         "sampling_time": float(train_windows[0].sampling_time),
-        "protocol_constants": _fit_protocol_constants(),
+        "protocol_constants": _fit_protocol_constants(attempt_cap),
         "implementation_sha256": _sha256_file(Path(__file__)),
         "controlled_contract_sha256": controlled_hash,
         "abc_reference_sha256": abc_hash,
@@ -1029,10 +1125,17 @@ def _fit_metadata(
         "fit_started_monotonic": started_monotonic,
         "memory_baseline_rss_bytes": rss_baseline,
         "process_id": os.getpid(),
+        **(
+            {"preflight_manifest_sha256": preflight_manifest_sha256}
+            if protocol_id == V2_PROTOCOL_ID
+            else {}
+        ),
     }
 
 
-def _fit_protocol_constants() -> dict[str, Any]:
+def _fit_protocol_constants(
+    attempt_cap: int = ABC_ATTEMPTS_PER_POPULATION,
+) -> dict[str, Any]:
     """Return the complete frozen calibration/ABC contract for receipts."""
 
     return {
@@ -1044,7 +1147,7 @@ def _fit_protocol_constants() -> dict[str, Any]:
         "abc_seeds": ABC_SEEDS,
         "abc_particles": ABC_PARTICLES,
         "abc_populations": ABC_POPULATIONS,
-        "abc_attempts_per_population": ABC_ATTEMPTS_PER_POPULATION,
+        "abc_attempts_per_population": attempt_cap,
         "covariance_scale": ABC_COVARIANCE_SCALE,
         "lambda_noise": ABC_LAMBDA_NOISE,
         "nugget": ABC_NUGGET,
@@ -1106,10 +1209,26 @@ def _verify_complete_fit_receipt(fit: Any, receipt: dict[str, Any]) -> None:
         _validate_proposal_receipt_sha256(receipt.get("proposal_receipt_sha256"))
     except ValueError as error:
         raise ValueError("fit receipt has invalid source or proposal bindings") from error
+    protocol_id = receipt.get("protocol_id")
+    try:
+        attempt_cap = protocol_attempt_cap(protocol_id)
+    except ValueError as error:
+        raise ValueError("fit receipt names an unsupported protocol") from error
+    if getattr(fit, "protocol_id", PROTOCOL_ID) != protocol_id:
+        raise ValueError("fit handle protocol does not match its frozen receipt")
+    manifest_sha256 = getattr(fit, "preflight_manifest_sha256", None)
+    if protocol_id == V2_PROTOCOL_ID:
+        try:
+            _validate_sha256(manifest_sha256, "preflight_manifest_sha256")
+        except ValueError as error:
+            raise ValueError("v2 fit handle has no valid preflight manifest binding") from error
+        if receipt.get("preflight_manifest_sha256") != manifest_sha256:
+            raise ValueError("v2 fit receipt does not match the frozen preflight manifest")
+    elif manifest_sha256 is not None or "preflight_manifest_sha256" in receipt:
+        raise ValueError("v1 fit cannot carry a v2 preflight manifest binding")
     selection = receipt.get("selection")
     if not isinstance(selection, dict) or (
         getattr(fit, "status", None) != "complete"
-        or receipt.get("protocol_id") != PROTOCOL_ID
         or receipt.get("status") != "complete"
         or receipt.get("reason") is not None
         or receipt.get("run_id") != getattr(fit, "run_id", None)
@@ -1126,7 +1245,9 @@ def _verify_complete_fit_receipt(fit: Any, receipt: dict[str, Any]) -> None:
         [TRAIN_SOURCE_START + offset, TRAIN_SOURCE_START + offset + TRAIN_WINDOW_LENGTH]
         for offset in TRAIN_WINDOW_RELATIVE_STARTS
     ]
-    expected_protocol_constants = json.loads(json.dumps(_fit_protocol_constants(), allow_nan=False))
+    expected_protocol_constants = json.loads(
+        json.dumps(_fit_protocol_constants(attempt_cap), allow_nan=False)
+    )
     if (
         receipt.get("source_indices") != expected_indices
         or receipt.get("sampling_time") != SAMPLE_TIME_SECONDS
@@ -1214,7 +1335,7 @@ def _verify_complete_fit_receipt(fit: Any, receipt: dict[str, Any]) -> None:
         )
         draw_records = calibration.get("calibration_draws")
         if (
-            calibration.get("protocol_id") != PROTOCOL_ID
+            calibration.get("protocol_id") != protocol_id
             or calibration.get("run_id") != receipt.get("run_id")
             or calibration.get("hypothesis") != hypothesis
             or calibration.get("seed") != calibration_seed
@@ -1290,7 +1411,7 @@ def _verify_complete_fit_receipt(fit: Any, receipt: dict[str, Any]) -> None:
             or abc_result.get("canonical_runner_integrated") is not False
             or abc_result.get("target_samples") != ABC_PARTICLES
             or abc_result.get("epsilon_schedule") != [float(value) for value in epsilon]
-            or abc_result.get("max_attempts_per_population") != [ABC_ATTEMPTS_PER_POPULATION] * ABC_POPULATIONS
+            or abc_result.get("max_attempts_per_population") != [attempt_cap] * ABC_POPULATIONS
             or abc_result.get("seed") != abc_seed
             or not isinstance(abc_result.get("populations"), list)
             or len(abc_result["populations"]) != ABC_POPULATIONS
@@ -1360,9 +1481,9 @@ def _verify_complete_fit_receipt(fit: Any, receipt: dict[str, Any]) -> None:
                 diagnostics.get("complete") is not True
                 or diagnostics.get("termination_reason") != "target_reached"
                 or diagnostics.get("accepted") != ABC_PARTICLES
-                or diagnostics.get("max_attempts") != ABC_ATTEMPTS_PER_POPULATION
+                or diagnostics.get("max_attempts") != attempt_cap
                 or diagnostics.get("proposed") < ABC_PARTICLES
-                or diagnostics.get("proposed") > ABC_ATTEMPTS_PER_POPULATION
+                or diagnostics.get("proposed") > attempt_cap
                 or epsilon_rejections < 0
                 or diagnostics.get("simulated") > diagnostics.get("proposed")
                 or diagnostics.get("weight_failures") != 0
@@ -1490,14 +1611,19 @@ def _controlled_and_abc_hashes() -> tuple[str, str]:
     return _sha256_file(controlled_file), _sha256_file(abc_file)
 
 
-def _not_started_family(hypothesis: str, reason: str | None) -> dict[str, Any]:
+def _not_started_family(
+    hypothesis: str,
+    reason: str | None,
+    *,
+    protocol_id: str = PROTOCOL_ID,
+) -> dict[str, Any]:
     return {
         "status": "incomplete",
         "reason": reason or "not_started",
         "parameter_names": LINEAR_PARAMETER_NAMES if hypothesis == "linear" else NONLINEAR_PARAMETER_NAMES,
         "bounds": LINEAR_BOUNDS if hypothesis == "linear" else NONLINEAR_BOUNDS,
         "calibration": {
-            "protocol_id": PROTOCOL_ID,
+            "protocol_id": protocol_id,
             "hypothesis": hypothesis,
             "seed": CALIBRATION_SEEDS[hypothesis],
             "prior_draw_count": CALIBRATION_DRAWS,
@@ -1526,12 +1652,18 @@ def _failed_forecast(failure_mode: str, detail: Any) -> dict[str, Any]:
 
 
 def _unresolved_selection_receipt(fit: FrozenSilverboxFit, reason: str) -> dict[str, Any]:
+    protocol_id = getattr(fit, "protocol_id", PROTOCOL_ID)
     return {
-        "protocol_id": PROTOCOL_ID,
+        **_protocol_receipt_fields(protocol_id),
         "run_id": fit.run_id,
         "source_sha256": fit.source_sha256,
         "proposal_receipt_sha256": fit.proposal_receipt_sha256,
         "fit_receipt_sha256": fit.receipt_sha256,
+        **(
+            {"preflight_manifest_sha256": fit.preflight_manifest_sha256}
+            if protocol_id == V2_PROTOCOL_ID
+            else {}
+        ),
         "status": "unresolved",
         "reason": reason,
         "selected_hypothesis": None,
@@ -1667,6 +1799,9 @@ def _rmse(prediction: np.ndarray, target: np.ndarray) -> float:
 
 __all__ = [
     "PROTOCOL_ID",
+    "V2_PROTOCOL_ID",
+    "PROTOCOL_ATTEMPT_CAPS",
+    "protocol_attempt_cap",
     "TERM_IDS",
     "LINEAR_PARAMETER_NAMES",
     "NONLINEAR_PARAMETER_NAMES",
