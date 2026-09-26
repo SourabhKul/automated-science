@@ -1,6 +1,55 @@
 # Automated science: current research state
 
-Updated: 2026-09-26T14:07Z wake. This file records observed state, not inferred execution.
+Updated: 2026-09-26T19:08Z wake. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-26T19:08Z
+
+The Cascaded Tanks methods-control track remains pre-fit. No real tank Qwen
+proposal, ABC fit, development-target score, or official test access occurred.
+The consumed Silverbox multisine failure remains terminal with three
+nonfinite particle forecasts and no final RMSE. At wake, a Luna runtime
+preflight found clean `main == origin/main` at prior status commit
+`80a3570d69a11d8e2efe81ecd064ed0a6d11f74a`, no active research job,
+and the exact required Qwen model advertised at local oMLX. Two unchanged
+copies of the pinned tank archive remain in dated backups; no copy or
+download was made. The workspace data and artifacts occupied about 62 MiB,
+well below the 50 GB cap. The 19:08Z ledger has process, source, resource,
+and negative-result details.
+
+A synthetic, noiseless O2/C2 control was independently replayed. With only
+threshold H varied and all other parameters fixed, no-threshold-crossing
+traces were exactly observationally tied. In the chosen crossing control,
+the first distinct output occurred only after 23 low-input samples, while
+the one qualifying real training-only recovery interval under our declared
+rule lasted 14. The synthetic timing does not transfer to the apparatus and
+does not identify the real mechanism; it makes a pre-target forecast
+separation and abstention gate necessary. Exact settings and evidence paths
+are in the 19:08Z ledger and the updated inference-design proposal.
+
+Luna authored a **synthetic-only private deferred-target CSV scanner**;
+an independent Luna reviewer repeated its nine tests and found no blocking
+defect for that narrow seam. It does not implement production scoring or
+enforce a real forecast-receipt gate. Another Luna authored a source-loaded,
+target-free 768-to-256-step ensemble forecast module with terminal
+all-particle failure semantics; five initial synthetic tests and lint passed.
+Independent forecast review identified a last-training-input test coverage
+gap and a redundant second archive open. The author corrected the test to
+show that `u[767]` first affects `y[769]` under pre-transition observation,
+removed the extra open, and repeated five focused tests and lint. A separate
+Luna reviewer independently reran those five tests and lint offline, found
+no correctness blocker, and cleared this scoped forecast seam for sync.
+Neither module fits real data or verifies ABC origin; no production
+source-backed development-target accessor or scorer exists yet.
+
+**Next gate:** synchronize the reviewed compact mechanics and evidence with
+one Luna Git owner, then freeze and independently
+review numeric priors, discrepancy/epsilon and proposal/weight semantics,
+Qwen request, matched baselines, pre-target separation/abstention,
+all-candidate scoring, full-estimation refit, state-only final initializer,
+runtime/source/code manifest, and one new run ID. A source-gated ABC bridge
+and receipt-gated deferred scorer remain absent. No real Qwen/ABC or final
+run should start before those gates. The older external-repeat gate remains
+failed and any tank result is limited to a methods control.
 
 ## Latest checkpoint: 2026-09-26T14:07Z
 

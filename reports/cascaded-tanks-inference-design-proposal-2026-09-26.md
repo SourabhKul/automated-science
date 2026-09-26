@@ -5,8 +5,9 @@ real-data ABC fit, validation score, or official test attempt is authorized by t
 document. The source-only methods-control track is
 `cascaded_tanks_methods_v1_20260926`; the historical external-repeat failure
 still applies to discovery claims. The [source contract](cascaded-tanks-source-resolution-proposal-2026-09-26.md)
-and [current ledger](research-ledger/2026-09-26T0906Z.md) provide the exact
-archive, split, receipts, and negative-result history.
+and [source-adapter ledger](research-ledger/2026-09-26T0906Z.md) provide the
+exact archive, split, receipts, and negative-result history. The
+[current ledger](research-ledger/2026-09-26T1908Z.md) records later controls.
 
 ## Question and limits
 
@@ -98,6 +99,22 @@ under a training-only noise/scale criterion fixed in the future protocol,
 record the structural comparison as **unresolved** regardless of which
 family has a slightly lower development RMSE. This does not block reporting
 honest predictive scores or a methods-control failure.
+
+An independently replayed, noiseless **synthetic** control illustrates why
+the horizon matters. With `a=0.5`, `c=0.4`, `p=0.5`, zero initial states,
+`H=3`, and 24 high-input samples followed by zero input, O2 and C2 produce
+identical observations through the first 23 low-input samples; their first
+different output is the next sample, index 47. At a 54-sample recovery
+horizon, a four-value matched H grid gives positive best cross-family
+full-trajectory RMSE
+in both directions (1.383703 and 1.761596 in the output-equivalent units).
+A no-threshold-crossing control leaves every family/grid score tied at zero.
+Only H varied, the data were noiseless, and these timings **cannot** be
+transferred to the real system. The real training interval that met our
+declared recovery rule lasted 14 samples, which reinforces the need to test
+forecast separation and preserve abstention. Exact settings, formulas, and
+ignored evidence paths are in the
+[19:08Z ledger](research-ledger/2026-09-26T1908Z.md).
 
 The fixed Qwen's bounded task should be to choose one *testable augmentation*
 from `{O2,C2,abstain}` and state the anticipated development-only signature,
