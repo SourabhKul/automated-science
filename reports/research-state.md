@@ -4,6 +4,14 @@ Updated: 2026-09-26T14:07Z wake. This file records observed state, not inferred 
 
 ## Latest checkpoint: 2026-09-26T14:07Z
 
+The seven reviewed design, ledger/state, simulator, and synthetic ABC-control
+files were committed as `f749f2277865a9a63221b98958bedfe771ff476c` on
+`main` and pushed non-force to `origin/main`. The sole Luna Git owner fetched
+again afterward, verified `HEAD == origin/main` at that content commit and a
+clean worktree, and found only those seven paths in the commit. Combined
+verification passed 23 focused tests, Ruff, formatting, compilation, and
+diff-whitespace checks. Raw data and bulk artifacts were not staged.
+
 The Cascaded Tanks official test targets have not been parsed, materialized,
 or scored; the source adapter only skips their interleaved bytes. The last
 Silverbox multisine final is a consumed terminal failure with no RMSE. A
