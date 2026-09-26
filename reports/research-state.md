@@ -2,6 +2,30 @@
 
 Updated: 2026-09-26 after the one V2 development run and locked final failure. This file records observed state, not inferred execution.
 
+## Latest checkpoint: 2026-09-26T1100Z
+
+The reviewed Cascaded Tanks adapter, tests, and compact source evidence were
+pushed non-force as content commit
+`493e33bec0c31a33b9748d1c747dcaa742cbbd11` on `main`; a fresh fetch
+confirmed `HEAD == origin/main` and a clean worktree immediately afterward.
+No raw data, receipts, artifacts, or secrets were staged. The source adapter
+milestone is complete; no Qwen, ABC, validation score, or official final test
+has run on Cascaded Tanks.
+
+Two Luna operators independently reproduced development-only descriptions
+from the adapter's training `uEst/yEst` and later `uEst` inputs. Training
+sensor output ranged 2.9116–10.0 V; a ceiling at 10 V is only a hypothesis.
+The later development input minimum, 0.40937 V, is below the training-input
+minimum, 1.2099 V; 228/256 later inputs fall within the training-input range,
+and the two highest of ten training-amplitude bins are absent. Training-only
+overlap correlation peaks near 112 seconds but does not identify a pure delay
+under strong serial correlation. No held-out outputs or official test fields
+were used. Exact formulas, numbers, limits, and hashes are in
+`reports/research-ledger/2026-09-26T0906Z.md`. The pending step is a separately
+frozen tank-specific model/inference/validation/refit protocol with independent
+review before any generation or fit. The consumed Silverbox multisine
+condition remains unavailable for confirmation.
+
 ## Latest checkpoint: 2026-09-26T1042Z source-adapter gate
 
 The independently reviewed Cascaded Tanks development adapter is implemented
