@@ -1,6 +1,37 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T15:31Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T16:52Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-27T16:52Z tank training-only prior screen
+
+The reviewed 512-paired-draw S0/O2/C2 Cascaded Tanks prior-predictive
+screen completed **once** on only the 768-point estimation-training prefix,
+after a separate v1 preflight was held because its temporary Python path
+vanished. V1 had no approval, attempt, or outcome and remains preserved.
+The distinct v2 amendment pinned a stable runtime and was pushed as
+`807fb93676c6d5fea15d3cfdc6376180b687c431` on clean `main == origin/main`
+after the base protocol and earlier state were pushed as
+`a63f1a08f6cf2a49bfc314e0dd47bb48767a1bff`.
+Independent pre-run review approved the exact immutable v2 manifest, and a
+separate operator ran it under the 120 s/1 GiB sampled watchdog. All 1,536
+trajectories completed with no failures; observed wall time was 2.467 s and
+peak sampled runner-tree RSS was 50,724,864 bytes. An independent post-run
+reviewer replayed source/draw identities and all summaries from ignored
+outcomes. Exact receipt hashes and scope are in
+`reports/research-ledger/2026-09-27T1652Z.md`.
+
+Only 3/512 S0 draws and 8/512 draws in each capped family achieved training
+RMSE ≤2 V. The paired O2−C2 median difference was zero; many capped-family
+surrogates spent most simulated outputs at the imposed ceiling. These are
+training-only warnings about prior mass, model ambiguity, and saturation,
+not posterior probabilities, validation scores, mechanism evidence, or a
+breakthrough. No real tank Qwen, ABC-SMC fit, development-target score, or
+official-test access has occurred. The next gate is a distinct numeric
+real-data methods-control protocol with synthetic recovery/coverage,
+matched baseline, exact Qwen request, structural abstention and independent
+review. The Silverbox multisine remains consumed without a final score and
+the external-repeat discovery gate remains unmet. This compact evidence
+and state update still need scoped Git sync; raw artifacts stay ignored.
 
 ## Latest checkpoint: 2026-09-27T15:09Z training-only prior screen proposed
 
@@ -18,8 +49,9 @@ The primary proposed a 512-draw, paired S0/O2/C2 training-only
 prior-predictive screen with fixed coarse bounds and resource cap in
 `reports/cascaded-tanks-training-prior-screen-protocol-2026-09-27.md`.
 An independent Luna reviewer gave GO for the exact predeclaration after
-several reproducibility and source-boundary corrections; it has **not run**.
-The three-file protocol/state/ledger sync is pending. A
+several reproducibility and source-boundary corrections; it had not run at
+this checkpoint. The three-file protocol/state/ledger sync was later
+completed in `a63f1a08f6cf2a49bfc314e0dd47bb48767a1bff`. A
 reviewed, frozen real-data Qwen+ABC protocol remains a separate future gate;
 real development targets and official test data stay unread. The tank
 synthetic family control remains 10/13 complete; no discovery claim follows.
