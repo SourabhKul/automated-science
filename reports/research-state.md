@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T11:09Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T11:10Z. This file records observed state, not inferred execution.
 
 ## Latest checkpoint: 2026-09-27T11:09Z synthetic-only scorer synchronized
 
@@ -32,9 +32,11 @@ two reviewed files and these compact reports were pushed as content commit
 `0154af531f8da99398e846536818510800a0da5a` non-force to `main` by the
 sole Luna Git owner. Fresh fetch verified `HEAD == origin/main` and a clean
 worktree at that content commit; the owner reran 30 offline focused tests,
-Ruff, and staged whitespace checks. This subsequent factual status update is
-local pending review and status-only sync; the component is not a production
-deployment.
+Ruff, and staged whitespace checks. The first factual status-only update was
+independently reviewed and pushed on `main` as
+`19ef79312c60dc638bdb5330da185fbf884feef7`; the owner freshly fetched
+and verified `HEAD == origin/main` and a clean worktree at that point. The
+component is not a production deployment.
 Details and exact hashes are in
 `reports/research-ledger/2026-09-27T1009Z.md`.
 
