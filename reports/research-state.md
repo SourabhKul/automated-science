@@ -1,11 +1,12 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T11:02Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T11:09Z. This file records observed state, not inferred execution.
 
-## Latest checkpoint: 2026-09-27T10:09Z scorer implementation in progress
+## Latest checkpoint: 2026-09-27T11:09Z synthetic-only scorer synchronized
 
-The last independently reviewed Git content is the deferred development
-scorer **design**, pushed as `13b50f20066c553245714470929c59347da54833`.
+At this wake's 10:09Z starting baseline, the last independently reviewed Git
+content was the deferred development scorer **design**, pushed as
+`13b50f20066c553245714470929c59347da54833`.
 A 10:12:48Z Luna read-only check found clean `main == origin/main`, no live
 research workers, and the exact required local Qwen model advertised by oMLX
 HTTP 200. The final 10:17Z inventory found no newer scorer artifact or tank
@@ -27,7 +28,13 @@ checkout**, with 30 focused and 115 broader synthetic/source tests plus Ruff
 passing. The review reproduced the two-directory and root-swap regressions.
 A malicious local actor who can move/delete the ignored lock directory can
 still defeat a file marker; public real-source scoring remains disabled. The
-two reviewed files are pending scoped Git sync, not production deployment.
+two reviewed files and these compact reports were pushed as content commit
+`0154af531f8da99398e846536818510800a0da5a` non-force to `main` by the
+sole Luna Git owner. Fresh fetch verified `HEAD == origin/main` and a clean
+worktree at that content commit; the owner reran 30 offline focused tests,
+Ruff, and staged whitespace checks. This subsequent factual status update is
+local pending review and status-only sync; the component is not a production
+deployment.
 Details and exact hashes are in
 `reports/research-ledger/2026-09-27T1009Z.md`.
 
