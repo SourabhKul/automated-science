@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T11:10Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T15:31Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-27T15:09Z training-only prior screen proposed
+
+A current Luna preflight found no active research job, a clean `main` equal
+to fresh `origin/main` at `12240444e47f57da776c8bb3d0ec22e1b53db3cc`,
+and HTTP-200 availability of the exact local Qwen model. The active data
+and artifact working set was about 65 MiB in one snapshot. A separate Luna
+source-only diagnostic confirmed training `u` 1.2099–6.4712 V, training
+`y` 2.9116–10.0 V, `y[0]=5.205`, one 27-sample 10.0 V plateau, and a
+later **input-only** range 0.40937–5.3176 V. No model fit or held-out output
+was accessed. Exact hashes, resource readings, and limits are in
+`reports/research-ledger/2026-09-27T1509Z.md`.
+
+The primary proposed a 512-draw, paired S0/O2/C2 training-only
+prior-predictive screen with fixed coarse bounds and resource cap in
+`reports/cascaded-tanks-training-prior-screen-protocol-2026-09-27.md`.
+An independent Luna reviewer gave GO for the exact predeclaration after
+several reproducibility and source-boundary corrections; it has **not run**.
+The three-file protocol/state/ledger sync is pending. A
+reviewed, frozen real-data Qwen+ABC protocol remains a separate future gate;
+real development targets and official test data stay unread. The tank
+synthetic family control remains 10/13 complete; no discovery claim follows.
 
 ## Latest checkpoint: 2026-09-27T11:09Z synthetic-only scorer synchronized
 
