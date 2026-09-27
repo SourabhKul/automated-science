@@ -12,9 +12,13 @@ first-population proposals with zero accepts and **no posterior**. All
 exactly by a Luna reviewer. The terminal manifest SHA-256 is
 `b6edfecacff592e1c1c9b69658e0bb40ba178f4ac8a38294b753650a0e825f39`.
 The compact, evidence-linked findings and preserved three prelaunch failures
-are in `reports/research-ledger/2026-09-27T0117Z.md`; this new ledger and the
-00:08Z ledger are local pending independent review and Git sync. The reviewed
-protocol remains pushed at `1c5586bfb7891243201b66dcfb3af788da9b4a30`.
+are in `reports/research-ledger/2026-09-27T0117Z.md`. Independent Luna review
+cleared that ledger, the 00:08Z ledger, and this checkpoint; the sole Luna Git
+owner pushed exactly those three reports non-force as content commit
+`72b3ae045a262120c20ceec4e1e231f1be9d138c` on `main`. A fresh fetch
+confirmed `HEAD == origin/main` and a clean tracked/untracked worktree at
+that commit. The reviewed protocol remains pushed at
+`1c5586bfb7891243201b66dcfb3af788da9b4a30`.
 
 All eight noisy same-family toy fits and both noiseless same-family
 four-parameter toy fits included the fixed truth in reported marginal
