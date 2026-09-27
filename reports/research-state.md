@@ -29,8 +29,10 @@ publishable advance. Exact
 receipts, ranks, resource use and caveats are in the ledger; raw artifacts
 remain ignored. The reviewed v1 failure report and v2 plan were pushed
 non-force as `d12511c4c43c4588cea8ba441617997f59d27169`, clean
-`main == origin/main` at that verification. The new v2 result/state are
-pending independent report review and Git sync.
+`main == origin/main` at that verification. The v2 result/state passed
+independent report review and were pushed non-force as content commit
+`64af8bcc4d4795bc04fc3c59912b087e88de55bc` on `main`; a fresh fetch
+confirmed clean `HEAD == origin/main`. No raw outputs entered Git.
 
 The next high-value gate is a separately frozen, matched-compute synthetic
 ABC-SMC recovery/coverage and model-mismatch control on crossing and
