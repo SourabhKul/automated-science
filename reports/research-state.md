@@ -1,6 +1,47 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T02:02Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T02:48Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-27T02:48Z target-free gate
+
+The target-free Cascaded Tanks forecast-completeness gate and synthetic
+tests are implemented locally and independently reviewed **for this scoped
+software boundary**. The gate requires the independently frozen ordered
+candidate roster, reconciles every fit posterior with the terminal ABC
+population and original weights, and forecasts every particle from state
+768 over the 256 later inputs. Any mismatch or failed particle suppresses
+all aggregate comparison forecasts. Its content-hashed receipt remains
+`development_score_eligible=false`; it never parses real development or
+official targets. Author and reviewer each passed 65 focused synthetic
+tests; the production gate SHA-256 is
+`acea9a7d101108f556c699ce6c15da374dc2e729618073021d5516a9409e64cc`
+and test SHA-256 is
+`2d079527038d57102709c35e70dff79d5b4a0ea32053f059c2b90a7a431207c8`.
+Full scope, regressions, and next gate are in
+`reports/research-ledger/2026-09-27T0248Z.md`. The gate code/test and these
+two compact reports are local pending independent report review and Git
+sync. No official-source tank fit, real development target, official test
+access, or Qwen request has occurred. The next milestone is a separately
+reviewed deferred development scorer and then a complete frozen real-data
+protocol with matched baselines and abstention; no scientific breakthrough
+claim is supported.
+
+## Latest checkpoint: 2026-09-27T02:10Z target-free gate design
+
+The independently reviewed target-free Cascaded Tanks forecast-gate design
+was pushed non-force to `origin/main` as content commit
+`93038c7c7a86644eb4790e628b8c94be03c713c4` on `main`, file SHA-256
+`24fa70e3d8394eee34fdb0edf601db9c68ab4c32dc931cd7c73137c66a1b2685`.
+The sole Luna Git owner freshly fetched and verified `HEAD == origin/main`
+and a clean tracked/untracked worktree at that commit. A `gpt-6-luna` max
+agent is implementing the gate with private synthetic fixtures; its work
+is in progress and has no reviewed result yet. The gate is intended to
+compare the completed fit receipt against an independently frozen ordered
+roster, internally reconcile ABC particles and weights, and require all
+target-free 768-to-256 forecasts before any scorer can parse development
+targets. The design explicitly does not authorize a real tank fit, scoring,
+or official-test access. At the next wake inspect actual agent/process and
+worktree state before starting related work so the same gate is not duplicated.
 
 ## Latest checkpoint: 2026-09-27T02:02Z source-fit seam
 
