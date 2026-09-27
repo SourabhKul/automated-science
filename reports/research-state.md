@@ -31,7 +31,9 @@ real-data methods-control protocol with synthetic recovery/coverage,
 matched baseline, exact Qwen request, structural abstention and independent
 review. The Silverbox multisine remains consumed without a final score and
 the external-repeat discovery gate remains unmet. This compact evidence
-and state update still need scoped Git sync; raw artifacts stay ignored.
+and state update were pushed non-force by the sole Luna Git owner as content
+commit `59e27806cd6daba592d6aa095ef5d792102553cd` on `main`; a fresh fetch
+confirmed clean `HEAD == origin/main`. Raw artifacts remain ignored.
 
 ## Latest checkpoint: 2026-09-27T15:09Z training-only prior screen proposed
 
