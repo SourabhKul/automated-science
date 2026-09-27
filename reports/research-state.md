@@ -1,6 +1,49 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T16:52Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T22:31Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: synthetic sensitivity run and independent replay
+
+The source-free Cascaded Tanks sensitivity control `ct-sensitivity-20260927-v2`
+completed **once** under an independently reviewed immutable manifest. A
+separate Luna reviewer replayed all 315 synthetic simulations and matched all
+378 stored arrays/matrices byte-for-byte, all simulation records and the
+summary. No real tank archive or target, Qwen, ABC fit, development score or
+official test was accessed. The first `v1` launcher attempt remains terminal:
+it failed before any simulator call because of an exact parent-command check
+on macOS. Its failure and the distinct v2 correction are preserved in
+`reports/research-ledger/2026-09-27T2010Z.md`. The corrected process-image
+check acknowledges that the original executable symlink alias cannot be
+attested from inside the Python process.
+
+The declared no-crossing synthetic input made S0/O2/C2 output trajectories
+byte-identical at the frozen truth, with zero local ceiling sensitivity at
+the tested steps. Crossing plus longer recovery made O2 and C2 differ for
+eight more outputs than the short recovery and raised C2's local descriptive
+Jacobian rank from 4/6 to 6/6 at the frozen truth and step size. Near-collinear
+parameter directions and step-size variation remain. This supports a
+**synthetic diagnostic design choice**: include post-crossing recovery and
+abstain from mechanism choice on this no-crossing input. It does not establish
+physical mechanism, global identifiability, uncertainty coverage or a
+publishable advance. Exact
+receipts, ranks, resource use and caveats are in the ledger; raw artifacts
+remain ignored. The reviewed v1 failure report and v2 plan were pushed
+non-force as `d12511c4c43c4588cea8ba441617997f59d27169`, clean
+`main == origin/main` at that verification. The new v2 result/state are
+pending independent report review and Git sync.
+
+The next high-value gate is a separately frozen, matched-compute synthetic
+ABC-SMC recovery/coverage and model-mismatch control on crossing and
+unsaturated recovery conditions, varying multiple physical and nuisance
+parameters rather than fixing `a,c`. Test both known-family and wrong-family
+truths, preserve zero-accept/incomplete cases and structural abstention,
+and compare against a tractable baseline before freezing any real-data
+Qwen+ABC protocol. The complete real tank protocol still needs numeric priors,
+discrepancy/epsilon/proposal/weights, exact fixed-Qwen request, pre-target
+forecast and abstention, matched baseline, deferred scorer, refit/final
+initializer, budgets/hashes and independent review. Keep `yEst[768:1024]`
+and official `uVal/yVal` unread. Silverbox multisine remains consumed without
+a final score; the external-repeat discovery gate is unmet.
 
 ## Latest checkpoint: 2026-09-27T16:52Z tank training-only prior screen
 
