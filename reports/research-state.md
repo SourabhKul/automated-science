@@ -1,6 +1,82 @@
 # Automated science: current research state
 
-Updated: 2026-09-26T19:52Z wake continuation. This file records observed state, not inferred execution.
+Updated: 2026-09-27T01:17Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-27T01:17Z synthetic-control audit
+
+The reviewed 13-case Cascaded Tanks **synthetic-only** batch executed under
+run ID `20260927T005644Z`; 10 ABC-SMC fits completed, while both crossing
+wrong-family fits and the deliberate feedthrough mismatch exhausted 4,096
+first-population proposals with zero accepts and **no posterior**. All
+13 recorded cases and complete-case forecasts were independently replayed
+exactly by a Luna reviewer. The terminal manifest SHA-256 is
+`b6edfecacff592e1c1c9b69658e0bb40ba178f4ac8a38294b753650a0e825f39`.
+The compact, evidence-linked findings and preserved three prelaunch failures
+are in `reports/research-ledger/2026-09-27T0117Z.md`; this new ledger and the
+00:08Z ledger are local pending independent review and Git sync. The reviewed
+protocol remains pushed at `1c5586bfb7891243201b66dcfb3af788da9b4a30`.
+
+All eight noisy same-family toy fits and both noiseless same-family
+four-parameter toy fits included the fixed truth in reported marginal
+5th–95th intervals, but this small same-path control does not establish
+calibration or real-system identifiability. Ten completed fits gave 60/60
+noiseless future point inclusion. For C2, that is largely a cap artifact:
+all four median forecasts were 3.0 for all 60 points and most envelopes
+were singleton at 3.0. The three incomplete fits cannot support structural
+model selection or a feedthrough residual diagnosis. The source-recorded
+sampled combined RSS peak was 87,998,464 bytes over 5.574 seconds; a final
+PID-list bookkeeping omission and lack of raw per-PID samples limit audit
+of that resource number. No sampled budget breach was reported.
+
+No real tank archive, Qwen generation, ABC fit, development target, or
+official `uVal/yVal` was accessed in this synthetic control. The next gate
+is the source-loaded, pinned, training-only ABC fit plus a complete-candidate
+forecast eligibility receipt, both independently tested with hidden-target
+sentinels before a deferred development scorer. Only after that should the
+primary freeze the distinct real-data numeric protocol and exact Qwen
+request for independent review. The Silverbox multisine condition remains
+consumed without a final score; the old multi-record external-repeat gate
+remains unsatisfied. No scientific breakthrough is claimed.
+
+## Latest checkpoint: 2026-09-27T00:08Z
+
+The exact independently reviewed 13-fit **synthetic-only** multi-parameter
+protocol was pushed non-force to `origin/main` as commit
+`1c5586bfb7891243201b66dcfb3af788da9b4a30` on `main`; its byte
+SHA-256 is `69df09f5815eddbd71bacf9d5283ed26fc2ae8e9f4978a90a539913964113c7d`.
+The sole Luna Git owner verified `HEAD == origin/main`, a clean tracked
+worktree at that commit, and that only the reviewed protocol was staged.
+The 00:08Z ledger is local pending review/sync. An operator is preparing an
+ignored runner and has **not** yet saved the immutable run receipt or
+started any of the 13 fits as of its last checkpoint; no outcome is claimed.
+The protocol tests nuisance initial states, repeated measurement-noise
+realizations, prospective forecasts, flexible cross-family fits, and a
+declared sensor-feedthrough mismatch, with finite budget and abstention.
+Its numeric bounds/tolerances are synthetic controls, not real-data priors.
+
+A Luna read-only preflight found no active research job, clean fetched
+`main == origin/main` at prior status commit
+`252eb2ccf007077f381e5924a1bd284c2f49686c` before the protocol
+commit, and HTTP 200 from oMLX advertising the exact required Qwen ID.
+No generation request was made. The old Silverbox locks are stale and
+unheld. Data and artifacts totaled about 62.7 MiB against the 50 GB cap;
+16 CPUs, 128 GiB RAM and 430 GiB disk free were observed. No tank
+development-target or official test values were materialized or scored.
+The detailed process, resource, protocol, and failure boundary is in
+`reports/research-ledger/2026-09-27T0008Z.md`.
+
+An independent code audit reconfirmed that the synthetic ABC helper cannot
+prove caller-array provenance, the forecast component cannot prove ABC
+origin or the complete candidate set, and the deferred-target scanner has
+no production scorer gate. The old tank manifest still records a failed
+multi-record source gate. A distinct frozen methods-control manifest and
+source-loaded training fitter, all-candidate forecast eligibility receipt,
+and one-use target scorer must be implemented and independently reviewed
+before any real tank Qwen/ABC fit or target access. The Silverbox multisine
+condition remains consumed with no final score. The next action is to
+inspect and independently replay the bounded 13-fit synthetic control,
+preserve failures, then use that evidence and training-only diagnostics to
+freeze a real-data protocol. No breakthrough claim is supported.
 
 ## Latest checkpoint: 2026-09-26T19:52Z synthetic control
 
