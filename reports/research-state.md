@@ -1,6 +1,42 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T02:48Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T11:02Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-27T10:09Z scorer implementation in progress
+
+The last independently reviewed Git content is the deferred development
+scorer **design**, pushed as `13b50f20066c553245714470929c59347da54833`.
+A 10:12:48Z Luna read-only check found clean `main == origin/main`, no live
+research workers, and the exact required local Qwen model advertised by oMLX
+HTTP 200. The final 10:17Z inventory found no newer scorer artifact or tank
+lock, 65 MiB combined `data`/`artifacts`, 16 CPUs, 128 GiB RAM, and 430 GiB
+free disk; at that snapshot, the only worktree changes were these
+primary-owned reports. The first scorer-agent handoff hit a transient workspace-credit
+error before any files were written; one bounded check reported ordinary
+usage available, no reset was used, and a Luna agent produced a
+**private synthetic-only** scorer/one-use-lock checkpoint with 27 author-run
+focused tests passing. Independent review returned **NO-GO** after showing
+the same synthetic run could be scored twice via two caller-supplied artifact
+directories. A Luna author repaired the marker's fixed-root scope and
+added a regression. Its 29-test-passing snapshot failed independent rereview:
+a synthetic root-path replacement between validation and marker claim diverted
+the marker, allowing a second same-run score. The author then pinned a root
+directory fd through claim and `fsync`. Its third checkpoint passed
+independent rereview **for private synthetic-only use under a trusted local
+checkout**, with 30 focused and 115 broader synthetic/source tests plus Ruff
+passing. The review reproduced the two-directory and root-swap regressions.
+A malicious local actor who can move/delete the ignored lock directory can
+still defeat a file marker; public real-source scoring remains disabled. The
+two reviewed files are pending scoped Git sync, not production deployment.
+Details and exact hashes are in
+`reports/research-ledger/2026-09-27T1009Z.md`.
+
+No real tank Qwen/ABC fit, development-target score, or official-test access
+has occurred. The synthetic family control is still 10/13 complete, the
+Silverbox multisine final remains consumed without a score, and no discovery
+claim is supported. A complete frozen numeric and source-bound real protocol,
+matched baseline, exact Qwen request, structural abstention, refit/final rule,
+and independent review remain gates before any real-data pilot.
 
 ## Latest checkpoint: 2026-09-27T02:48Z target-free gate
 
