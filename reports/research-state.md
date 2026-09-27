@@ -5,7 +5,7 @@ Updated: 2026-09-27T02:48Z. This file records observed state, not inferred execu
 ## Latest checkpoint: 2026-09-27T02:48Z target-free gate
 
 The target-free Cascaded Tanks forecast-completeness gate and synthetic
-tests are implemented locally and independently reviewed **for this scoped
+tests are implemented and independently reviewed **for this scoped
 software boundary**. The gate requires the independently frozen ordered
 candidate roster, reconciles every fit posterior with the terminal ABC
 population and original weights, and forecasts every particle from state
@@ -18,11 +18,16 @@ tests; the production gate SHA-256 is
 and test SHA-256 is
 `2d079527038d57102709c35e70dff79d5b4a0ea32053f059c2b90a7a431207c8`.
 Full scope, regressions, and next gate are in
-`reports/research-ledger/2026-09-27T0248Z.md`. The gate code/test and these
-two compact reports are local pending independent report review and Git
-sync. No official-source tank fit, real development target, official test
-access, or Qwen request has occurred. The next milestone is a separately
-reviewed deferred development scorer and then a complete frozen real-data
+`reports/research-ledger/2026-09-27T0248Z.md`. Independent Luna review
+cleared the gate/test and both compact reports. The sole Luna Git owner
+pushed exactly those four paths non-force as content commit
+`e30f9f5eeb4eff7c6e1b418ff4a7b6e1aa9c17ff` on `main`; a fresh fetch
+verified `HEAD == origin/main` and a clean tracked/untracked worktree.
+It reran 104 focused synthetic tests, Ruff check/format, compilation and
+staged whitespace checks. No official-source tank fit, real development
+target, official test access, or Qwen request has occurred. The next
+milestone is a separately reviewed deferred development scorer and then a
+complete frozen real-data
 protocol with matched baselines and abstention; no scientific breakthrough
 claim is supported.
 
