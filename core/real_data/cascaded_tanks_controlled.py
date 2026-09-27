@@ -10,6 +10,7 @@ uVal/yVal fields or the development yEst suffix.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
@@ -26,7 +27,9 @@ SOURCE_DOI = "10.4121/12960104.v1"
 SOURCE_URL = "https://data.4tu.nl/articles/dataset/Cascaded_Tanks_Benchmark_Combining_Soft_and_Hard_Nonlinearities/12960104"
 SOURCE_ARCHIVE_NAME = "CascadedTanksFiles.zip"
 SOURCE_ARCHIVE_BYTES = 7_520_592
-SOURCE_ARCHIVE_SHA256 = "eb0fa05851e8a7136846c2e3b61fbef87def78d0852c86ab91b02ac5db541b51"
+SOURCE_ARCHIVE_SHA256 = (
+    "eb0fa05851e8a7136846c2e3b61fbef87def78d0852c86ab91b02ac5db541b51"
+)
 CSV_MEMBER = "CascadedTanksFiles/dataBenchmark.csv"
 CSV_HEADER = (b"uEst", b"uVal", b"yEst", b"yVal", b"Ts")
 CSV_HEADER_WIRE = b'"uEst","uVal","yEst","yVal","Ts",'
@@ -77,14 +80,19 @@ class ArchiveExpectation:
         if self.archive_bytes <= 0:
             raise ValueError("expected archive size must be positive")
         _require_sha256(self.archive_sha256, "expected archive SHA-256")
-        if not _is_safe_member_name(self.csv_member) or not self.csv_member.lower().endswith(".csv"):
+        if not _is_safe_member_name(
+            self.csv_member
+        ) or not self.csv_member.lower().endswith(".csv"):
             raise ValueError("expected CSV member path must be a safe .csv path")
-        if min(
-            self.max_member_bytes,
-            self.max_csv_member_bytes,
-            self.max_total_uncompressed_bytes,
-            self.max_members,
-        ) <= 0:
+        if (
+            min(
+                self.max_member_bytes,
+                self.max_csv_member_bytes,
+                self.max_total_uncompressed_bytes,
+                self.max_members,
+            )
+            <= 0
+        ):
             raise ValueError("ZIP metadata limits must be positive")
 
 
@@ -116,7 +124,9 @@ _CONTRACT_CANONICAL = {
     "test_targets_loaded": False,
 }
 CONTRACT_SHA256 = hashlib.sha256(
-    json.dumps(_CONTRACT_CANONICAL, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    json.dumps(
+        _CONTRACT_CANONICAL, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
 ).hexdigest()
 SYNTHETIC_FIXTURE_TRACK_ID = "synthetic-fixture-only"
 SYNTHETIC_FIXTURE_CONTRACT_SHA256 = hashlib.sha256(
@@ -190,7 +200,9 @@ class _DevelopmentDataView:
         for name in ("training_indices", "development_input_indices"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
         for name in ("training_u_est", "training_y_est", "development_u_est"):
-            object.__setattr__(self, name, tuple(float(value) for value in getattr(self, name)))
+            object.__setattr__(
+                self, name, tuple(float(value) for value in getattr(self, name))
+            )
         _require_sha256(self.source_visible_sha256, "visible source SHA-256")
         if self.sample_interval_seconds != SAMPLE_INTERVAL_SECONDS:
             raise ValueError("development data must use the fixed sample interval")
@@ -198,11 +210,23 @@ class _DevelopmentDataView:
             raise ValueError("training indices must be exactly [0, 768)")
         if self.development_input_indices != tuple(range(TRAIN_STOP, SOURCE_ROWS)):
             raise ValueError("development input indices must be exactly [768, 1024)")
-        if len(self.training_u_est) != TRAIN_STOP or len(self.training_y_est) != TRAIN_STOP:
-            raise ValueError("training inputs and outputs must contain exactly 768 samples")
+        if (
+            len(self.training_u_est) != TRAIN_STOP
+            or len(self.training_y_est) != TRAIN_STOP
+        ):
+            raise ValueError(
+                "training inputs and outputs must contain exactly 768 samples"
+            )
         if len(self.development_u_est) != SOURCE_ROWS - TRAIN_STOP:
             raise ValueError("development inputs must contain exactly 256 samples")
-        if any(not math.isfinite(value) for value in (*self.training_u_est, *self.training_y_est, *self.development_u_est)):
+        if any(
+            not math.isfinite(value)
+            for value in (
+                *self.training_u_est,
+                *self.training_y_est,
+                *self.development_u_est,
+            )
+        ):
             raise ValueError("returned development values must be finite")
         for name in ("training_sha256", "forecast_inputs_sha256"):
             _require_sha256(getattr(self.stage_receipts, name), f"{name} receipt")
@@ -222,12 +246,18 @@ class CascadedTanksDevelopmentData(_DevelopmentDataView):
 
     def __post_init__(self, _loader_token: object) -> None:
         if _loader_token is not _OFFICIAL_LOADER_TOKEN:
-            raise ValueError("official development data can only be constructed by the verified source loader")
+            raise ValueError(
+                "official development data can only be constructed by the verified source loader"
+            )
         _DevelopmentDataView.__post_init__(self)
         if self.track_id != TRACK_ID or self.contract_sha256 != CONTRACT_SHA256:
-            raise ValueError("development data must use the fixed Cascaded Tanks methods contract")
+            raise ValueError(
+                "development data must use the fixed Cascaded Tanks methods contract"
+            )
         if self.archive_sha256 != SOURCE_ARCHIVE_SHA256:
-            raise ValueError("production development data must bind the official archive SHA-256")
+            raise ValueError(
+                "production development data must bind the official archive SHA-256"
+            )
         expected_receipts = _make_stage_receipts(
             self.training_u_est,
             self.training_y_est,
@@ -236,7 +266,9 @@ class CascadedTanksDevelopmentData(_DevelopmentDataView):
             archive_sha256=SOURCE_ARCHIVE_SHA256,
         )
         if self.stage_receipts != expected_receipts:
-            raise ValueError("production stage receipts must bind the official archive identity")
+            raise ValueError(
+                "production stage receipts must bind the official archive identity"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,7 +284,9 @@ class SyntheticCascadedTanksDevelopmentData(_DevelopmentDataView):
             or self.track_id != SYNTHETIC_FIXTURE_TRACK_ID
             or self.contract_sha256 != SYNTHETIC_FIXTURE_CONTRACT_SHA256
         ):
-            raise ValueError("synthetic source fixtures cannot be labeled as production track data")
+            raise ValueError(
+                "synthetic source fixtures cannot be labeled as production track data"
+            )
         expected_receipts = _make_stage_receipts(
             self.training_u_est,
             self.training_y_est,
@@ -261,7 +295,9 @@ class SyntheticCascadedTanksDevelopmentData(_DevelopmentDataView):
             archive_sha256=None,
         )
         if self.stage_receipts != expected_receipts:
-            raise ValueError("synthetic fixture receipts must use the synthetic-only contract")
+            raise ValueError(
+                "synthetic fixture receipts must use the synthetic-only contract"
+            )
 
 
 @contextmanager
@@ -269,30 +305,44 @@ def _checked_archive(
     archive_path: str | os.PathLike[str],
     expectation: ArchiveExpectation,
 ) -> Iterator[tuple[zipfile.ZipFile, _ArchiveInspection, zipfile.ZipInfo]]:
-    """Verify bytes and ZIP metadata while keeping one file descriptor open."""
+    """Hash and parse one bounded immutable byte snapshot of the archive."""
 
     path = Path(archive_path)
     try:
         raw = path.open("rb")
     except OSError as error:
-        raise CascadedTanksSourceError("Cascaded Tanks source archive cannot be opened") from error
+        raise CascadedTanksSourceError(
+            "Cascaded Tanks source archive cannot be opened"
+        ) from error
     with raw:
         observed_size = os.fstat(raw.fileno()).st_size
-        if observed_size != expectation.archive_bytes:
-            raise CascadedTanksSourceError(
-                f"archive byte count mismatch: expected {expectation.archive_bytes}, got {observed_size}"
-            )
-        digest = hashlib.sha256()
-        for chunk in iter(lambda: raw.read(1024 * 1024), b""):
-            digest.update(chunk)
-        archive_sha256 = digest.hexdigest()
-        if archive_sha256 != expectation.archive_sha256:
-            raise CascadedTanksSourceError("archive SHA-256 does not match the pinned source identity")
-        raw.seek(0)
         try:
-            archive = zipfile.ZipFile(raw, mode="r")
+            snapshot = raw.read(expectation.archive_bytes + 1)
+        except OSError as error:
+            raise CascadedTanksSourceError(
+                "Cascaded Tanks source archive could not be read safely"
+            ) from error
+        if (
+            observed_size != expectation.archive_bytes
+            or len(snapshot) != expectation.archive_bytes
+        ):
+            observed_length = len(snapshot)
+            raise CascadedTanksSourceError(
+                "archive byte count mismatch: "
+                f"expected {expectation.archive_bytes}, got {observed_length} bytes "
+                f"(initial file size {observed_size})"
+            )
+        archive_sha256 = hashlib.sha256(snapshot).hexdigest()
+        if archive_sha256 != expectation.archive_sha256:
+            raise CascadedTanksSourceError(
+                "archive SHA-256 does not match the pinned source identity"
+            )
+        try:
+            archive = zipfile.ZipFile(io.BytesIO(snapshot), mode="r")
         except (OSError, zipfile.BadZipFile) as error:
-            raise CascadedTanksSourceError("verified source bytes are not a readable ZIP archive") from error
+            raise CascadedTanksSourceError(
+                "verified source bytes are not a readable ZIP archive"
+            ) from error
         with archive:
             infos = archive.infolist()
             csv_info = _validate_zip_members(infos, expectation)
@@ -323,7 +373,9 @@ def preflight_archive(archive_path: str | os.PathLike[str]) -> SourcePreflight:
         )
 
 
-def load_development_data(archive_path: str | os.PathLike[str]) -> CascadedTanksDevelopmentData:
+def load_development_data(
+    archive_path: str | os.PathLike[str],
+) -> CascadedTanksDevelopmentData:
     """Load the official-source training prefix and later input sequence only."""
 
     preflight, parsed = _read_development_archive(archive_path, OFFICIAL_ARCHIVE)
@@ -409,7 +461,9 @@ def _read_development_archive(
             with archive.open(csv_info, mode="r") as member:
                 parsed = _scan_development_csv(member, csv_info.file_size)
         except (OSError, RuntimeError, zipfile.BadZipFile) as error:
-            raise CascadedTanksSourceError("Cascaded Tanks CSV member could not be read safely") from error
+            raise CascadedTanksSourceError(
+                "Cascaded Tanks CSV member could not be read safely"
+            ) from error
     return inspection, parsed
 
 
@@ -430,7 +484,9 @@ def _scan_development_csv(
         )
     header_line = member.readline(_MAX_HEADER_BYTES + 1)
     if len(header_line) > _MAX_HEADER_BYTES or not _valid_header_line(header_line):
-        raise CascadedTanksSourceError("CSV header is not the exact five-column Cascaded Tanks schema")
+        raise CascadedTanksSourceError(
+            "CSV header is not the exact five-column Cascaded Tanks schema"
+        )
 
     training_u: list[float] = []
     training_y: list[float] = []
@@ -445,8 +501,10 @@ def _scan_development_csv(
     bytes_seen = len(header_line)
 
     def needs_buffer(column_index: int, index: int) -> bool:
-        return column_index == 0 or (column_index == 2 and index < TRAIN_STOP) or (
-            column_index == 4 and index == 0
+        return (
+            column_index == 0
+            or (column_index == 2 and index < TRAIN_STOP)
+            or (column_index == 4 and index == 0)
         )
 
     def add_selected_field(column_index: int, index: int, raw_field: bytes) -> None:
@@ -480,10 +538,14 @@ def _scan_development_csv(
             field_buffer = None
             return
         if field_length == 0:
-            raise CascadedTanksSourceError(f"empty CSV field at row {row_index}, column {column}")
+            raise CascadedTanksSourceError(
+                f"empty CSV field at row {row_index}, column {column}"
+            )
         if needs_buffer(column, row_index):
             if field_buffer is None:
-                raise CascadedTanksSourceError("selected CSV field buffer was not initialized")
+                raise CascadedTanksSourceError(
+                    "selected CSV field buffer was not initialized"
+                )
             add_selected_field(column, row_index, bytes(field_buffer))
         field_buffer = None
 
@@ -496,10 +558,14 @@ def _scan_development_csv(
                 f"CSV row {row_index} is missing the final comma and empty sixth field"
             )
         if field_length != 0:
-            raise CascadedTanksSourceError(f"CSV row {row_index} sixth field must be empty")
+            raise CascadedTanksSourceError(
+                f"CSV row {row_index} sixth field must be empty"
+            )
         row_index += 1
         if row_index > SOURCE_ROWS:
-            raise CascadedTanksSourceError(f"CSV contains more than {SOURCE_ROWS} data rows")
+            raise CascadedTanksSourceError(
+                f"CSV contains more than {SOURCE_ROWS} data rows"
+            )
         column = 0
         field_length = 0
         field_buffer = None
@@ -511,14 +577,20 @@ def _scan_development_csv(
             break
         bytes_seen += 1
         if bytes_seen > declared_member_bytes:
-            raise CascadedTanksSourceError("CSV member expanded beyond its declared bounded size")
+            raise CascadedTanksSourceError(
+                "CSV member expanded beyond its declared bounded size"
+            )
         value = byte[0]
         if terminal_blank_seen:
-            raise CascadedTanksSourceError("CSV must contain exactly one blank LF line after its 1024 rows")
+            raise CascadedTanksSourceError(
+                "CSV must contain exactly one blank LF line after its 1024 rows"
+            )
         if value == 0x0A:
             if not rows_started and column == 0 and field_length == 0:
                 if row_index != SOURCE_ROWS:
-                    raise CascadedTanksSourceError("CSV contains a blank line before all 1024 data rows")
+                    raise CascadedTanksSourceError(
+                        "CSV contains a blank line before all 1024 data rows"
+                    )
                 terminal_blank_seen = True
                 continue
             finish_row()
@@ -526,34 +598,54 @@ def _scan_development_csv(
         rows_started = True
         if value == 0x2C:  # comma delimiter
             if column >= 5:
-                raise CascadedTanksSourceError(f"CSV row {row_index} contains more than five data fields")
+                raise CascadedTanksSourceError(
+                    f"CSV row {row_index} contains more than five data fields"
+                )
             finish_field()
             column += 1
             field_length = 0
             field_buffer = bytearray() if needs_buffer(column, row_index) else None
             continue
         if value == 0x22:  # quotes are not part of this fixed numeric CSV grammar
-            raise CascadedTanksSourceError("quoted CSV fields are outside the fixed numeric source grammar")
+            raise CascadedTanksSourceError(
+                "quoted CSV fields are outside the fixed numeric source grammar"
+            )
         if value < 0x20 or value == 0x7F:
             raise CascadedTanksSourceError("CSV contains a control byte inside a field")
         field_length += 1
         if field_length > _MAX_FIELD_BYTES:
-            raise CascadedTanksSourceError("CSV field exceeds the strict byte-length limit")
+            raise CascadedTanksSourceError(
+                "CSV field exceeds the strict byte-length limit"
+            )
         if field_buffer is None and needs_buffer(column, row_index):
             field_buffer = bytearray()
         if field_buffer is not None:
             field_buffer.append(value)
 
     if rows_started or column != 0 or field_length != 0:
-        raise CascadedTanksSourceError("CSV data must end after a complete LF-terminated row")
+        raise CascadedTanksSourceError(
+            "CSV data must end after a complete LF-terminated row"
+        )
     if not terminal_blank_seen:
-        raise CascadedTanksSourceError("CSV must end with exactly one blank LF line after its 1024 data rows")
+        raise CascadedTanksSourceError(
+            "CSV must end with exactly one blank LF line after its 1024 data rows"
+        )
     if bytes_seen != declared_member_bytes:
-        raise CascadedTanksSourceError("CSV member byte count does not match its ZIP metadata")
+        raise CascadedTanksSourceError(
+            "CSV member byte count does not match its ZIP metadata"
+        )
     if row_index != SOURCE_ROWS:
-        raise CascadedTanksSourceError(f"CSV must contain exactly {SOURCE_ROWS} data rows; got {row_index}")
-    if len(training_u) != TRAIN_STOP or len(training_y) != TRAIN_STOP or len(development_u) != SOURCE_ROWS - TRAIN_STOP:
-        raise CascadedTanksSourceError("CSV selected fields do not match the fixed development split")
+        raise CascadedTanksSourceError(
+            f"CSV must contain exactly {SOURCE_ROWS} data rows; got {row_index}"
+        )
+    if (
+        len(training_u) != TRAIN_STOP
+        or len(training_y) != TRAIN_STOP
+        or len(development_u) != SOURCE_ROWS - TRAIN_STOP
+    ):
+        raise CascadedTanksSourceError(
+            "CSV selected fields do not match the fixed development split"
+        )
     return training_u, training_y, development_u, visible_digest.hexdigest()
 
 
@@ -562,7 +654,9 @@ def _validate_zip_members(
     expectation: ArchiveExpectation,
 ) -> zipfile.ZipInfo:
     if not infos or len(infos) > expectation.max_members:
-        raise CascadedTanksSourceError("ZIP member count is outside the bounded archive contract")
+        raise CascadedTanksSourceError(
+            "ZIP member count is outside the bounded archive contract"
+        )
     names: set[str] = set()
     csv_infos: list[zipfile.ZipInfo] = []
     total_uncompressed = 0
@@ -570,7 +664,9 @@ def _validate_zip_members(
         if not _is_safe_member_name(info.filename):
             raise CascadedTanksSourceError(f"unsafe ZIP member path: {info.filename!r}")
         if info.filename in names:
-            raise CascadedTanksSourceError(f"duplicate ZIP member path: {info.filename!r}")
+            raise CascadedTanksSourceError(
+                f"duplicate ZIP member path: {info.filename!r}"
+            )
         names.add(info.filename)
         if info.flag_bits & 0x1:
             raise CascadedTanksSourceError("encrypted ZIP members are not accepted")
@@ -579,27 +675,43 @@ def _validate_zip_members(
         mode = (info.external_attr >> 16) & 0xFFFF
         kind = stat.S_IFMT(mode)
         if kind not in (0, stat.S_IFREG, stat.S_IFDIR):
-            raise CascadedTanksSourceError("ZIP contains a non-regular or symbolic-link member")
+            raise CascadedTanksSourceError(
+                "ZIP contains a non-regular or symbolic-link member"
+            )
         if kind == stat.S_IFDIR and not info.is_dir():
-            raise CascadedTanksSourceError("ZIP directory member is missing its trailing slash")
+            raise CascadedTanksSourceError(
+                "ZIP directory member is missing its trailing slash"
+            )
         if info.is_dir() and kind not in (0, stat.S_IFDIR):
-            raise CascadedTanksSourceError("ZIP directory path has a non-directory file type")
+            raise CascadedTanksSourceError(
+                "ZIP directory path has a non-directory file type"
+            )
         if info.is_dir() and info.file_size != 0:
-            raise CascadedTanksSourceError("ZIP directory entry declares an unexpected payload")
+            raise CascadedTanksSourceError(
+                "ZIP directory entry declares an unexpected payload"
+            )
         if info.file_size < 0 or info.file_size > expectation.max_member_bytes:
-            raise CascadedTanksSourceError("ZIP member exceeds the strict uncompressed size limit")
+            raise CascadedTanksSourceError(
+                "ZIP member exceeds the strict uncompressed size limit"
+            )
         if info.compress_size < 0 or info.compress_size > expectation.archive_bytes:
             raise CascadedTanksSourceError("ZIP member has an invalid compressed size")
         total_uncompressed += info.file_size
         if total_uncompressed > expectation.max_total_uncompressed_bytes:
-            raise CascadedTanksSourceError("ZIP total expanded size exceeds the strict archive limit")
+            raise CascadedTanksSourceError(
+                "ZIP total expanded size exceeds the strict archive limit"
+            )
         if info.filename.lower().endswith(".csv"):
             csv_infos.append(info)
     if len(csv_infos) != 1 or csv_infos[0].filename != expectation.csv_member:
-        raise CascadedTanksSourceError("ZIP must contain exactly one CSV at the pinned member path")
+        raise CascadedTanksSourceError(
+            "ZIP must contain exactly one CSV at the pinned member path"
+        )
     csv_info = csv_infos[0]
     if csv_info.is_dir() or csv_info.file_size > expectation.max_csv_member_bytes:
-        raise CascadedTanksSourceError("CSV member exceeds its strict uncompressed size limit")
+        raise CascadedTanksSourceError(
+            "CSV member exceeds its strict uncompressed size limit"
+        )
     if csv_info.file_size != CSV_MEMBER_BYTES:
         raise CascadedTanksSourceError(
             f"CSV member byte count mismatch: expected {CSV_MEMBER_BYTES}, got {csv_info.file_size}"
@@ -615,13 +727,17 @@ def _parse_finite_number(raw_field: bytes, label: str) -> float:
     try:
         value = float(raw_field)
     except (TypeError, ValueError, OverflowError) as error:
-        raise CascadedTanksSourceError(f"{label} is not a valid finite number") from error
+        raise CascadedTanksSourceError(
+            f"{label} is not a valid finite number"
+        ) from error
     if not math.isfinite(value):
         raise CascadedTanksSourceError(f"{label} is not finite")
     return value
 
 
-def _update_field_hash(digest: object, column: int, row_index: int, raw_field: bytes) -> None:
+def _update_field_hash(
+    digest: object, column: int, row_index: int, raw_field: bytes
+) -> None:
     digest.update(column.to_bytes(1, "big"))
     digest.update(row_index.to_bytes(4, "big"))
     digest.update(len(raw_field).to_bytes(4, "big"))
@@ -658,7 +774,9 @@ def _make_stage_receipts(
         "training-stage",
         {
             **bound_fields,
-            "source_visible_sha256": _hash_train_fields(list(training_u), list(training_y)),
+            "source_visible_sha256": _hash_train_fields(
+                list(training_u), list(training_y)
+            ),
         },
     )
     forecast_receipt = _sha_fields(
@@ -676,7 +794,9 @@ def _make_stage_receipts(
 
 def _sha_fields(stage: str, fields: dict[str, object]) -> str:
     payload = {"stage": stage, **fields}
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 

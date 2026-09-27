@@ -1,6 +1,33 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T01:17Z. This file records observed state, not inferred execution.
+Updated: 2026-09-27T02:02Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: 2026-09-27T02:02Z source-fit seam
+
+The Cascaded Tanks source-gated, training-only ABC fit seam and synthetic
+sentinel tests were independently reviewed and cleared **for this limited
+software boundary only**. Initial independent review reproduced an
+in-place archive hash/parse race on synthetic ZIPs and withheld GO. The
+adapter now hashes and parses one bounded immutable byte snapshot; an
+independent reviewer reran the same-inode mutation regression and confirmed
+the repaired loader returns the originally hashed training value. The fit
+receipt binds source/stage, raw manifest, ordered candidate roster, runtime,
+code and ABC diagnostics, suppresses posteriors on incomplete declared
+batches, and always marks `development_score_eligible=false`. Author and
+reviewer synthetic suites passed 91 and 75 focused tests respectively;
+final file hashes and exact scope are in
+`reports/research-ledger/2026-09-27T0202Z.md`. The reviewed code and these
+reports are local, pending scoped Git sync as of this checkpoint.
+
+No real tank archive, fixed-Qwen request, official-source ABC fit, real
+development target, or official test target was accessed for this
+implementation; synthetic fixture targets were exercised in author tests. The
+next implementation gate is an all-candidate/all-particle target-free
+forecast eligibility receipt tied to an independently frozen protocol roster,
+followed by a separate deferred development scorer. Numeric real-data
+protocol, exact Qwen request and one-use final rule remain unfrozen; no real
+run is authorized. The old external-repeat gate and consumed Silverbox final
+still limit scientific claims.
 
 ## Latest checkpoint: 2026-09-27T01:17Z synthetic-control audit
 
