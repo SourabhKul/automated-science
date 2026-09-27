@@ -16,8 +16,14 @@ code and ABC diagnostics, suppresses posteriors on incomplete declared
 batches, and always marks `development_score_eligible=false`. Author and
 reviewer synthetic suites passed 91 and 75 focused tests respectively;
 final file hashes and exact scope are in
-`reports/research-ledger/2026-09-27T0202Z.md`. The reviewed code and these
-reports are local, pending scoped Git sync as of this checkpoint.
+`reports/research-ledger/2026-09-27T0202Z.md`. The sole Luna Git owner pushed
+the four reviewed code/test files and both compact reports non-force as
+content commit `189f6496fe83b0f0ed07153d324ec0fff3ff8b09` on `main`.
+A fresh fetch verified `HEAD == origin/main` and a clean tracked/untracked
+worktree at that commit. It independently reran all 91 focused synthetic
+tests, Ruff check/format, compilation, and staged whitespace checks; its
+first isolated collection lacked NumPy, then an offline run with cached
+NumPy passed.
 
 No real tank archive, fixed-Qwen request, official-source ABC fit, real
 development target, or official test target was accessed for this
