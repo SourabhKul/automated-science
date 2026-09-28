@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T01:40Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T01:49Z. This file records observed state, not inferred execution.
 
 ## Latest checkpoint: reviewed synthetic six-parameter ABC plan
 
@@ -28,8 +28,12 @@ in `reports/research-ledger/2026-09-28T0110Z.md`.
 This is a reviewed research design, **not** completed inference or coverage
 evidence. Source-free implementation, independent code/data-boundary tests,
 an immutable approved run manifest, bounded execution and replay remain to
-be done. This new protocol and ledger/state update are pending scoped Git
-sync. Preserve the real `yEst[768:1024]` and official `uVal/yVal` boundary,
+be done. The sole Luna Git owner pushed the independently reviewed three-file
+protocol/ledger/state scope non-force to `origin/main` as content commit
+`e6f482c41d3fba9a4cf316a9bfa843eb23d5faaf`. A fresh fetch verified
+`HEAD == origin/main` at that commit; an unrelated untracked baseline module
+was left outside the commit. Preserve the real `yEst[768:1024]` and official
+`uVal/yVal` boundary,
 the consumed Silverbox multisine negative result, and the old external-repeat
 discovery gate. The synthetic sensitivity result below remains a local
 methods diagnostic, not a scientific breakthrough.
