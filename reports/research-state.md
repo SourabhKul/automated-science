@@ -1,6 +1,27 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T07:00Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T07:33Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: numerical campaign evidence seam held
+
+The typed campaign evidence-return change is **unsynced and HOLD** after an
+independent reviewer proved its returned posterior particles were mutable
+without invalidating the 48 durable fit/baseline status receipts or summary.
+In a private fixture, changing posterior `a` from `0.5` to `0.59` changed
+forecast input while receipt verification still passed. A Luna author is
+repairing this by durably hashing numerical fit/baseline evidence and
+providing a verified pre-forecast accessor; see
+`reports/research-ledger/2026-09-28T0733Z.md`. The final manifest also needs
+the future runner, forecast and scorer source hashes before a campaign launch.
+
+The reviewed watchdog/scorer remain synced as `859eed3c42a76af8fdda81306728e8e008d8b60c`;
+the reviewed 06:30Z and 07:00Z reports were synced as
+`0f7a6b35cb8f0e8c654caa1cf85a87ba59af3c67`. At the Git owner's fresh
+fetch, `HEAD == origin/main` and the worktree was clean, before the later
+unsynced evidence-seam edits. The five-hour same-thread automation was
+verified ACTIVE. The synthetic `ct-abc6-20260928-v1` ID is unused and HOLD;
+no synthetic prospective target, real tank Qwen/ABC, real development suffix
+or official test was accessed, and no scientific breakthrough is claimed.
 
 ## Latest checkpoint: watchdog and synthetic scorer reviewed and synced
 
