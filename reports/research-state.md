@@ -1,6 +1,34 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T01:49Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T02:10Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: reviewed ABC6 components, campaign still gated
+
+The 24-case synthetic protocol, the cost-matched pattern-search component,
+and the source-free case/target-gate component were independently reviewed
+and pushed by one Luna Git owner in three scoped, non-force content commits:
+`e6f482c41d3fba9a4cf316a9bfa843eb23d5faaf` (protocol and 01:10Z
+ledger/state), `0d005ebdbccd7b2acec2bb574ee47965e721d7f2` (baseline, 12
+focused tests, and prior-sync status), and
+`84b49b3fce3b507ee40ab4ff5f867cc9fef54a68` (case/target gate, 7
+focused tests). Fresh fetch after each push verified `HEAD == origin/main`;
+the last Git owner reported a clean worktree at `84b49b3`. The source-free
+modules are building blocks, not an executed ABC-SMC study. Details and
+remaining gates are in `reports/research-ledger/2026-09-28T0210Z.md`.
+
+Independent review initially held the baseline because its caller budget
+was not derived from every ABC population's actual simulator calls; a
+reviewed adapter and four added tests closed that **component** gap. The
+case module passed narrow review under cooperative local-file assumptions.
+Its first suffix test falsely suggested it exercised calibration, ABC and
+baseline calls; the corrected test explicitly limits its claim to case-view
+prefix invariance. The full integration boundary remains **HOLD** until an
+actual call-path sentinel, run-level one-use claim, immutable manifest,
+independent source/code review and bounded watchdog are in place. A Luna
+operator is implementing the separate source-free one-case training seam;
+no 24-case campaign, real tank Qwen/ABC, real development-target score or
+official test access has occurred. Preserve the reserved run ID
+`ct-abc6-20260928-v1` as unused pending approval.
 
 ## Latest checkpoint: reviewed synthetic six-parameter ABC plan
 
