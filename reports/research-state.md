@@ -1,6 +1,48 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T03:56Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T07:00Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: watchdog and synthetic scorer reviewed and synced
+
+Independent Luna reviews gave bounded GO for the ABC6 external watchdog
+(15/15 fake tests, seven targeted probes) and synthetic-only one-use
+deferred scorer (13/13 fake tests under pinned Python 3.14.3/NumPy 2.4.2).
+The earlier bool/schema, case-ID, symlink-ancestor, traversal-run-ID and
+overstrong reaping-receipt findings were repaired and re-probed. The
+watchdog's proof remains limited to its isolated process group and sampled
+RSS, not arbitrary detached descendants or between-sample peaks. One Luna
+Git owner pushed exactly the four reviewed source/test files non-force as
+content commit `859eed3c42a76af8fdda81306728e8e008d8b60c` on `main`;
+fresh fetch verified `HEAD == origin/main` and the four file hashes. See
+`reports/research-ledger/2026-09-28T0700Z.md` for evidence and scope.
+
+The 24-case synthetic `ct-abc6-20260928-v1` run ID is still **unused and
+HOLD**. A Luna implementer is working on the source-free integration seam;
+an independently reviewed full orchestration, immutable manifest and launch
+approval, bounded run and independent replay are still required. No ABC6
+campaign, prospective target reveal/score, real tank Qwen/ABC, real
+`yEst[768:1024]` read or official `uVal/yVal` access occurred. The Silverbox
+multisine condition remains consumed without a final score. No scientific
+breakthrough is claimed.
+
+## Latest checkpoint: watchdog adversarial rereview remains HOLD
+
+Independent fake-only replay passed all 12 watchdog tests, including the
+root-exits-first orphan and `AccessDenied` regressions, and found no surviving
+probe PID after cleanup. The same reviewer proved a summary bool/schema plus
+wrong-case-ID bypass, a symlinked claim-ancestor bypass, and an escaped
+`setsid()` child that survived while a receipt overstated full-tree reaping.
+The untracked watchdog draft remains **HOLD** pending bounded repair and
+independent rereview. A separate private synthetic-only deferred scorer is
+under construction and unreviewed. See
+`reports/research-ledger/2026-09-28T0630Z.md` for exact evidence.
+
+The reserved `ct-abc6-20260928-v1` run ID is still unused. No production ABC6
+campaign, synthetic prospective-target reveal, real tank Qwen/ABC,
+`yEst[768:1024]` or official `uVal/yVal` access occurred. Last fresh Git fetch
+had clean `main == origin/main` at `c34026fe55de3ed46562a9d09b0c2a4e529173d6`;
+the watchdog and scoring drafts are not synced. The exact local Qwen model was
+listed; no generation request was made. No scientific breakthrough is claimed.
 
 ## Latest checkpoint: target-free forecast synced; watchdog held
 
