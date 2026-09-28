@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign_fit
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data import cascaded_tanks_abc6_scoring as scoring
 from core.real_data.cascaded_tanks_abc6_cases import (
@@ -411,6 +412,166 @@ def _install_fake_gate(
     return calls
 
 
+def _install_fake_source_contract(monkeypatch) -> tuple[tuple[str, str], ...]:
+    integrated = scoring._INTEGRATED_SOURCE_PATHS
+    required = tuple(dict.fromkeys((*campaign_fit._REQUIRED_SOURCE_PATHS, *integrated)))
+    digests = {
+        path: hashlib.sha256(f"private fake source pin:{path}".encode()).hexdigest()
+        for path in integrated
+    }
+    monkeypatch.setattr(campaign_fit, "_REQUIRED_SOURCE_PATHS", required)
+    monkeypatch.setattr(campaign_fit, "_REVIEWED_SOURCE_SHA256", digests)
+    monkeypatch.setattr(
+        campaign_fit,
+        "_current_source_hashes",
+        lambda: {
+            path: digests.get(path, hashlib.sha256(path.encode()).hexdigest())
+            for path in required
+        },
+    )
+    return tuple((path, digests[path]) for path in integrated)
+
+
+def _fake_execution(receipts: Path, training, results):
+    statuses = []
+    for case, result in zip(CASE_ROSTER, results, strict=True):
+        fit_path = receipts / f"case-{case.case_index:02d}.fit-status.json"
+        baseline_path = receipts / f"case-{case.case_index:02d}.baseline-status.json"
+        statuses.append(
+            campaign_fit.ABC6CaseStatus(
+                case_index=case.case_index,
+                case_id=case.case_id,
+                fit_status=result.abc_status,
+                baseline_status=result.baseline_status,
+                fit_receipt_sha256=(
+                    hashlib.sha256(fit_path.read_bytes()).hexdigest()
+                    if fit_path.exists()
+                    else "0" * 64
+                ),
+                baseline_receipt_sha256=(
+                    hashlib.sha256(baseline_path.read_bytes()).hexdigest()
+                    if baseline_path.exists()
+                    else "1" * 64
+                ),
+            )
+        )
+    summary_path = receipts / "campaign.training-summary.json"
+    summary_sha256 = (
+        hashlib.sha256(summary_path.read_bytes()).hexdigest()
+        if summary_path.exists()
+        else "2" * 64
+    )
+    overall_status = (
+        "complete"
+        if all(
+            result.abc_status == "complete" and result.baseline_status == "complete"
+            for result in results
+        )
+        else "incomplete"
+    )
+    campaign_result = campaign_fit.ABC6CampaignResult(
+        protocol_id=cases.PROTOCOL_ID,
+        run_id=cases.RUN_ID,
+        manifest_sha256="a" * 64,
+        claim_sha256="b" * 64,
+        status=overall_status,
+        case_statuses=tuple(statuses),
+        summary_path=summary_path,
+        summary_sha256=summary_sha256,
+    )
+    return campaign_fit.ABC6TrainingCampaignExecution(
+        campaign_result=campaign_result,
+        evidence_manifest_path=(receipts / campaign_fit.EVIDENCE_MANIFEST_FILENAME),
+        evidence_manifest_sha256="c" * 64,
+        _training_bundle=training,
+        _training_results=tuple(results),
+    )
+
+
+def _prepare_private_execution_call(
+    monkeypatch,
+    receipts: Path,
+    training,
+    results,
+    forecasts,
+    *,
+    frozen=None,
+):
+    source_hashes = _install_fake_source_contract(monkeypatch)
+    execution = _fake_execution(receipts, training, results)
+
+    def fake_load_verified(self):
+        assert self is execution
+        return campaign_fit.ABC6VerifiedTrainingEvidence(
+            training_bundle=training,
+            training_results=tuple(results),
+        )
+
+    monkeypatch.setattr(
+        campaign_fit.ABC6TrainingCampaignExecution,
+        "load_verified_training_evidence",
+        fake_load_verified,
+    )
+    monkeypatch.setattr(
+        scoring,
+        "forecast_abc6_posterior_and_baseline",
+        lambda data, result, *, simulator: forecasts[data.case.case_index],
+    )
+    frozen_roster = (
+        scoring.freeze_abc6_forecasts(forecasts) if frozen is None else frozen
+    )
+    receipt_hashes = tuple(
+        (f"case-{case.case_index:02d}.{component}-status.json", digest)
+        for case, status in zip(CASE_ROSTER, execution.campaign_result.case_statuses)
+        for component, digest in (
+            ("fit", status.fit_receipt_sha256),
+            ("baseline", status.baseline_receipt_sha256),
+        )
+    )
+    summary_path = execution.campaign_result.summary_path
+    summary_sha256 = (
+        hashlib.sha256(summary_path.read_bytes()).hexdigest()
+        if summary_path.exists()
+        else execution.campaign_result.summary_sha256
+    )
+    payload = scoring._expected_forecast_artifact_payload(
+        campaign_result=execution.campaign_result,
+        evidence_manifest_sha256=execution.evidence_manifest_sha256,
+        source_hashes=source_hashes,
+        receipt_hashes=receipt_hashes,
+        summary_sha256=summary_sha256,
+        frozen=frozen_roster,
+    )
+    artifact_path = receipts / scoring._FORECAST_ARTIFACT_FILENAME
+    receipts.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_bytes(payload)
+    return execution, frozen_roster, artifact_path, hashlib.sha256(payload).hexdigest()
+
+
+def _private_score(
+    monkeypatch,
+    receipts,
+    training,
+    results,
+    forecasts,
+    *,
+    frozen=None,
+    simulator=_fake_simulator,
+):
+    prepared = _prepare_private_execution_call(
+        monkeypatch,
+        receipts,
+        training,
+        results,
+        forecasts,
+        frozen=frozen,
+    )
+    return scoring.score_deferred_abc6_synthetic(
+        *prepared,
+        simulator=simulator,
+    )
+
+
 def _fake_marker_paths(tmp_path: Path) -> tuple[Path, Path]:
     project_root = tmp_path / "private-fake-project"
     marker_path = (
@@ -439,14 +600,107 @@ def test_pre_marker_failure_never_calls_target_generator_or_claims_marker(
     )
 
     with pytest.raises(scoring.ABC6ScoringError, match="forecast hash"):
-        scoring.score_deferred_abc6_synthetic(
+        _private_score(
+            monkeypatch,
             receipts,
             training,
             results,
-            malformed,
+            forecasts,
+            frozen=malformed,
             simulator=_fake_simulator,
         )
 
+    assert calls == []
+    assert not marker.exists()
+
+
+def test_bare_mutated_posterior_and_matching_forecast_are_rejected_pre_marker(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = tmp_path / "receipts"
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    calls = _install_fake_gate(monkeypatch, marker, project_root)
+
+    # Reproduce the former bypass: alter posterior a from .50 to .59 and make
+    # a self-consistent forecast that agrees with that caller-owned posterior.
+    changed_results = list(results)
+    changed_result = SimpleNamespace(**vars(results[0]))
+    changed_abc = dict(changed_result.abc_result)
+    changed_posterior = dict(changed_abc["posterior"])
+    changed_columns = dict(changed_posterior["free_parameter_values"])
+    changed_a = np.asarray(changed_columns["a"], dtype=float).copy()
+    assert changed_a[0] == 0.50
+    changed_a[0] = 0.59
+    changed_columns["a"] = changed_a
+    changed_posterior["free_parameter_values"] = changed_columns
+    changed_abc["posterior"] = changed_posterior
+    changed_result.abc_result = changed_abc
+    changed_results[0] = changed_result
+
+    changed_forecasts = list(forecasts)
+    changed_forecast = changed_forecasts[0]
+    changed_particles = list(changed_forecast.particles)
+    changed_particle = changed_particles[0]
+    changed_particles[0] = replace(
+        changed_particle,
+        parameter_values=(0.59, *changed_particle.parameter_values[1:]),
+    )
+    changed_forecasts[0] = replace(
+        changed_forecast,
+        particles=tuple(changed_particles),
+        baseline_parameter_values=(
+            0.59,
+            *changed_forecast.baseline_parameter_values[1:],
+        ),
+    )
+    frozen = scoring.freeze_abc6_forecasts(changed_forecasts)
+
+    # The old receipt/bundle/results/forecast call shape is now rejected at
+    # the public boundary, before loading evidence, claiming, or revealing.
+    with pytest.raises(
+        TypeError, match="execution must be an ABC6TrainingCampaignExecution"
+    ):
+        scoring.score_deferred_abc6_synthetic(
+            receipts,
+            training,
+            tuple(changed_results),
+            frozen,
+            simulator=_fake_simulator,
+        )
+
+    assert calls == []
+    assert not marker.exists()
+
+
+def test_current_campaign_source_allowlist_fails_closed_before_loading_or_reveal(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = tmp_path / "receipts"
+    _write_receipts(receipts, results)
+    execution = _fake_execution(receipts, training, results)
+    frozen = scoring.freeze_abc6_forecasts(forecasts)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    calls = _install_fake_gate(monkeypatch, marker, project_root)
+    loader_calls = []
+    monkeypatch.setattr(
+        campaign_fit.ABC6TrainingCampaignExecution,
+        "load_verified_training_evidence",
+        lambda self: loader_calls.append(self),
+    )
+
+    with pytest.raises(scoring.ABC6ScoringError, match="must allowlist and review"):
+        scoring.score_deferred_abc6_synthetic(
+            execution,
+            frozen,
+            receipts / scoring._FORECAST_ARTIFACT_FILENAME,
+            "d" * 64,
+            simulator=_fake_simulator,
+        )
+
+    assert loader_calls == []
     assert calls == []
     assert not marker.exists()
 
@@ -458,12 +712,13 @@ def test_missing_status_roster_fails_before_marker_or_target_generation(
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
 
-    with pytest.raises(cases.ABC6StatusReceiptError, match="does not exist"):
-        scoring.score_deferred_abc6_synthetic(
+    with pytest.raises(cases.ABC6StatusReceiptError, match="missing durable receipt"):
+        _private_score(
+            monkeypatch,
             tmp_path / "missing-receipts",
             training,
             results,
-            scoring.freeze_abc6_forecasts(forecasts),
+            forecasts,
             simulator=_fake_simulator,
         )
 
@@ -480,11 +735,12 @@ def test_success_scores_fake_targets_and_emits_protocol_diagnostics(
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
 
-    output = scoring.score_deferred_abc6_synthetic(
+    output = _private_score(
+        monkeypatch,
         receipts,
         training,
         results,
-        scoring.freeze_abc6_forecasts(forecasts),
+        forecasts,
         simulator=_fake_simulator,
     )
 
@@ -570,6 +826,39 @@ def test_success_scores_fake_targets_and_emits_protocol_diagnostics(
     )
 
 
+def test_durable_forecast_artifact_source_tampering_fails_before_marker(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = tmp_path / "receipts"
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    calls = _install_fake_gate(monkeypatch, marker, project_root)
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    execution, frozen, artifact_path, _digest = prepared
+    payload = json.loads(artifact_path.read_text("ascii"))
+    payload["integrated_source_hashes"][0]["sha256"] = "f" * 64
+    body = {key: value for key, value in payload.items() if key != "payload_sha256"}
+    payload["payload_sha256"] = scoring._sha256(scoring._canonical_json(body))
+    tampered = scoring._canonical_json(payload)
+    artifact_path.write_bytes(tampered)
+    tampered_digest = scoring._sha256(tampered)
+
+    with pytest.raises(scoring.ABC6ScoringError, match="does not bind"):
+        scoring.score_deferred_abc6_synthetic(
+            execution,
+            frozen,
+            artifact_path,
+            tampered_digest,
+            simulator=_fake_simulator,
+        )
+
+    assert calls == []
+    assert not marker.exists()
+
+
 def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     tmp_path, monkeypatch
 ):
@@ -579,13 +868,13 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root, bad_hash=True)
     frozen = scoring.freeze_abc6_forecasts(forecasts)
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts, frozen=frozen
+    )
 
     with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as first:
         scoring.score_deferred_abc6_synthetic(
-            receipts,
-            training,
-            results,
-            frozen,
+            *prepared,
             simulator=_fake_simulator,
         )
     assert first.value.condition_consumed is True
@@ -597,10 +886,7 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
         scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
     ):
         scoring.score_deferred_abc6_synthetic(
-            receipts,
-            training,
-            results,
-            frozen,
+            *prepared,
             simulator=_fake_simulator,
         )
     assert calls == ["generate"]
@@ -619,11 +905,13 @@ def test_forecast_identity_and_weights_are_checked_before_marker(tmp_path, monke
     frozen = scoring.freeze_abc6_forecasts(altered)
 
     with pytest.raises(scoring.ABC6ScoringError, match="weights"):
-        scoring.score_deferred_abc6_synthetic(
+        _private_score(
+            monkeypatch,
             receipts,
             training,
             results,
-            frozen,
+            forecasts,
+            frozen=frozen,
             simulator=_fake_simulator,
         )
 
@@ -649,11 +937,12 @@ def test_status_receipt_exact_integer_types_and_roster_ids_fail_closed(
     calls = _install_fake_gate(monkeypatch, marker, project_root)
 
     with pytest.raises(cases.ABC6StatusReceiptError, match=message):
-        scoring.score_deferred_abc6_synthetic(
+        _private_score(
+            monkeypatch,
             receipts,
             training,
             results,
-            scoring.freeze_abc6_forecasts(forecasts),
+            forecasts,
             simulator=_fake_simulator,
         )
 
@@ -682,11 +971,12 @@ def test_training_summary_exact_types_and_ordered_case_ids_fail_before_marker(
     calls = _install_fake_gate(monkeypatch, marker, project_root)
 
     with pytest.raises(scoring.ABC6ScoringError, match=message):
-        scoring.score_deferred_abc6_synthetic(
+        _private_score(
+            monkeypatch,
             receipts,
             training,
             results,
-            scoring.freeze_abc6_forecasts(forecasts),
+            forecasts,
             simulator=_fake_simulator,
         )
 
@@ -708,11 +998,12 @@ def test_symlinked_fixed_root_ancestor_is_rejected_before_exclusive_claim(
     calls = _install_fake_gate(monkeypatch, marker, project_root)
 
     with pytest.raises(scoring.ABC6ScoringError, match="ancestry.*symlink"):
-        scoring.score_deferred_abc6_synthetic(
+        _private_score(
+            monkeypatch,
             receipts,
             training,
             results,
-            scoring.freeze_abc6_forecasts(forecasts),
+            forecasts,
             simulator=_fake_simulator,
         )
 
@@ -733,6 +1024,7 @@ def test_boolean_case_and_particle_ids_are_rejected_before_marker(
     tmp_path, monkeypatch, identity_path, message
 ):
     training, results, forecasts = _fixture_rosters()
+    original_results = results
     receipts = tmp_path / "receipts"
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
@@ -760,14 +1052,34 @@ def test_boolean_case_and_particle_ids_are_rejected_before_marker(
         changed_forecasts[1] = replace(target, particles=changed_particles)
         frozen = scoring.freeze_abc6_forecasts(changed_forecasts)
 
-    with pytest.raises(scoring.ABC6ScoringError, match=message):
-        scoring.score_deferred_abc6_synthetic(
-            receipts,
-            training,
-            results,
-            frozen,
-            simulator=_fake_simulator,
+    if identity_path == "result.case_index":
+        prepared = _prepare_private_execution_call(
+            monkeypatch, receipts, training, original_results, forecasts, frozen=frozen
         )
+        monkeypatch.setattr(
+            campaign_fit.ABC6TrainingCampaignExecution,
+            "load_verified_training_evidence",
+            lambda _self: campaign_fit.ABC6VerifiedTrainingEvidence(
+                training_bundle=training,
+                training_results=results,
+            ),
+        )
+        with pytest.raises(scoring.ABC6ScoringError, match=message):
+            scoring.score_deferred_abc6_synthetic(
+                *prepared,
+                simulator=_fake_simulator,
+            )
+    else:
+        with pytest.raises(scoring.ABC6ScoringError, match=message):
+            _private_score(
+                monkeypatch,
+                receipts,
+                training,
+                results,
+                forecasts,
+                frozen=frozen,
+                simulator=_fake_simulator,
+            )
 
     assert calls == []
     assert not marker.exists()

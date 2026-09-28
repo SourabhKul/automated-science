@@ -25,6 +25,7 @@ from typing import Final, Literal
 
 import numpy as np
 
+from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign_fit
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data.cascaded_tanks_abc6_cases import (
     CASE_COUNT,
@@ -43,6 +44,7 @@ from core.real_data.cascaded_tanks_abc6_cases import (
 )
 from core.real_data.cascaded_tanks_abc6_forecast import (
     ABC6PosteriorBaselineForecast,
+    forecast_abc6_posterior_and_baseline,
     weighted_left_inverse_quantile,
 )
 from core.real_data.cascaded_tanks_abc6_training import PARTICLE_COUNT
@@ -56,7 +58,14 @@ from core.real_data.cascaded_tanks_models import (
 )
 
 _PROJECT_ROOT: Final = Path(__file__).resolve().parents[2]
+_SOURCE_ROOT: Final = Path(__file__).resolve().parents[2]
 _TRAINING_SUMMARY_FILENAME: Final = "campaign.training-summary.json"
+_FORECAST_ARTIFACT_FILENAME: Final = "campaign.target-free-forecasts.json"
+_INTEGRATED_SOURCE_PATHS: Final = (
+    "scripts/run_cascaded_tanks_abc6_synthetic.py",
+    "core/real_data/cascaded_tanks_abc6_forecast.py",
+    "core/real_data/cascaded_tanks_abc6_scoring.py",
+)
 _REVEAL_MARKER_PATH: Final = (
     _PROJECT_ROOT
     / "artifacts"
@@ -206,6 +215,214 @@ def _canonical_json(value: object) -> bytes:
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _verified_integrated_source_hashes() -> tuple[tuple[str, str], ...]:
+    """Require the runner, forecast, and scorer in the frozen source contract."""
+
+    required_paths = getattr(campaign_fit, "_REQUIRED_SOURCE_PATHS", None)
+    reviewed = getattr(campaign_fit, "_REVIEWED_SOURCE_SHA256", None)
+    if (
+        type(required_paths) is not tuple
+        or any(type(path) is not str for path in required_paths)
+        or len(set(required_paths)) != len(required_paths)
+        or not set(_INTEGRATED_SOURCE_PATHS).issubset(required_paths)
+        or not isinstance(reviewed, Mapping)
+    ):
+        raise ABC6ScoringError(
+            "campaign source contract must allowlist and review runner, forecast, and scorer"
+        )
+    try:
+        if Path(campaign_fit._REPO_ROOT).resolve() != _SOURCE_ROOT.resolve():
+            raise ABC6ScoringError("campaign and scorer source roots do not match")
+        current = campaign_fit._current_source_hashes()
+    except ABC6ScoringError:
+        raise
+    except Exception as error:
+        raise ABC6ScoringError(
+            "cannot verify the integrated campaign source contract"
+        ) from error
+    if type(current) is not dict or set(current) != set(required_paths):
+        raise ABC6ScoringError(
+            "campaign current source hashes do not match the exact required path set"
+        )
+
+    checked: list[tuple[str, str]] = []
+    for relative_path in _INTEGRATED_SOURCE_PATHS:
+        current_digest = current.get(relative_path)
+        reviewed_digest = reviewed.get(relative_path)
+        if (
+            not _is_sha256(current_digest)
+            or not _is_sha256(reviewed_digest)
+            or current_digest != reviewed_digest
+        ):
+            raise ABC6ScoringError(
+                f"integrated source is not independently pinned: {relative_path}"
+            )
+        checked.append((relative_path, current_digest))
+    return tuple(checked)
+
+
+def _validate_campaign_execution_identity(execution) -> tuple[Path, tuple[str, ...]]:
+    """Check the typed campaign identity and the exact 48 status links."""
+
+    campaign_result = execution.campaign_result
+    if not isinstance(campaign_result, campaign_fit.ABC6CampaignResult):
+        raise ABC6ScoringError("verified execution has no typed campaign result")
+    if (
+        campaign_result.protocol_id != PROTOCOL_ID
+        or campaign_result.run_id != RUN_ID
+        or campaign_result.prospective_targets_generated is not False
+        or campaign_result.forecasts_run is not False
+        or not _is_sha256(campaign_result.manifest_sha256)
+        or not _is_sha256(campaign_result.claim_sha256)
+        or not _is_sha256(campaign_result.summary_sha256)
+        or not _is_sha256(execution.evidence_manifest_sha256)
+    ):
+        raise ABC6ScoringError("verified campaign execution identity is invalid")
+    summary_path = campaign_result.summary_path
+    if (
+        not isinstance(summary_path, Path)
+        or summary_path.name != _TRAINING_SUMMARY_FILENAME
+        or len(campaign_result.case_statuses) != CASE_COUNT
+    ):
+        raise ABC6ScoringError("verified campaign summary/status roster is incomplete")
+
+    expected_receipt_names: list[str] = []
+    statuses_complete = True
+    for index, (case, status) in enumerate(
+        zip(CASE_ROSTER, campaign_result.case_statuses, strict=True)
+    ):
+        if (
+            type(status.case_index) is not int
+            or status.case_index != index
+            or status.case_id != case.case_id
+            or type(status.fit_status) is not str
+            or type(status.baseline_status) is not str
+            or not _is_sha256(status.fit_receipt_sha256)
+            or not _is_sha256(status.baseline_receipt_sha256)
+        ):
+            raise ABC6ScoringError(
+                f"campaign status identity or receipt digest is invalid at case {index}"
+            )
+        if status.fit_status not in {"complete", "incomplete", "unresolved", "failed"}:
+            raise ABC6ScoringError(f"campaign fit status is invalid at case {index}")
+        if status.baseline_status not in {"complete", "incomplete", "failed"}:
+            raise ABC6ScoringError(
+                f"campaign baseline status is invalid at case {index}"
+            )
+        statuses_complete = statuses_complete and (
+            status.fit_status == "complete" and status.baseline_status == "complete"
+        )
+        expected_receipt_names.extend(
+            (
+                f"case-{index:02d}.fit-status.json",
+                f"case-{index:02d}.baseline-status.json",
+            )
+        )
+    expected_campaign_status = "complete" if statuses_complete else "incomplete"
+    if campaign_result.status != expected_campaign_status:
+        raise ABC6ScoringError("campaign overall status disagrees with its 48 cases")
+    return summary_path.parent, tuple(expected_receipt_names)
+
+
+def _expected_forecast_artifact_payload(
+    *,
+    campaign_result,
+    evidence_manifest_sha256: str,
+    source_hashes: tuple[tuple[str, str], ...],
+    receipt_hashes: tuple[tuple[str, str], ...],
+    summary_sha256: str,
+    frozen: ABC6FrozenForecastRoster,
+) -> bytes:
+    body: dict[str, object] = {
+        "schema_version": 1,
+        "protocol_id": PROTOCOL_ID,
+        "run_id": RUN_ID,
+        "training_manifest_sha256": campaign_result.manifest_sha256,
+        "training_claim_sha256": campaign_result.claim_sha256,
+        "training_summary_filename": _TRAINING_SUMMARY_FILENAME,
+        "training_summary_sha256": summary_sha256,
+        "training_evidence_manifest_sha256": evidence_manifest_sha256,
+        "integrated_source_hashes": [
+            {"path": path, "sha256": digest} for path, digest in source_hashes
+        ],
+        "ordered_case_identities": [
+            {
+                "case_index": case.case_index,
+                "case_id": case.case_id,
+                "truth_id": case.truth_id,
+                "input_window": case.input_window,
+                "replicate": case.replicate,
+                "fit_model": case.fit_model.value,
+            }
+            for case in CASE_ROSTER
+        ],
+        "status_receipts": [
+            {"filename": filename, "sha256": digest}
+            for filename, digest in receipt_hashes
+        ],
+        "forecast_case_sha256": list(frozen.case_sha256),
+        "forecast_roster_sha256": frozen.roster_sha256,
+        "forecasts": [_json_ready(item) for item in frozen.forecasts],
+        "target_free": True,
+        "prospective_targets_generated_by_runner": False,
+        "retry_allowed": False,
+    }
+    body["payload_sha256"] = _sha256(_canonical_json(body))
+    return _canonical_json(body)
+
+
+def _verify_frozen_forecast_artifact(
+    path: str | os.PathLike[str],
+    expected_sha256: str,
+    *,
+    receipt_directory: Path,
+    campaign_result,
+    evidence_manifest_sha256: str,
+    source_hashes: tuple[tuple[str, str], ...],
+    receipt_hashes: tuple[tuple[str, str], ...],
+    summary_sha256: str,
+    frozen: ABC6FrozenForecastRoster,
+) -> str:
+    if not _is_sha256(expected_sha256):
+        raise ABC6ScoringError("forecast artifact digest must be a lowercase SHA-256")
+    artifact_path = Path(path)
+    expected_path = receipt_directory / _FORECAST_ARTIFACT_FILENAME
+    if artifact_path != expected_path:
+        raise ABC6ScoringError("forecast artifact must be the fixed campaign artifact")
+    try:
+        info = artifact_path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 128 * 1024 * 1024:
+            raise ABC6ScoringError("forecast artifact must be a bounded regular file")
+        raw = artifact_path.read_bytes()
+    except ABC6ScoringError:
+        raise
+    except OSError as error:
+        raise ABC6ScoringError(
+            "durable target-free forecast artifact is unreadable"
+        ) from error
+    expected_payload = _expected_forecast_artifact_payload(
+        campaign_result=campaign_result,
+        evidence_manifest_sha256=evidence_manifest_sha256,
+        source_hashes=source_hashes,
+        receipt_hashes=receipt_hashes,
+        summary_sha256=summary_sha256,
+        frozen=frozen,
+    )
+    if _sha256(raw) != expected_sha256 or raw != expected_payload:
+        raise ABC6ScoringError(
+            "durable forecast artifact does not bind the verified evidence/source/forecast roster"
+        )
+    return expected_sha256
 
 
 def _json_ready(value: object) -> object:
@@ -1315,41 +1532,93 @@ def _target_vectors_and_hashes(
 
 
 def score_deferred_abc6_synthetic(
-    receipt_directory: str | os.PathLike[str],
-    training: ABC6TrainingBundle,
-    training_results: Sequence[object],
+    execution: campaign_fit.ABC6TrainingCampaignExecution,
     frozen_forecasts: ABC6FrozenForecastRoster,
+    forecast_artifact_path: str | os.PathLike[str],
+    forecast_artifact_sha256: str,
     *,
     simulator=simulate_cascaded_tanks,
 ) -> ABC6DeferredScoreResult:
     """Reveal, hash, then score the fixed synthetic A/B/M prospective targets.
 
-    All receipt, case, posterior, and forecast checks happen before the fixed
-    project-root O_EXCL marker.  After it exists, every error is reported as a
-    consumed condition and the marker is never removed.
+    A durable campaign execution is the only accepted training input. Its
+    verified accessor supplies the exact bundle and results. The scorer then
+    rechecks all 48 durable receipts, recomputes the complete target-free
+    forecast roster from that evidence, and verifies the durable forecast
+    artifact and integrated source pins before the fixed project-root O_EXCL
+    marker. After it exists, every error is reported as a consumed condition
+    and the marker is never removed.
     """
 
     if not callable(simulator):
         raise TypeError("simulator must be callable")
+    if not isinstance(execution, campaign_fit.ABC6TrainingCampaignExecution):
+        raise TypeError(
+            "execution must be an ABC6TrainingCampaignExecution; bare training data is rejected"
+        )
     if not isinstance(frozen_forecasts, ABC6FrozenForecastRoster):
         raise TypeError("frozen_forecasts must come from freeze_abc6_forecasts")
-    if isinstance(training_results, (str, bytes, bytearray)):
-        raise TypeError("training_results must be an ordered 24-case sequence")
-    results = tuple(training_results)
-    if len(results) != CASE_COUNT:
-        raise ABC6ScoringError("training result roster must contain exactly 24 cases")
     if (
         len(frozen_forecasts.forecasts) != CASE_COUNT
         or len(frozen_forecasts.case_sha256) != CASE_COUNT
     ):
         raise ABC6ScoringError("frozen forecast roster must contain exactly 24 cases")
+
+    # The campaign manifest must freeze all three integrated sources before a
+    # reveal attempt. The current campaign allowlist omits them, so production
+    # scoring remains closed until its independent manifest review is updated.
+    source_hashes = _verified_integrated_source_hashes()
+    try:
+        verified = execution.load_verified_training_evidence()
+    except Exception as error:
+        raise ABC6ScoringError(
+            "campaign execution failed durable training-evidence verification"
+        ) from error
+    if not isinstance(verified, campaign_fit.ABC6VerifiedTrainingEvidence):
+        raise ABC6ScoringError("execution returned no typed verified training evidence")
+    training = verified.training_bundle
+    results = verified.training_results
+    if not isinstance(results, tuple) or len(results) != CASE_COUNT:
+        raise ABC6ScoringError(
+            "verified training results must contain exactly 24 cases"
+        )
     data = _validate_training_bundle(training)
+    receipt_directory, expected_receipt_names = _validate_campaign_execution_identity(
+        execution
+    )
 
     # The case gate is opened only after every status receipt is durable and
     # verified.  No prospective simulator is called by this preflight.
     gate, receipt_statuses, receipt_hashes, summary_sha256 = _read_verified_statuses(
         receipt_directory
     )
+    campaign_result = execution.campaign_result
+    expected_receipt_hashes: list[tuple[str, str]] = []
+    for status in campaign_result.case_statuses:
+        expected_receipt_hashes.extend(
+            (
+                (
+                    f"case-{status.case_index:02d}.fit-status.json",
+                    status.fit_receipt_sha256,
+                ),
+                (
+                    f"case-{status.case_index:02d}.baseline-status.json",
+                    status.baseline_receipt_sha256,
+                ),
+            )
+        )
+    if tuple(name for name, _digest in receipt_hashes) != expected_receipt_names:
+        raise ABC6ScoringError(
+            "verified status receipt order differs from campaign execution"
+        )
+    if tuple(receipt_hashes) != tuple(expected_receipt_hashes):
+        raise ABC6ScoringError(
+            "verified receipt digests differ from campaign execution"
+        )
+    if summary_sha256 != campaign_result.summary_sha256:
+        raise ABC6ScoringError(
+            "verified training summary digest differs from execution"
+        )
     for case_index, (result, forecast, (fit_status, baseline_status)) in enumerate(
         zip(results, frozen_forecasts.forecasts, receipt_statuses, strict=True)
     ):
@@ -1366,6 +1635,39 @@ def score_deferred_abc6_synthetic(
             raise ABC6ScoringError("target-free forecast hash mismatch")
         posterior = _validated_posterior(result, case_index)
         _validated_forecast(forecast, result, case_index, posterior)
+
+    try:
+        recomputed_forecasts = tuple(
+            forecast_abc6_posterior_and_baseline(
+                training.data_for_case(case_index),
+                results[case_index],
+                simulator=simulator,
+            )
+            for case_index in range(CASE_COUNT)
+        )
+        recomputed_roster = freeze_abc6_forecasts(recomputed_forecasts)
+    except Exception as error:
+        raise ABC6ScoringError(
+            "verified training evidence could not reproduce target-free forecasts"
+        ) from error
+    if (
+        recomputed_roster.case_sha256 != frozen_forecasts.case_sha256
+        or recomputed_roster.roster_sha256 != frozen_forecasts.roster_sha256
+    ):
+        raise ABC6ScoringError(
+            "submitted forecast roster differs from verified training evidence"
+        )
+    _verify_frozen_forecast_artifact(
+        forecast_artifact_path,
+        forecast_artifact_sha256,
+        receipt_directory=receipt_directory,
+        campaign_result=campaign_result,
+        evidence_manifest_sha256=execution.evidence_manifest_sha256,
+        source_hashes=source_hashes,
+        receipt_hashes=receipt_hashes,
+        summary_sha256=summary_sha256,
+        frozen=frozen_forecasts,
+    )
     roster_hash = _sha256(
         _canonical_json(
             {
@@ -1385,6 +1687,10 @@ def score_deferred_abc6_synthetic(
         "condition": "synthetic-prospective-target-confirmation-v1",
         "semantics": "consumed-on-create; success-or-failure; no-retry",
         "forecast_roster_sha256": roster_hash,
+        "forecast_artifact_sha256": forecast_artifact_sha256,
+        "training_manifest_sha256": campaign_result.manifest_sha256,
+        "training_evidence_manifest_sha256": execution.evidence_manifest_sha256,
+        "integrated_source_hashes": source_hashes,
         "status_receipt_sha256": receipt_hashes,
         "training_summary_sha256": summary_sha256,
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
