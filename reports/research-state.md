@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T02:10Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T02:30Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: one-case ABC6 training seam reviewed and synced
+
+Independent Luna review cleared the source-free one-case training seam with
+an actual bounded calibration/ABC/baseline suffix sentinel. It verified the
+frozen public 256-draw empirical q25/q10 calibration, 48-particle/two-
+population/4,096-attempt checked reference settings, all-population
+matched-call baseline budget, and no prospective-target path. Fifty-four
+focused tests passed under pinned Python 3.14.3 and NumPy 2.4.2; the
+sentinel uses private smaller test controls, so it is not a production-sized
+fit. The sole Luna Git owner pushed the exact reviewed two-file scope
+non-force to `origin/main` as content commit
+`9916cb9ef4f515f78eacb4bc0ee5e3e7a656ddf0` on `main`. A fresh fetch
+verified `HEAD == origin/main` and a clean worktree. See
+`reports/research-ledger/2026-09-28T0230Z.md` for hashes and limits.
+
+The **24-case synthetic campaign remains HOLD**. A runner with one-use
+claim, durable all-case receipts, frozen manifest, bounded watchdog,
+all-particle forecasts, target gate and independent replay still needs
+implementation and review before the unused `ct-abc6-20260928-v1` run ID
+may be claimed. No real tank Qwen/ABC, real development target, official
+test or prospective synthetic score has been accessed this wake.
 
 ## Latest checkpoint: reviewed ABC6 components, campaign still gated
 
