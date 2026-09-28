@@ -1,8 +1,35 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T03:15Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T03:56Z. This file records observed state, not inferred execution.
 
-## Latest checkpoint: training-only campaign seam reviewed
+## Latest checkpoint: target-free forecast synced; watchdog held
+
+The source-free, target-free ABC6 forecast component passed independent
+review and was pushed non-force to `origin/main` as content commit
+`e74d62824f747bcfc22da35b5ee9dcd2aa33cb21` on `main`. Fresh fetch
+verified `HEAD == origin/main`; the unreviewed watchdog files were left
+untracked. The forecast review verified S's 78 fit transitions plus 126
+known-zero transitions to common state 204, L/M's 204 transitions, exact
+60-step declared future input, all-particle failure suppression, weighted
+left-inverse quantiles, coherent baseline and N abstention. This predicts
+from inputs only; it neither generates nor scores prospective truth. See
+`reports/research-ledger/2026-09-28T0356Z.md`.
+
+An external watchdog draft is **HOLD** after independent fake-child probes
+found a surviving forked child could be missed when its parent exited, and
+`AccessDenied` during process enumeration could leave an orphan while the
+receipt incorrectly claimed the tree was reaped. Its pre-claim check also
+accepted a manifest lacking source/roster pins and a separate approval
+record. Both test orphans were killed by the reviewer. A Luna author is
+repairing process-group tracking, honest survivor reporting and pre-claim
+strict manifest/approval verification. No production run ID was claimed.
+
+The full synthetic `ct-abc6-20260928-v1` campaign remains **unused and
+HOLD** pending watchdog rereview, final immutable approval, complete
+target-reveal/scoring orchestration and replay. Real tank validation and
+official test outputs remain sealed. No scientific breakthrough is claimed.
+
+## Earlier checkpoint: training-only campaign seam reviewed
 
 An independently reviewed source-free 24-case **training-only** orchestration
 seam was pushed non-force to `origin/main` on `main` as content commit
