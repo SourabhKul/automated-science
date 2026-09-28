@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T08:13Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T08:52Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: integrated runner held on alternate scorer path
+
+An untracked source-free ABC6 runner draft passed 16 fake-only runner/scorer
+tests, but independent review gave **HOLD**. Its own path uses verified
+campaign evidence and freezes the 24-case target-free forecast roster;
+however, the public scorer still accepts bare results. In a private fixture,
+the reviewer changed posterior `a` from `0.50` to `0.59` after 48 status
+receipts, froze matching forecasts, and called the scorer directly. It
+invoked a fake target generator while all 48 status receipts stayed valid.
+No production marker or protocol prospective target was accessed. The
+current campaign source list also lacks the runner, forecast and scorer.
+See `reports/research-ledger/2026-09-28T0852Z.md`.
+
+A Luna author is repairing the shared scorer pre-target gate. The runner
+stays untracked and the `ct-abc6-20260928-v1` run ID remains unused/HOLD.
+The reviewed durable evidence seam is still synced in
+`76c30efb9ec74faa738b055faf1fcd1179af2b51`, and the last reviewed
+report sync was `cd5b81f7c90448da49f07b2c9539b9cf90ccfcc6`. No actual
+ABC6 campaign, synthetic prospective score, real tank Qwen/ABC,
+`yEst[768:1024]` or official `uVal/yVal` access occurred. No scientific
+breakthrough is claimed.
 
 ## Latest checkpoint: durable numerical evidence seam synced
 
