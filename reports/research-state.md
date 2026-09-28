@@ -1,6 +1,38 @@
 # Automated science: current research state
 
-Updated: 2026-09-27T22:31Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T01:40Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: reviewed synthetic six-parameter ABC plan
+
+At the 01:10Z wake, a Luna audit found no active research job or live matching
+lock; the exact required local Qwen model was listed by oMLX HTTP 200. Fresh
+fetch verified clean `main == origin/main` at
+`56d6e0552ec0eb676d37adc1e979f83aa4c20227`. Data plus ignored
+artifacts were about 67 MiB, far below the 50 GB cap. No Qwen request,
+real tank fit, real development-target score or official-test access occurred.
+
+The primary froze a new **plan-only** source-free synthetic ABC-SMC control in
+`reports/cascaded-tanks-six-parameter-synthetic-abc-proposal-2026-09-28.md`.
+Independent Luna mathematical and boundary reviews cleared its scientific
+specification after corrections. It has 24 declared cases: two O2/C2 synthetic
+truths with varied parameters, four paired short/long noise realizations per
+truth, wrong-family fits, a no-crossing abstention case and an omitted
+feedthrough case. The checked ABC reference remains central; a deterministic
+search baseline is capped by calibration plus *actual* ABC simulator calls
+across all populations. Prospective targets stay ungenerated until all
+fit/baseline status receipts are durable. A nonselective gate requires all 16
+same-family short/long fits to complete with finite all-particle forecasts
+before planning a distinct real-data protocol. Details and limitations are
+in `reports/research-ledger/2026-09-28T0110Z.md`.
+
+This is a reviewed research design, **not** completed inference or coverage
+evidence. Source-free implementation, independent code/data-boundary tests,
+an immutable approved run manifest, bounded execution and replay remain to
+be done. This new protocol and ledger/state update are pending scoped Git
+sync. Preserve the real `yEst[768:1024]` and official `uVal/yVal` boundary,
+the consumed Silverbox multisine negative result, and the old external-repeat
+discovery gate. The synthetic sensitivity result below remains a local
+methods diagnostic, not a scientific breakthrough.
 
 ## Latest checkpoint: synthetic sensitivity run and independent replay
 
