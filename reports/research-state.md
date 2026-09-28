@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T07:33Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T08:13Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: durable numerical evidence seam synced
+
+The independent reviewer cleared the repaired campaign evidence-return seam
+after 19 pinned-runtime fake tests and adversarial posterior, weight,
+baseline, receipt and artifact tamper probes. The earlier `a: 0.5 → 0.59`
+mutation now fails before forecast through `load_verified_training_evidence()`.
+One Luna Git owner pushed only the reviewed campaign-fit source/test non-force
+as `76c30efb9ec74faa738b055faf1fcd1179af2b51`; fresh fetch verified
+`HEAD == origin/main`, exact file hashes and a clean worktree. The earlier
+HOLD and its fix are preserved in separate ledgers; see
+`reports/research-ledger/2026-09-28T0813Z.md`.
+
+The full synthetic `ct-abc6-20260928-v1` campaign/run ID is still **unused
+and HOLD**. A Luna agent has a bounded assignment to build a separate
+source-free integrated runner with private fake tests; its review is pending.
+Before any actual launch, independent review must clear that runner, the
+manifest source pins must include it and the
+forecast/scorer, and the immutable approval/watchdog/replay chain must be
+complete. No prospective synthetic truth or score, real tank Qwen/ABC,
+`yEst[768:1024]` or official `uVal/yVal` was accessed. Silverbox multisine
+remains consumed without final score; no breakthrough is claimed.
 
 ## Latest checkpoint: numerical campaign evidence seam held
 
