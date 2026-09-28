@@ -1,6 +1,67 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T10:03Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T12:30Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: receipt-root amendment cleared for implementation
+
+An independent Luna reviewer gave **GO for the preimplementation path
+specification** in
+`reports/cascaded-tanks-abc6-receipt-root-amendment-2026-09-28.md` after it
+bound the physical executing checkout, fixed receipt path, approval vectors,
+and five distinct runtime claim/terminal paths to a schema-v2 manifest. This
+changes provenance controls, not the frozen synthetic science. The coordinated
+campaign/runner/scorer/gate/watchdog implementation and independent fake-only
+review are next; there is still no immutable v2 manifest or launch approval.
+See `reports/research-ledger/2026-09-28T1230Z.md`.
+
+The current code retains the pre-open copied-receipt-root gap, and production
+source pins deliberately stop a normal run before claim. The reserved
+`ct-abc6-20260928-v1` campaign is **UNUSED/HOLD**. No protocol prospective
+target, real tank Qwen/ABC, real development-suffix or official test access,
+or scientific breakthrough occurred. These new reports remain local pending
+factual review and one-owner Git sync.
+
+## Latest checkpoint: pre-open ABC6 receipt-root path remains HOLD
+
+Independent Luna review reproduced 35 focused fake-only tests and cleared the
+tested receipt-only public gate, post-open copied-ancestor swaps, and current
+runner bytes as bounded components. It also proved that a symlinked
+`artifacts/` ancestor present **before** gate opening is canonicalized to a
+copied receipt tree; a private fake post-marker handoff then reached a
+sentinel materializer. No protocol prospective target was generated. The
+full public scorer remains stopped before claim by missing integrated source
+pins. A manifest/preflight-bound canonical receipt root with no-follow
+traversal is the next gate; Luna is checking the typed execution contract
+before implementation. See `reports/research-ledger/2026-09-28T1203Z.md`.
+
+The reserved `ct-abc6-20260928-v1` campaign remains **UNUSED/HOLD**. The
+current runner-test bytes differ from the earlier conditional review and were
+reviewed anew; source pins, immutable launch manifest, approval, and replay
+remain incomplete. No real tank Qwen/ABC, real development-suffix or official
+test access, or scientific breakthrough occurred. The last fresh-fetch Git
+state was `HEAD == origin/main == 214d2d365be5429727162b8d8b4b74e14874ac57`;
+the code and these newer reports are not yet synced.
+
+## Latest checkpoint: ABC6 ancestor-path integrity remains HOLD
+
+The revised public target gate rejects receipt-only generation in the tested
+path, but independent fake-only review found that copied-decoy ancestor
+symlinks for the marker, receipt/forecast tree, and `scripts/` source tree each
+reached a sentinel in place of prospective-target materialization after a
+private post-marker handoff. No protocol prospective targets were generated.
+The Luna author is repairing directory identity and no-follow reads at every
+path component; independent rereview is required before source-pin changes,
+Git sync, or any campaign launch. The earlier runner-test hash changed while
+untracked and its conditional GO must be rechecked. See
+`reports/research-ledger/2026-09-28T1112Z.md`.
+
+The 11:12Z read-only wake snapshot found no ABC6 process, claim, or marker;
+oMLX returned HTTP 200 with the exact Qwen model listed. A fresh fetch found
+`HEAD == origin/main == 214d2d365be5429727162b8d8b4b74e14874ac57`;
+active code and untracked runner files remain unsynced. The reserved
+`ct-abc6-20260928-v1` campaign is **UNUSED/HOLD**. No real tank Qwen/ABC,
+real development-suffix or official test access, or scientific breakthrough
+occurred.
 
 ## Latest checkpoint: runner conditionally cleared; shared target gate remains HOLD
 
