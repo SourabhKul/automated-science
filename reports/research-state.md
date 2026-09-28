@@ -1,8 +1,27 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T02:30Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T03:15Z. This file records observed state, not inferred execution.
 
-## Latest checkpoint: one-case ABC6 training seam reviewed and synced
+## Latest checkpoint: training-only campaign seam reviewed
+
+An independently reviewed source-free 24-case **training-only** orchestration
+seam was pushed non-force to `origin/main` on `main` as content commit
+`1054ebf280e59090cc62192381f21e6eb1584ba3`. Fresh fetch verified
+`HEAD == origin/main` and a clean worktree. It checks a strict external
+manifest and source/runtime identities before a fixed project-root O_EXCL
+run-ID claim, then writes durable fit/baseline statuses in the declared
+order. It never opens the prospective-target gate or forecasts. See
+`reports/research-ledger/2026-09-28T0315Z.md` for exact hashes, adversarial
+review failures that were repaired before approval, and scope limits.
+
+The synthetic `ct-abc6-20260928-v1` campaign remains **unclaimed and HOLD**:
+an independently approved final manifest, externally enforced
+900-second/2-GiB watchdog and receipt, all-particle forecast/target
+diagnostics, and independent replay are still required. There was no
+production 24-fit run, real tank Qwen/ABC or held-out access, or scientific
+breakthrough.
+
+## Earlier checkpoint: one-case ABC6 training seam reviewed and synced
 
 Independent Luna review cleared the source-free one-case training seam with
 an actual bounded calibration/ABC/baseline suffix sentinel. It verified the
@@ -24,7 +43,7 @@ implementation and review before the unused `ct-abc6-20260928-v1` run ID
 may be claimed. No real tank Qwen/ABC, real development target, official
 test or prospective synthetic score has been accessed this wake.
 
-## Latest checkpoint: reviewed ABC6 components, campaign still gated
+## Earlier checkpoint: reviewed ABC6 components, campaign still gated
 
 The 24-case synthetic protocol, the cost-matched pattern-search component,
 and the source-free case/target-gate component were independently reviewed
@@ -52,7 +71,7 @@ no 24-case campaign, real tank Qwen/ABC, real development-target score or
 official test access has occurred. Preserve the reserved run ID
 `ct-abc6-20260928-v1` as unused pending approval.
 
-## Latest checkpoint: reviewed synthetic six-parameter ABC plan
+## Earlier checkpoint: reviewed synthetic six-parameter ABC plan
 
 At the 01:10Z wake, a Luna audit found no active research job or live matching
 lock; the exact required local Qwen model was listed by oMLX HTTP 200. Fresh
