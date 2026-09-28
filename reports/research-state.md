@@ -1,6 +1,33 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T09:48Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T10:03Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: runner conditionally cleared; shared target gate remains HOLD
+
+Independent review gave the untracked source-free ABC6 runner and its tests a
+**conditional GO** at runner SHA-256
+`de2d42db2c1809f8e7c3f531428bba3955bd490af82977406076e1bc0462de9e` and test
+SHA-256 `9caa88750794f3b8780ff05e811c4d2755dbd717383ad39304ed25ed892af222`.
+The review reported 19 pinned fake tests and exercised a genuine temporary
+verified-evidence path. A separate public-path probe found a global boundary
+failure: `cases.open_deferred_abc6_target_gate(receipts).generate_targets(training, ...)`
+reached the prospective-target materializer using 48 fake fit/baseline receipts
+without the scorer's one-use marker. The reviewer substituted a sentinel for
+the materializer. No protocol prospective targets were generated or accessed;
+only private fake fixture/sentinel target-shaped data was used. This keeps
+the integrated target-reveal path on **HOLD** despite the runner's bounded
+conditional GO.
+
+The normal runner also fails before claim because the integrated source pins
+are incomplete. The runner and tests remain untracked/unsynced. A Luna author is
+repairing the shared cases/scorer boundary so target generation requires a
+post-marker, bounded one-use capability; independent rereview is required
+before synchronization or launch. The reserved `ct-abc6-20260928-v1` campaign
+remains **UNUSED/HOLD**. No protocol prospective targets were generated or
+accessed; only private fake fixture/sentinel target-shaped data was used. No
+real tank Qwen/ABC, real `yEst[768:1024]`, or official `uVal/yVal` were
+accessed. This is boundary evidence only and supports no scientific claim. See
+`reports/research-ledger/2026-09-28T1003Z.md`.
 
 ## Latest checkpoint: public scorer bypass repaired and synced
 
