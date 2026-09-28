@@ -1,6 +1,27 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T08:52Z. This file records observed state, not inferred execution.
+Updated: 2026-09-28T09:48Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: public scorer bypass repaired and synced
+
+Independent Luna review cleared the repaired public synthetic scorer after
+16 pinned fake-only tests and replay of the earlier direct-call posterior
+mutation bypass. It now requires verified durable campaign evidence and a
+matching recomputed target-free forecast artifact before its one-use marker;
+bare bundle/results and forecast drift fail closed. The reviewer did not
+complete an authentic private end-to-end campaign evidence/scorer fixture,
+which remains an integration gate. The reviewed scorer source/test were
+pushed non-force as `c8a9deedc73de644d7ed02db64ab3e95194ebc32`;
+fresh fetch verified `HEAD == origin/main` and both file hashes. See
+`reports/research-ledger/2026-09-28T0948Z.md`.
+
+The untracked runner draft has a bounded assignment for adaptation to the
+new scorer API; that change and its review are pending. The campaign source
+pins still omit runner,
+forecast and scorer, so the integrated path remains **HOLD before claim**.
+The reserved `ct-abc6-20260928-v1` ID remains unused. No prospective
+synthetic truth/score, actual tank Qwen/ABC, real `yEst[768:1024]` or
+official `uVal/yVal` access occurred. No scientific breakthrough is claimed.
 
 ## Latest checkpoint: integrated runner held on alternate scorer path
 
