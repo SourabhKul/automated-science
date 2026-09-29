@@ -1,6 +1,96 @@
 # Automated science: current research state
 
-Updated: 2026-09-28T12:30Z. This file records observed state, not inferred execution.
+Updated: 2026-09-29T22:23Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: independent GO for scoped ABC6 stage 1
+
+An independent `gpt-6-luna` max reviewer verified the three exact source/test
+hashes in `reports/research-ledger/2026-09-29T1800Z.md`, replayed the missing
+receipt-root identity and two copied-evidence-tree fake probes, and reran the
+focused campaign-fit and scoring suites: **48 passed**. The reviewer gave GO
+only for the schema-v2 evidence-root repair, including mandatory identity,
+exact anchored paths, and descriptor-bound reads. The local root-amendment
+clarification requiring top-level `reviewed_git_head` agrees with the reviewed
+code. See `reports/research-ledger/2026-09-29T2223Z.md`.
+
+A separate read-only Luna check found no ABC6 process, fixed-run claim, scorer
+marker, terminal receipt, or receipt directory at 22:19Z. The oMLX model list
+advertised the exact required Qwen. The reviewed stage-1 files and latest
+compact reports still await one-owner Git synchronization; the last verified
+remote content commit is `ef7d935540627b74f0bef44a83a0a448ec904e2d`.
+The larger `ct-abc6-20260928-v1` campaign remains **UNUSED/HOLD** until
+claim/write and runner/scorer/gate/watchdog identity propagation, source pins,
+immutable manifest, separate approval, and replay are independently cleared.
+No protocol prospective target, real tank Qwen/ABC, held-out tank target, or
+scientific breakthrough occurred.
+
+## Latest checkpoint: stage-1 repair authored, reviewer capacity unavailable
+
+The Luna author made receipt-root identity mandatory and bound all evidence
+reads to that anchored directory. Campaign-fit and fake scoring suites passed
+48 author-run tests; exact hashes and limits are in
+`reports/research-ledger/2026-09-29T1800Z.md`. Two bounded attempts to start
+an independent Luna rereview returned `agent thread limit reached`. Stage 1
+therefore remains **unreviewed and unsynced**, despite passing author tests.
+The final root-amendment clarification adding manifest `reviewed_git_head`
+also awaits documentation review and sync.
+
+The reserved `ct-abc6-20260928-v1` campaign is **UNUSED/HOLD**. Remaining
+claim/write and runner/scorer/gate/watchdog boundaries, source pins, manifest,
+approval and replay have not been cleared. No protocol prospective target,
+real tank Qwen/ABC, real development-suffix or official test access, or
+scientific breakthrough occurred.
+
+## Latest checkpoint: schema-v2 evidence loader held on copied tree
+
+Independent Luna review reproduced the 28 stage-1 fake-only tests and the
+pre-open symlink protection, but gave **HOLD**: a typed execution without a
+receipt-root identity, or with an identity plus redirected summary/manifest
+paths, could load byte-identical copied evidence outside the pinned root.
+The Luna author is making the identity mandatory and binding loader paths to
+that root before rereview. Exact hashes and fake-probe scope are in
+`reports/research-ledger/2026-09-29T1747Z.md`.
+
+No stage-1 code has been synced. The reserved `ct-abc6-20260928-v1`
+campaign remains **UNUSED/HOLD**; no protocol prospective target, real tank
+Qwen/ABC, real development-suffix or official test access, or scientific
+breakthrough occurred.
+
+## Latest checkpoint: schema-v2 campaign stage 1 authored, under review
+
+A Luna max author completed the bounded campaign-fit manifest and receipt-root
+stage 1, with 28 focused fake-only tests reported passing. The pre-open
+copied-`artifacts/` symlink fails before claim/fit in the author's control,
+and typed evidence carries root identity for revalidation. Exact source and
+test hashes, scope, and limits are in
+`reports/research-ledger/2026-09-29T1740Z.md`. An independent Luna reviewer
+is testing this snapshot now; no stage-1 GO or Git sync is claimed yet.
+
+Claim/writes, runner, scorer, gate, watchdog, approval, and source pins still
+need integration and review. The reserved `ct-abc6-20260928-v1` campaign is
+**UNUSED/HOLD**. No protocol prospective target, real tank Qwen/ABC, real
+development-suffix or official test access, or scientific breakthrough
+occurred.
+
+## Latest checkpoint: reviewed path specification synced; stage 1 delegated
+
+A fresh Luna Git fetch verified `main == origin/main ==
+ef7d935540627b74f0bef44a83a0a448ec904e2d`; the five previously
+reviewed receipt-root amendment and research-state/ledger documents already
+match their approved remote hashes. The retry made no duplicate commit. A
+read-only runtime check found no ABC6 process, campaign claim, scorer marker,
+or checkpoint, while oMLX listed the exact fixed Qwen model. See
+`reports/research-ledger/2026-09-29T1719Z.md`.
+
+A Luna max author has the bounded schema-v2 campaign receipt-root stage 1:
+physical checkout and fixed relative path binding, no-follow directory
+traversal, typed execution identity, and private fake-only symlink tests.
+Independent review, remaining runner/scorer/gate/watchdog integration,
+source pins, manifest and approval are still required. The reserved
+`ct-abc6-20260928-v1` run remains **UNUSED/HOLD**; no protocol prospective
+target, real tank Qwen/ABC, real development-suffix or official test access,
+or scientific breakthrough occurred. The new state/ledger update is local
+pending separate review and Git sync.
 
 ## Latest checkpoint: receipt-root amendment cleared for implementation
 
