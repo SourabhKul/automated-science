@@ -25,6 +25,7 @@ import os
 import platform
 import stat
 import struct
+import subprocess
 import sys
 import uuid
 from collections import Counter
@@ -39,6 +40,7 @@ from typing import Final, Literal, cast
 import numpy as np
 
 from core.real_data import cascaded_tanks_abc6_cases as cases
+from core.real_data import cascaded_tanks_abc6_receipt_io as receipt_io
 from core.real_data import cascaded_tanks_abc6_training as training
 from core.real_data.cascaded_tanks_abc6_cases import (
     CASE_COUNT,
@@ -52,7 +54,11 @@ from core.real_data.cascaded_tanks_abc6_cases import (
     case_by_index,
 )
 
-MANIFEST_SCHEMA_VERSION: Final = 1
+MANIFEST_SCHEMA_VERSION: Final = 2
+RECEIPT_ROOT_RELATIVE: Final = (
+    "artifacts/cascaded_tanks_abc6_synthetic/"
+    "ct-abc6-20260928-v1/receipts"
+)
 CLAIM_FILENAME: Final = "campaign.claim"
 SUMMARY_FILENAME: Final = "campaign.training-summary.json"
 EVIDENCE_DIRECTORY_NAME: Final = "training-evidence"
@@ -104,6 +110,7 @@ _PROJECT_RUN_CLAIM_PATH: Final = (
 )
 _REQUIRED_SOURCE_PATHS: Final = (
     "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
+    "core/real_data/cascaded_tanks_abc6_receipt_io.py",
     "core/real_data/cascaded_tanks_abc6_cases.py",
     "core/real_data/cascaded_tanks_abc6_training.py",
     "core/real_data/cascaded_tanks_pattern_search.py",
@@ -112,6 +119,9 @@ _REQUIRED_SOURCE_PATHS: Final = (
     REVIEWED_PROPOSAL_PATH,
 )
 _REVIEWED_SOURCE_SHA256: Final = {
+    "core/real_data/cascaded_tanks_abc6_receipt_io.py": (
+        "53cfc4a74472558970d606c13583647e3da5b9a8290fb5f9941029e8a99dd2cf"
+    ),
     "core/real_data/cascaded_tanks_abc6_cases.py": (
         "3e20935ab4324dd4ffc8b352281ce02fae05f8f57516f5ac8c9cd8c606cd119b"
     ),
@@ -141,6 +151,133 @@ class ABC6CampaignAlreadyClaimedError(ABC6CampaignError):
 
 class ABC6CampaignExecutionError(ABC6CampaignError):
     """Training stopped after the run claim; the run ID remains consumed."""
+
+
+class ABC6ReceiptRootIdentity:
+    """Live checkout and receipt directory anchors for one local campaign.
+
+    Device/inode pairs are runtime path identities, not portable manifest
+    values. The owned descriptors keep the opened directories alive until the
+    execution is closed or collected.
+    """
+
+    __slots__ = (
+        "repository_root_realpath",
+        "receipt_root_relative",
+        "repository_root_device",
+        "repository_root_inode",
+        "receipt_root_device",
+        "receipt_root_inode",
+        "_repository_root_fd",
+        "_receipt_root_fd",
+    )
+
+    def __init__(
+        self,
+        *,
+        repository_root_realpath: str,
+        receipt_root_relative: str,
+        repository_root_fd: int,
+        receipt_root_fd: int,
+    ) -> None:
+        root_stat = os.fstat(repository_root_fd)
+        receipt_stat = os.fstat(receipt_root_fd)
+        if not stat.S_ISDIR(root_stat.st_mode) or not stat.S_ISDIR(receipt_stat.st_mode):
+            raise ABC6CampaignPreflightError("campaign path anchors must be directories")
+        self.repository_root_realpath = repository_root_realpath
+        self.receipt_root_relative = receipt_root_relative
+        self.repository_root_device = root_stat.st_dev
+        self.repository_root_inode = root_stat.st_ino
+        self.receipt_root_device = receipt_stat.st_dev
+        self.receipt_root_inode = receipt_stat.st_ino
+        self._repository_root_fd = repository_root_fd
+        self._receipt_root_fd = receipt_root_fd
+
+    @property
+    def receipt_root_path(self) -> Path:
+        return Path(self.repository_root_realpath) / self.receipt_root_relative
+
+    def verify(self) -> None:
+        """Fail if either retained descriptor or its canonical path changed."""
+
+        try:
+            root_stat = os.fstat(self._repository_root_fd)
+            receipt_stat = os.fstat(self._receipt_root_fd)
+        except (OSError, TypeError) as error:
+            raise ABC6CampaignPreflightError("campaign path anchor is closed") from error
+        if (
+            not stat.S_ISDIR(root_stat.st_mode)
+            or (root_stat.st_dev, root_stat.st_ino)
+            != (self.repository_root_device, self.repository_root_inode)
+            or not stat.S_ISDIR(receipt_stat.st_mode)
+            or (receipt_stat.st_dev, receipt_stat.st_ino)
+            != (self.receipt_root_device, self.receipt_root_inode)
+        ):
+            raise ABC6CampaignPreflightError("campaign path anchor identity changed")
+
+        root_reopened = _open_directory_nofollow(
+            Path(self.repository_root_realpath), label="frozen checkout root"
+        )
+        try:
+            current = os.fstat(root_reopened)
+            if (current.st_dev, current.st_ino) != (
+                self.repository_root_device,
+                self.repository_root_inode,
+            ):
+                raise ABC6CampaignPreflightError(
+                    "frozen checkout root identity changed"
+                )
+            receipt_reopened = _open_relative_directory_nofollow(
+                root_reopened,
+                self.receipt_root_relative,
+                label="campaign receipt root",
+            )
+            try:
+                receipt_current = os.fstat(receipt_reopened)
+                if (receipt_current.st_dev, receipt_current.st_ino) != (
+                    self.receipt_root_device,
+                    self.receipt_root_inode,
+                ):
+                    raise ABC6CampaignPreflightError(
+                        "campaign receipt root identity changed"
+                    )
+            finally:
+                os.close(receipt_reopened)
+        finally:
+            os.close(root_reopened)
+
+    def duplicate_repository_root_fd(self) -> int:
+        self.verify()
+        return os.dup(self._repository_root_fd)
+
+    def duplicate_receipt_root_fd(self) -> int:
+        self.verify()
+        return os.dup(self._receipt_root_fd)
+
+    @property
+    def runtime_identity(self) -> dict[str, int]:
+        return {
+            "repository_root_device": self.repository_root_device,
+            "repository_root_inode": self.repository_root_inode,
+            "receipt_root_device": self.receipt_root_device,
+            "receipt_root_inode": self.receipt_root_inode,
+        }
+
+    def close(self) -> None:
+        for name in ("_receipt_root_fd", "_repository_root_fd"):
+            descriptor = getattr(self, name, None)
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                setattr(self, name, None)
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +333,9 @@ class ABC6TrainingCampaignExecution:
     _training_results: tuple[training.ABC6TrainingResult, ...] = field(
         repr=False, compare=False
     )
+    receipt_root_identity: ABC6ReceiptRootIdentity = field(
+        repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         _validate_execution_shape(
@@ -205,11 +345,20 @@ class ABC6TrainingCampaignExecution:
             raise TypeError("evidence_manifest_path must be a Path")
         if not _is_sha256(self.evidence_manifest_sha256):
             raise ValueError("evidence_manifest_sha256 must be a lowercase SHA-256")
+        if not isinstance(self.receipt_root_identity, ABC6ReceiptRootIdentity):
+            raise TypeError("receipt_root_identity must be an anchored identity")
+        _validate_execution_receipt_paths(
+            self.campaign_result, self.evidence_manifest_path, self.receipt_root_identity
+        )
 
     def load_verified_training_evidence(self) -> ABC6VerifiedTrainingEvidence:
         """Revalidate durable and in-memory evidence, then return frozen copies."""
 
+        if not isinstance(self.receipt_root_identity, ABC6ReceiptRootIdentity):
+            raise ValueError("training execution has no anchored receipt identity")
+        self.receipt_root_identity.verify()
         _verify_training_execution_evidence(self)
+        self.receipt_root_identity.verify()
         bundle_copy = _freeze_evidence_value(copy.deepcopy(self._training_bundle))
         result_copies = tuple(
             _freeze_evidence_value(copy.deepcopy(result))
@@ -221,6 +370,19 @@ class ABC6TrainingCampaignExecution:
                 tuple[training.ABC6TrainingResult, ...], result_copies
             ),
         )
+
+    def close(self) -> None:
+        """Release the local directory descriptors retained by this execution."""
+
+        identity = self.receipt_root_identity
+        if isinstance(identity, ABC6ReceiptRootIdentity):
+            identity.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 def _canonical_json(value: Mapping[str, object]) -> bytes:
@@ -394,22 +556,53 @@ def _reject_json_constant(value: str) -> object:
     raise ValueError(f"non-standard JSON constant is forbidden: {value}")
 
 
-def _read_canonical_evidence_json(path: Path) -> tuple[bytes, dict[str, object]]:
+def _decode_canonical_evidence_json(
+    raw: bytes, *, label: str
+) -> tuple[bytes, dict[str, object]]:
     try:
-        path_stat = path.lstat()
-        if not stat.S_ISREG(path_stat.st_mode):
-            raise ValueError(f"durable evidence path is not a regular file: {path}")
-        raw = path.read_bytes()
         decoded = json.loads(
             raw.decode("ascii"),
             object_pairs_hook=_reject_duplicate_json_keys,
             parse_constant=_reject_json_constant,
         )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError(f"cannot read durable evidence JSON: {path}") from error
+        raise ValueError(f"cannot read durable evidence JSON: {label}") from error
     if not isinstance(decoded, dict) or _canonical_json(decoded) != raw:
-        raise ValueError(f"durable evidence JSON is not canonical: {path}")
+        raise ValueError(f"durable evidence JSON is not canonical: {label}")
     return raw, decoded
+
+
+def _read_canonical_evidence_json_at(
+    directory_fd: int, filename: str, *, label: str
+) -> tuple[bytes, dict[str, object]]:
+    try:
+        raw = receipt_io.read_regular_file_at(
+            directory_fd,
+            filename,
+            maximum_bytes=PROJECTED_ARTIFACT_LIMIT_BYTES,
+            label=label,
+        )
+    except (OSError, receipt_io.ABC6ReceiptIOError) as error:
+        raise ValueError(f"cannot read durable evidence JSON: {label}") from error
+    return _decode_canonical_evidence_json(raw, label=label)
+
+
+def _open_evidence_directory_at(receipt_directory_fd: int) -> int:
+    try:
+        descriptor = os.open(
+            EVIDENCE_DIRECTORY_NAME,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=receipt_directory_fd,
+        )
+    except OSError as error:
+        raise ValueError("durable training evidence directory is missing or unsafe") from error
+    try:
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise ValueError("durable training evidence path is not a directory")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
 
 
 def _canonical_sha256(payload: bytes) -> str:
@@ -488,9 +681,27 @@ def _case_evidence_payload(
     )
 
 
-def _verify_summary_link(campaign_result: ABC6CampaignResult) -> None:
-    summary_path = campaign_result.summary_path
-    raw, decoded = _read_canonical_evidence_json(summary_path)
+def _validate_execution_receipt_paths(
+    campaign_result: ABC6CampaignResult,
+    evidence_manifest_path: Path,
+    receipt_root_identity: ABC6ReceiptRootIdentity,
+) -> None:
+    receipt_root = receipt_root_identity.receipt_root_path
+    if not isinstance(campaign_result.summary_path, Path) or (
+        campaign_result.summary_path != receipt_root / SUMMARY_FILENAME
+    ):
+        raise ValueError("campaign summary path is outside the anchored receipt root")
+    if not isinstance(evidence_manifest_path, Path) or (
+        evidence_manifest_path != receipt_root / EVIDENCE_MANIFEST_FILENAME
+    ):
+        raise ValueError("evidence manifest path is outside the anchored receipt root")
+
+
+def _verify_summary_link(
+    campaign_result: ABC6CampaignResult,
+    raw: bytes,
+    decoded: Mapping[str, object],
+) -> None:
     if _canonical_sha256(raw) != campaign_result.summary_sha256:
         raise ValueError("training summary digest does not match campaign result")
     summary_body = {
@@ -531,15 +742,34 @@ def _verify_summary_link(campaign_result: ABC6CampaignResult) -> None:
 def _verify_training_execution_evidence(
     execution: ABC6TrainingCampaignExecution,
 ) -> None:
+    identity = execution.receipt_root_identity
+    if not isinstance(identity, ABC6ReceiptRootIdentity):
+        raise ValueError("training execution has no anchored receipt identity")
+    _validate_execution_receipt_paths(
+        execution.campaign_result, execution.evidence_manifest_path, identity
+    )
+    identity.verify()
+    receipt_directory_fd = identity.duplicate_receipt_root_fd()
+    try:
+        _verify_training_execution_evidence_at(execution, receipt_directory_fd)
+    finally:
+        os.close(receipt_directory_fd)
+    identity.verify()
+
+
+def _verify_training_execution_evidence_at(
+    execution: ABC6TrainingCampaignExecution,
+    receipt_directory_fd: int,
+) -> None:
     result = execution.campaign_result
     _validate_execution_shape(
         result, execution._training_bundle, execution._training_results
     )
-    manifest_path = execution.evidence_manifest_path
-    expected_manifest_path = result.summary_path.parent / EVIDENCE_MANIFEST_FILENAME
-    if manifest_path != expected_manifest_path:
-        raise ValueError("evidence manifest is outside the campaign receipt directory")
-    manifest_raw, manifest = _read_canonical_evidence_json(manifest_path)
+    manifest_raw, manifest = _read_canonical_evidence_json_at(
+        receipt_directory_fd,
+        EVIDENCE_MANIFEST_FILENAME,
+        label="training evidence manifest",
+    )
     expected_manifest_keys = {
         "schema_version",
         "protocol_id",
@@ -582,14 +812,18 @@ def _verify_training_execution_evidence(
         for key, value in expected_manifest_fields.items()
     ):
         raise ValueError("evidence manifest identity differs from campaign execution")
-    if manifest_path.parent.is_symlink() or not manifest_path.parent.is_dir():
-        raise ValueError("campaign receipt directory must be a real directory")
-    if result.summary_path.parent != manifest_path.parent:
-        raise ValueError("summary and evidence manifest directories differ")
 
-    _verify_summary_link(result)
-    local_claim_path = manifest_path.parent / CLAIM_FILENAME
-    claim_raw, claim = _read_canonical_evidence_json(local_claim_path)
+    summary_raw, summary = _read_canonical_evidence_json_at(
+        receipt_directory_fd,
+        SUMMARY_FILENAME,
+        label="campaign training summary",
+    )
+    _verify_summary_link(result, summary_raw, summary)
+    claim_raw, claim = _read_canonical_evidence_json_at(
+        receipt_directory_fd,
+        CLAIM_FILENAME,
+        label="campaign claim receipt",
+    )
     if _canonical_sha256(claim_raw) != result.claim_sha256:
         raise ValueError("local claim receipt digest does not match campaign result")
     if (
@@ -600,7 +834,12 @@ def _verify_training_execution_evidence(
     ):
         raise ValueError("local claim receipt identity differs from campaign result")
 
-    verified_receipts = cases._verify_all_status_receipts(manifest_path.parent)
+    verified_receipts = receipt_io.verify_status_receipts_at(
+        receipt_directory_fd,
+        protocol_id=result.protocol_id,
+        run_id=result.run_id,
+        case_ids=tuple(case.case_id for case in CASE_ROSTER),
+    )
     receipt_entries = manifest.get("status_receipts")
     expected_receipts: list[dict[str, object]] = []
     for case, status in zip(CASE_ROSTER, result.case_statuses, strict=True):
@@ -622,9 +861,21 @@ def _verify_training_execution_evidence(
     ):
         raise ValueError("durable status receipt chain differs from evidence manifest")
 
-    evidence_directory = manifest_path.parent / EVIDENCE_DIRECTORY_NAME
-    if evidence_directory.is_symlink() or not evidence_directory.is_dir():
-        raise ValueError("durable training evidence directory is missing or unsafe")
+    evidence_directory_fd = _open_evidence_directory_at(receipt_directory_fd)
+    try:
+        _verify_training_evidence_artifacts(
+            execution, result, manifest, evidence_directory_fd
+        )
+    finally:
+        os.close(evidence_directory_fd)
+
+
+def _verify_training_evidence_artifacts(
+    execution: ABC6TrainingCampaignExecution,
+    result: ABC6CampaignResult,
+    manifest: Mapping[str, object],
+    evidence_directory_fd: int,
+) -> None:
     bundle_entry = manifest.get("bundle_artifact")
     if not isinstance(bundle_entry, dict) or set(bundle_entry) != {"filename", "sha256"}:
         raise ValueError("evidence manifest bundle entry is invalid")
@@ -633,8 +884,11 @@ def _verify_training_execution_evidence(
         or not _is_sha256(bundle_entry.get("sha256"))
     ):
         raise ValueError("evidence manifest bundle filename/digest is invalid")
-    bundle_path = evidence_directory / str(bundle_entry["filename"])
-    bundle_raw, bundle_decoded = _read_canonical_evidence_json(bundle_path)
+    bundle_raw, bundle_decoded = _read_canonical_evidence_json_at(
+        evidence_directory_fd,
+        str(bundle_entry["filename"]),
+        label="durable training bundle",
+    )
     bundle_digest = _canonical_sha256(bundle_raw)
     if bundle_digest != bundle_entry["sha256"]:
         raise ValueError("durable training bundle artifact digest is invalid")
@@ -680,8 +934,11 @@ def _verify_training_execution_evidence(
         filename = f"case-{index:02d}.training-evidence.json"
         if entry.get("filename") != filename or not _is_sha256(entry.get("sha256")):
             raise ValueError("case evidence filename or digest is invalid")
-        case_path = evidence_directory / filename
-        case_raw, case_decoded = _read_canonical_evidence_json(case_path)
+        case_raw, case_decoded = _read_canonical_evidence_json_at(
+            evidence_directory_fd,
+            filename,
+            label=f"durable training case {index:02d}",
+        )
         case_digest = _canonical_sha256(case_raw)
         if case_digest != entry["sha256"]:
             raise ValueError("durable case evidence artifact digest is invalid")
@@ -732,6 +989,222 @@ def _case_identity(case: ABC6Case) -> dict[str, object]:
     }
 
 
+def _active_checkout_root_path() -> Path:
+    """Return the lexical source checkout root without resolving symlinks."""
+
+    return Path(os.path.abspath(os.fspath(__file__))).parents[2]
+
+
+def _current_git_head() -> str:
+    """Return the active source checkout's exact Git HEAD."""
+
+    root = _active_checkout_root_path()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ABC6CampaignPreflightError(
+            "cannot read the active checkout Git HEAD"
+        ) from error
+    head = result.stdout.strip()
+    if len(head) != 40 or any(char not in "0123456789abcdef" for char in head):
+        raise ABC6CampaignPreflightError("active checkout Git HEAD is invalid")
+    return head
+
+
+def _canonical_absolute_directory_text(value: object, *, label: str) -> Path:
+    if type(value) is not str:
+        raise ABC6CampaignPreflightError(f"{label} must be a string")
+    path = Path(value)
+    if (
+        not path.is_absolute()
+        or str(path) != value
+        or any(part in {"", ".", ".."} for part in path.parts[1:])
+    ):
+        raise ABC6CampaignPreflightError(f"{label} must be a canonical absolute path")
+    return path
+
+
+def _open_directory_nofollow(path: Path, *, label: str) -> int:
+    """Open an absolute directory by walking every component from `/`."""
+
+    if not path.is_absolute() or str(path) != os.fspath(path):
+        raise ABC6CampaignPreflightError(f"{label} path is not canonical and absolute")
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise ABC6CampaignPreflightError(
+            "platform cannot enforce no-follow campaign path traversal"
+        )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        current_fd = os.open(os.sep, flags)
+        for component in path.parts[1:]:
+            if component in {"", ".", ".."}:
+                raise ABC6CampaignPreflightError(
+                    f"{label} path contains a noncanonical component"
+                )
+            next_fd = os.open(component, flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+        if not stat.S_ISDIR(os.fstat(current_fd).st_mode):
+            raise ABC6CampaignPreflightError(f"{label} is not a directory")
+        return current_fd
+    except ABC6CampaignPreflightError:
+        if "current_fd" in locals():
+            os.close(current_fd)
+        raise
+    except OSError as error:
+        if "current_fd" in locals():
+            os.close(current_fd)
+        raise ABC6CampaignPreflightError(
+            f"{label} is missing or has a symlinked path component"
+        ) from error
+
+
+def _validate_receipt_root_relative(value: object) -> str:
+    if (
+        type(value) is not str
+        or value != RECEIPT_ROOT_RELATIVE
+        or Path(value).is_absolute()
+        or "\\" in value
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+        or str(Path(value)) != value
+    ):
+        raise ABC6CampaignPreflightError(
+            "receipt_root_relative must equal the fixed canonical campaign path"
+        )
+    return value
+
+
+def _open_relative_directory_nofollow(
+    root_fd: int, relative_path: str, *, label: str, create: bool = False
+) -> int:
+    """Walk a canonical relative directory path from an already-open root."""
+
+    _validate_receipt_root_relative(relative_path)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    current_fd = os.dup(root_fd)
+    try:
+        for component in relative_path.split("/"):
+            try:
+                next_fd = os.open(component, flags, dir_fd=current_fd)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(component, mode=0o700, dir_fd=current_fd)
+                # Persist each newly created directory entry before descending.
+                os.fsync(current_fd)
+                next_fd = os.open(component, flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+        if not stat.S_ISDIR(os.fstat(current_fd).st_mode):
+            raise ABC6CampaignPreflightError(f"{label} is not a directory")
+        if create:
+            os.fsync(current_fd)
+        return current_fd
+    except ABC6CampaignPreflightError:
+        os.close(current_fd)
+        raise
+    except OSError as error:
+        os.close(current_fd)
+        raise ABC6CampaignPreflightError(
+            f"{label} is missing or has a symlinked path component"
+        ) from error
+
+
+def _open_matching_checkout_root(repository_root_realpath: object) -> int:
+    frozen_path = _canonical_absolute_directory_text(
+        repository_root_realpath, label="repository_root_realpath"
+    )
+    active_path = _canonical_absolute_directory_text(
+        str(_active_checkout_root_path()), label="active source checkout root"
+    )
+    if active_path != frozen_path:
+        raise ABC6CampaignPreflightError(
+            "manifest checkout root differs from the active source checkout root"
+        )
+    frozen_fd = _open_directory_nofollow(frozen_path, label="frozen checkout root")
+    try:
+        active_fd = _open_directory_nofollow(
+            active_path, label="active source checkout root"
+        )
+    except BaseException:
+        os.close(frozen_fd)
+        raise
+    try:
+        frozen_stat = os.fstat(frozen_fd)
+        active_stat = os.fstat(active_fd)
+        if (frozen_stat.st_dev, frozen_stat.st_ino) != (
+            active_stat.st_dev,
+            active_stat.st_ino,
+        ):
+            raise ABC6CampaignPreflightError(
+                "manifest and active checkout root identities differ"
+            )
+    except BaseException:
+        os.close(frozen_fd)
+        raise
+    finally:
+        os.close(active_fd)
+    return frozen_fd
+
+
+def _open_receipt_root_identity(
+    repository_root_fd: int,
+    repository_root_realpath: str,
+    receipt_root_relative: str,
+    requested_receipt_directory: str | os.PathLike[str],
+) -> ABC6ReceiptRootIdentity:
+    relative = _validate_receipt_root_relative(receipt_root_relative)
+    expected_path = Path(repository_root_realpath) / relative
+    try:
+        requested_text = os.fspath(requested_receipt_directory)
+    except TypeError as error:
+        raise ABC6CampaignPreflightError(
+            "receipt directory must be an absolute path"
+        ) from error
+    if type(requested_text) is not str or requested_text != str(expected_path):
+        raise ABC6CampaignPreflightError(
+            "receipt directory must equal the manifest checkout/root join"
+        )
+
+    receipt_fd = _open_relative_directory_nofollow(
+        repository_root_fd,
+        relative,
+        label="campaign receipt root",
+        create=True,
+    )
+    repository_root_duplicate = os.dup(repository_root_fd)
+    try:
+        identity = ABC6ReceiptRootIdentity(
+            repository_root_realpath=repository_root_realpath,
+            receipt_root_relative=relative,
+            repository_root_fd=repository_root_duplicate,
+            receipt_root_fd=receipt_fd,
+        )
+    except BaseException:
+        os.close(repository_root_duplicate)
+        os.close(receipt_fd)
+        raise
+    try:
+        identity.verify()
+        if os.listdir(identity._receipt_root_fd):
+            raise ABC6CampaignPreflightError(
+                "run output directory must be empty before the one-use claim"
+            )
+        os.fsync(identity._receipt_root_fd)
+    except BaseException:
+        identity.close()
+        raise
+    return identity
+
+
 def _manifest_identity() -> dict[str, object]:
     """Stable identity fields; source/runtime digests remain externally pinned."""
 
@@ -739,6 +1212,9 @@ def _manifest_identity() -> dict[str, object]:
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "protocol_id": PROTOCOL_ID,
         "run_id": RUN_ID,
+        "repository_root_realpath": str(_active_checkout_root_path()),
+        "receipt_root_relative": RECEIPT_ROOT_RELATIVE,
+        "reviewed_git_head": _current_git_head(),
         "reviewed_proposal": {
             "path": REVIEWED_PROPOSAL_PATH,
             "sha256": REVIEWED_PROPOSAL_SHA256,
@@ -882,6 +1358,9 @@ def _strict_manifest_schema(decoded: object) -> bool:
         "schema_version",
         "protocol_id",
         "run_id",
+        "repository_root_realpath",
+        "receipt_root_relative",
+        "reviewed_git_head",
         "reviewed_proposal",
         "training_control_manifest_sha256",
         "ordered_cases",
@@ -891,9 +1370,22 @@ def _strict_manifest_schema(decoded: object) -> bool:
     }
     if type(decoded) is not dict or set(decoded) != expected_keys:
         return False
-    if type(decoded["schema_version"]) is not int:
+    if type(decoded["schema_version"]) is not int or decoded["schema_version"] != 2:
         return False
     if type(decoded["protocol_id"]) is not str or type(decoded["run_id"]) is not str:
+        return False
+    try:
+        _canonical_absolute_directory_text(
+            decoded["repository_root_realpath"], label="repository_root_realpath"
+        )
+        _validate_receipt_root_relative(decoded["receipt_root_relative"])
+    except ABC6CampaignPreflightError:
+        return False
+    if (
+        type(decoded["reviewed_git_head"]) is not str
+        or len(decoded["reviewed_git_head"]) != 40
+        or any(char not in "0123456789abcdef" for char in decoded["reviewed_git_head"])
+    ):
         return False
     if not _is_sha256(decoded["training_control_manifest_sha256"]):
         return False
@@ -967,9 +1459,28 @@ def preflight_abc6_campaign_manifest(
     """Validate an external immutable manifest and return its exact file hash.
 
     The expected hash is supplied by the caller after the manifest has been
-    frozen.  This function deliberately does not approve the manifest, attest
-    an independent reviewer, or verify/enforce an external watchdog receipt.
+    frozen. This verifies the declared physical checkout and active HEAD, but
+    does not validate the separate approval record or enforce the watchdog.
+    The approval owner must require its reviewed_git_head to match the manifest.
     """
+
+    actual_sha256, decoded, root_fd = _preflight_manifest_and_open_checkout_root(
+        manifest_path,
+        expected_sha256,
+        require_reviewed_runtime=require_reviewed_runtime,
+    )
+    del decoded
+    os.close(root_fd)
+    return actual_sha256
+
+
+def _preflight_manifest_and_open_checkout_root(
+    manifest_path: str | os.PathLike[str],
+    expected_sha256: str,
+    *,
+    require_reviewed_runtime: bool,
+) -> tuple[str, dict[str, object], int]:
+    """Validate the v2 manifest and return its verified checkout-root FD."""
 
     if (
         not isinstance(expected_sha256, str)
@@ -1014,40 +1525,57 @@ def preflight_abc6_campaign_manifest(
     if not _strict_manifest_schema(decoded):
         raise ABC6CampaignPreflightError("manifest schema/type validation failed")
 
-    identity = _manifest_identity()
-    if any(decoded.get(key) != value for key, value in identity.items()):
-        raise ABC6CampaignPreflightError(
-            "manifest protocol, report, training controls, or ordered roster mismatch"
-        )
-    source_hashes = decoded.get("source_hashes")
-    if not isinstance(source_hashes, dict):
-        raise ABC6CampaignPreflightError("manifest lacks source_hashes mapping")
-    current_sources = _current_source_hashes()
-    if any(
-        current_sources.get(name) != digest
-        for name, digest in _REVIEWED_SOURCE_SHA256.items()
-    ):
-        raise ABC6CampaignPreflightError(
-            "reviewed proposal, case roster, training seam, or baseline source changed"
-        )
-    if any(
-        source_hashes.get(name) != digest for name, digest in current_sources.items()
-    ):
-        raise ABC6CampaignPreflightError("manifest source hash mismatch")
-    runtime = decoded.get("runtime_fingerprint")
-    if not isinstance(runtime, dict):
-        raise ABC6CampaignPreflightError("manifest lacks runtime_fingerprint object")
-    current_runtime = _current_runtime_fingerprint()
-    if runtime != current_runtime:
-        raise ABC6CampaignPreflightError("manifest runtime fingerprint mismatch")
-    if require_reviewed_runtime:
-        _require_reviewed_runtime(current_runtime)
-    if not _execution_contract_is_valid(decoded.get("execution_contract")):
-        raise ABC6CampaignPreflightError(
-            "manifest execution contract must declare the external 900s/2-GiB "
-            "single-worker limits and a projected artifact size below 1 GiB"
-        )
-    return actual_sha256
+    root_fd = _open_matching_checkout_root(decoded["repository_root_realpath"])
+    try:
+        active_head = _current_git_head()
+        if decoded.get("reviewed_git_head") != active_head:
+            raise ABC6CampaignPreflightError(
+                "active checkout Git HEAD differs from the manifest reviewed_git_head"
+            )
+        identity = _manifest_identity()
+        if any(decoded.get(key) != value for key, value in identity.items()):
+            raise ABC6CampaignPreflightError(
+                "manifest protocol, report, training controls, or ordered roster mismatch"
+            )
+    except BaseException:
+        os.close(root_fd)
+        raise
+    try:
+        source_hashes = decoded.get("source_hashes")
+        if not isinstance(source_hashes, dict):
+            raise ABC6CampaignPreflightError("manifest lacks source_hashes mapping")
+        current_sources = _current_source_hashes()
+        if any(
+            current_sources.get(name) != digest
+            for name, digest in _REVIEWED_SOURCE_SHA256.items()
+        ):
+            raise ABC6CampaignPreflightError(
+                "reviewed proposal, case roster, training seam, or baseline source changed"
+            )
+        if any(
+            source_hashes.get(name) != digest
+            for name, digest in current_sources.items()
+        ):
+            raise ABC6CampaignPreflightError("manifest source hash mismatch")
+        runtime = decoded.get("runtime_fingerprint")
+        if not isinstance(runtime, dict):
+            raise ABC6CampaignPreflightError(
+                "manifest lacks runtime_fingerprint object"
+            )
+        current_runtime = _current_runtime_fingerprint()
+        if runtime != current_runtime:
+            raise ABC6CampaignPreflightError("manifest runtime fingerprint mismatch")
+        if require_reviewed_runtime:
+            _require_reviewed_runtime(current_runtime)
+        if not _execution_contract_is_valid(decoded.get("execution_contract")):
+            raise ABC6CampaignPreflightError(
+                "manifest execution contract must declare the external 900s/2-GiB "
+                "single-worker limits and a projected artifact size below 1 GiB"
+            )
+        return actual_sha256, decoded, root_fd
+    except BaseException:
+        os.close(root_fd)
+        raise
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -1174,7 +1702,9 @@ def _claim_run(
         "protocol_id": PROTOCOL_ID,
         "run_id": RUN_ID,
         "manifest_sha256": manifest_sha256,
-        "receipt_directory": str(receipt_directory.resolve()),
+        # This path was checked against the frozen manifest join and opened
+        # from the checkout-root descriptor; never resolve caller input here.
+        "receipt_directory": str(receipt_directory),
         "claimed_at_utc": _utc_now(),
         "claim_semantics": "consumed_once_no_resume",
     }
@@ -1421,17 +1951,59 @@ def _execute_campaign(
     claim_registry_path: Path,
     capture_training_evidence: bool = False,
 ) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
-    # Hash and source/runtime checks happen before the irreversible O_EXCL claim.
-    verified_manifest_sha256 = preflight_abc6_campaign_manifest(
-        manifest_path,
-        manifest_sha256,
-        require_reviewed_runtime=require_reviewed_runtime,
-    )
-    directory = Path(receipt_directory)
-    if not directory.is_dir() or directory.is_symlink():
-        raise ABC6CampaignPreflightError(
-            "run output directory must already exist as a real directory"
+    """Preflight the manifest/path, then execute against its anchored root."""
+
+    verified_manifest_sha256, manifest, repository_root_fd = (
+        _preflight_manifest_and_open_checkout_root(
+            manifest_path,
+            manifest_sha256,
+            require_reviewed_runtime=require_reviewed_runtime,
         )
+    )
+    try:
+        receipt_identity = _open_receipt_root_identity(
+            repository_root_fd,
+            str(manifest["repository_root_realpath"]),
+            str(manifest["receipt_root_relative"]),
+            receipt_directory,
+        )
+    finally:
+        os.close(repository_root_fd)
+
+    transferred = False
+    try:
+        result = _execute_campaign_after_preflight(
+            verified_manifest_sha256,
+            receipt_identity,
+            fit_callable=fit_callable,
+            claim_registry_path=claim_registry_path,
+            capture_training_evidence=capture_training_evidence,
+        )
+        if isinstance(result, ABC6TrainingCampaignExecution):
+            transferred = True
+        return result
+    finally:
+        if not transferred:
+            receipt_identity.close()
+
+
+def _execute_campaign_after_preflight(
+    verified_manifest_sha256: str,
+    receipt_identity: ABC6ReceiptRootIdentity,
+    *,
+    fit_callable: Callable[[ABC6TrainingCaseData], object],
+    claim_registry_path: Path,
+    capture_training_evidence: bool,
+) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
+    # Root and receipt identities are rechecked immediately before the
+    # irreversible O_EXCL campaign claim.
+    receipt_identity.verify()
+    directory = receipt_identity.receipt_root_path
+    if os.listdir(receipt_identity._receipt_root_fd):
+        raise ABC6CampaignPreflightError(
+            "run output directory must be empty before the one-use claim"
+        )
+    receipt_identity.verify()
     claim_sha256 = _claim_run(
         directory,
         verified_manifest_sha256,
@@ -1562,8 +2134,6 @@ def _execute_campaign(
             )
         )
         if training_results is not None:
-            # Production execution uses the typed one-case training adapter.
-            # The private test seam may inject lightweight result doubles.
             training_results.append(cast(training.ABC6TrainingResult, result))
 
     statuses = tuple(case_statuses)
@@ -1645,6 +2215,7 @@ def _execute_campaign(
         campaign_result=campaign_result,
         evidence_manifest_path=evidence_manifest_path,
         evidence_manifest_sha256=evidence_manifest_sha256,
+        receipt_root_identity=receipt_identity,
         _training_bundle=bundle,
         _training_results=detailed_results,
     )
@@ -1784,6 +2355,7 @@ __all__ = [
     "ABC6CampaignPreflightError",
     "ABC6CampaignResult",
     "ABC6CaseStatus",
+    "ABC6ReceiptRootIdentity",
     "ABC6VerifiedTrainingEvidence",
     "ABC6TrainingCampaignExecution",
     "preflight_abc6_campaign_manifest",

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -150,6 +153,24 @@ def _test_claim_path(tmp_path: Path) -> Path:
     return tmp_path / "claim-registry" / f"{campaign.RUN_ID}.claim"
 
 
+def _receipt_root(tmp_path: Path) -> Path:
+    return tmp_path.resolve() / campaign.RECEIPT_ROOT_RELATIVE
+
+
+def _test_receipt_identity(tmp_path: Path) -> campaign.ABC6ReceiptRootIdentity:
+    root = tmp_path.resolve()
+    root_fd = campaign._open_matching_checkout_root(str(root))
+    try:
+        return campaign._open_receipt_root_identity(
+            root_fd,
+            str(root),
+            campaign.RECEIPT_ROOT_RELATIVE,
+            str(_receipt_root(tmp_path)),
+        )
+    finally:
+        os.close(root_fd)
+
+
 def _use_private_test_identity(monkeypatch) -> None:
     protocol_id = "private-test-abc6-protocol"
     run_id = "private-test-abc6-run"
@@ -160,8 +181,15 @@ def _use_private_test_identity(monkeypatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _private_run_identity_for_every_test(monkeypatch) -> None:
+def _private_run_identity_for_every_test(monkeypatch, tmp_path) -> None:
     _use_private_test_identity(monkeypatch)
+    monkeypatch.setattr(
+        campaign, "_active_checkout_root_path", lambda: tmp_path.resolve()
+    )
+    monkeypatch.setattr(campaign, "_current_git_head", lambda: "a" * 40)
+    monkeypatch.setattr(
+        campaign, "_REVIEWED_SOURCE_SHA256", campaign._current_source_hashes()
+    )
 
 
 def _fake_training_bundle() -> ABC6TrainingBundle:
@@ -188,8 +216,7 @@ def _fake_training_bundle() -> ABC6TrainingBundle:
 def _run_fake_evidence_campaign(tmp_path: Path, monkeypatch):
     manifest = tmp_path / "private-evidence-manifest.json"
     manifest_sha256 = _write_manifest(manifest)
-    output = tmp_path / "private-evidence-output"
-    output.mkdir()
+    output = _receipt_root(tmp_path)
     bundle = _fake_training_bundle()
     monkeypatch.setattr(campaign, "build_synthetic_training_bundle", lambda: bundle)
     monkeypatch.setattr(
@@ -214,8 +241,7 @@ def test_campaign_runs_exact_ordered_prefix_views_and_writes_gate_receipts(
 ) -> None:
     manifest = tmp_path / "immutable-manifest.json"
     manifest_sha256 = _write_manifest(manifest)
-    output = tmp_path / "run-output"
-    output.mkdir()
+    output = _receipt_root(tmp_path)
     seen = []
 
     def fake_fit(data):
@@ -274,13 +300,19 @@ def test_campaign_runs_exact_ordered_prefix_views_and_writes_gate_receipts(
     assert summary["case_count"] == 24
     assert summary["claim_sha256"] == result.claim_sha256
 
-    second_output = tmp_path / "different-run-output"
-    second_output.mkdir()
+    second_root = tmp_path / "second-private-checkout"
+    second_root.mkdir()
+    monkeypatch.setattr(
+        campaign, "_active_checkout_root_path", lambda: second_root.resolve()
+    )
+    second_manifest = tmp_path / "second-private-manifest.json"
+    second_manifest_sha256 = _write_manifest(second_manifest)
+    second_output = _receipt_root(second_root)
     second_calls = []
     with pytest.raises(campaign.ABC6CampaignAlreadyClaimedError):
         campaign._run_campaign_with_fit_callable_for_test(
-            manifest,
-            manifest_sha256,
+            second_manifest,
+            second_manifest_sha256,
             second_output,
             fit_callable=lambda data: second_calls.append(data.case.case_index),
             claim_registry_path=_test_claim_path(tmp_path),
@@ -294,8 +326,7 @@ def test_evidence_campaign_returns_once_built_bundle_and_receipt_linked_results(
 ) -> None:
     manifest = tmp_path / "private-manifest.json"
     manifest_sha256 = _write_manifest(manifest)
-    output = tmp_path / "private-run-output"
-    output.mkdir()
+    output = _receipt_root(tmp_path)
     bundle = _fake_training_bundle()
     bundle_calls = []
 
@@ -344,6 +375,15 @@ def test_evidence_campaign_returns_once_built_bundle_and_receipt_linked_results(
 
     assert bundle_calls == ["build"]
     assert execution._training_bundle is bundle
+    assert execution.receipt_root_identity is not None
+    execution.receipt_root_identity.verify()
+    assert execution.receipt_root_identity.receipt_root_path == output
+    assert execution.receipt_root_identity.runtime_identity == {
+        "repository_root_device": output.parents[3].stat().st_dev,
+        "repository_root_inode": output.parents[3].stat().st_ino,
+        "receipt_root_device": output.stat().st_dev,
+        "receipt_root_inode": output.stat().st_ino,
+    }
     assert tuple(fit_data) == tuple(bundle.data_for_case(i) for i in range(24))
     assert not hasattr(execution, "training_results")
     assert not hasattr(execution, "training_bundle")
@@ -449,6 +489,7 @@ def test_public_status_only_entrypoint_keeps_compact_result_contract(
 def test_public_evidence_entrypoint_uses_reviewed_claimed_execution_path(
     tmp_path, monkeypatch
 ) -> None:
+    output = _receipt_root(tmp_path)
     bundle = _fake_training_bundle()
     results = tuple(
         _fake_result(bundle.data_for_case(index)) for index in range(cases.CASE_COUNT)
@@ -472,11 +513,12 @@ def test_public_evidence_entrypoint_uses_reviewed_claimed_execution_path(
             claim_sha256="d" * 64,
             status="complete",
             case_statuses=statuses,
-            summary_path=tmp_path / "summary.json",
+            summary_path=output / campaign.SUMMARY_FILENAME,
             summary_sha256="e" * 64,
         ),
-        evidence_manifest_path=tmp_path / campaign.EVIDENCE_MANIFEST_FILENAME,
+        evidence_manifest_path=output / campaign.EVIDENCE_MANIFEST_FILENAME,
         evidence_manifest_sha256="f" * 64,
+        receipt_root_identity=_test_receipt_identity(tmp_path),
         _training_bundle=bundle,
         _training_results=results,
     )
@@ -508,6 +550,73 @@ def test_public_evidence_entrypoint_uses_reviewed_claimed_execution_path(
     assert observed["kwargs"]["fit_callable"] is campaign.training.run_abc6_training_case
     assert observed["kwargs"]["require_reviewed_runtime"] is True
     assert observed["kwargs"]["claim_registry_path"] == claim_path
+
+
+def test_verified_execution_requires_anchored_receipt_identity(
+    tmp_path, monkeypatch
+) -> None:
+    execution, _output = _run_fake_evidence_campaign(tmp_path, monkeypatch)
+    identity = execution.receipt_root_identity
+
+    with pytest.raises(TypeError, match="receipt_root_identity"):
+        replace(execution, receipt_root_identity=None)
+
+    object.__setattr__(execution, "receipt_root_identity", None)
+    try:
+        with pytest.raises(ValueError, match="no anchored receipt identity"):
+            execution.load_verified_training_evidence()
+    finally:
+        object.__setattr__(execution, "receipt_root_identity", identity)
+        execution.close()
+
+
+@pytest.mark.parametrize("redirect", ("summary", "manifest"))
+def test_verified_execution_rejects_copied_receipt_tree_path_redirect(
+    tmp_path, monkeypatch, redirect
+) -> None:
+    execution, output = _run_fake_evidence_campaign(tmp_path, monkeypatch)
+    copied_receipts = tmp_path / "copied-receipts"
+    shutil.copytree(output, copied_receipts)
+    original_summary_path = execution.campaign_result.summary_path
+    original_manifest_path = execution.evidence_manifest_path
+    if redirect == "summary":
+        object.__setattr__(
+            execution.campaign_result,
+            "summary_path",
+            copied_receipts / campaign.SUMMARY_FILENAME,
+        )
+    else:
+        object.__setattr__(
+            execution,
+            "evidence_manifest_path",
+            copied_receipts / campaign.EVIDENCE_MANIFEST_FILENAME,
+        )
+    try:
+        with pytest.raises(ValueError, match="outside the anchored receipt root"):
+            execution.load_verified_training_evidence()
+    finally:
+        object.__setattr__(
+            execution.campaign_result, "summary_path", original_summary_path
+        )
+        object.__setattr__(execution, "evidence_manifest_path", original_manifest_path)
+        execution.close()
+
+
+def test_verified_evidence_rejects_status_receipt_symlink(
+    tmp_path, monkeypatch
+) -> None:
+    execution, output = _run_fake_evidence_campaign(tmp_path, monkeypatch)
+    status_path = output / "case-00.fit-status.json"
+    saved_status_path = output / "case-00.fit-status.saved"
+    status_path.rename(saved_status_path)
+    status_path.symlink_to(saved_status_path)
+    try:
+        with pytest.raises(ValueError, match="status receipt is missing or unsafe"):
+            execution.load_verified_training_evidence()
+    finally:
+        status_path.unlink()
+        saved_status_path.rename(status_path)
+        execution.close()
 
 
 @pytest.mark.parametrize("field", ("posterior_a", "posterior_weight", "baseline"))
@@ -544,13 +653,32 @@ def test_verified_evidence_rejects_durable_case_artifact_tamper(
         execution.load_verified_training_evidence()
 
 
+def test_execution_root_anchor_rejects_post_open_ancestor_substitution(
+    tmp_path, monkeypatch
+) -> None:
+    execution, _output = _run_fake_evidence_campaign(tmp_path, monkeypatch)
+    artifacts = tmp_path / "artifacts"
+    saved_artifacts = tmp_path / "artifacts-opened-before-swap"
+    artifacts.rename(saved_artifacts)
+    artifacts.symlink_to(saved_artifacts, target_is_directory=True)
+    try:
+        with pytest.raises(
+            campaign.ABC6CampaignPreflightError,
+            match="symlinked path component",
+        ):
+            execution.receipt_root_identity.verify()
+    finally:
+        artifacts.unlink()
+        saved_artifacts.rename(artifacts)
+        execution.close()
+
+
 def test_evidence_publication_failure_is_terminal_and_returns_no_execution(
     tmp_path, monkeypatch
 ) -> None:
     manifest = tmp_path / "private-failure-manifest.json"
     manifest_sha256 = _write_manifest(manifest)
-    output = tmp_path / "private-failure-output"
-    output.mkdir()
+    output = _receipt_root(tmp_path)
     monkeypatch.setattr(
         campaign, "build_synthetic_training_bundle", _fake_training_bundle
     )
@@ -604,8 +732,7 @@ def test_non_finite_evidence_values_have_explicit_canonical_tags() -> None:
 def test_interruption_seals_failure_and_run_id_cannot_resume(tmp_path) -> None:
     manifest = tmp_path / "immutable-manifest.json"
     manifest_sha256 = _write_manifest(manifest)
-    output = tmp_path / "run-output"
-    output.mkdir()
+    output = _receipt_root(tmp_path)
     called = []
 
     def interrupted_fit(data):
@@ -639,7 +766,7 @@ def test_interruption_seals_failure_and_run_id_cannot_resume(tmp_path) -> None:
     assert len(tuple(output.glob("case-*-status.json"))) == 8
 
     retried_calls = []
-    with pytest.raises(campaign.ABC6CampaignAlreadyClaimedError):
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="must be empty"):
         campaign._run_campaign_with_fit_callable_for_test(
             manifest,
             manifest_sha256,
@@ -653,8 +780,7 @@ def test_interruption_seals_failure_and_run_id_cannot_resume(tmp_path) -> None:
 def test_manifest_hash_and_roster_checks_fail_before_claim(tmp_path) -> None:
     manifest = tmp_path / "immutable-manifest.json"
     _write_manifest(manifest)
-    output = tmp_path / "run-output"
-    output.mkdir()
+    output = _receipt_root(tmp_path)
     called = []
 
     with pytest.raises(campaign.ABC6CampaignPreflightError, match="SHA-256"):
@@ -665,7 +791,7 @@ def test_manifest_hash_and_roster_checks_fail_before_claim(tmp_path) -> None:
             fit_callable=lambda data: called.append(data.case.case_index),
             claim_registry_path=_test_claim_path(tmp_path),
         )
-    assert tuple(output.iterdir()) == ()
+    assert not output.exists()
     assert called == []
 
     def reorder_cases(payload):
@@ -684,14 +810,199 @@ def test_manifest_hash_and_roster_checks_fail_before_claim(tmp_path) -> None:
             fit_callable=lambda data: called.append(data.case.case_index),
             claim_registry_path=_test_claim_path(tmp_path),
         )
-    assert tuple(output.iterdir()) == ()
+    assert not output.exists()
     assert called == []
+
+
+def test_missing_receipt_io_source_pin_fails_before_claim(tmp_path) -> None:
+    manifest = tmp_path / "missing-receipt-io-pin.json"
+    helper_path = "core/real_data/cascaded_tanks_abc6_receipt_io.py"
+    manifest_sha256 = _write_manifest(
+        manifest,
+        mutate=lambda payload: payload["source_hashes"].pop(helper_path),
+    )
+    output = _receipt_root(tmp_path)
+    called = []
+
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError,
+        match="manifest schema/type validation",
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=lambda data: called.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+
+    assert called == []
+    assert not output.exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_modified_receipt_io_source_bytes_fail_before_claim(
+    tmp_path, monkeypatch
+) -> None:
+    helper_path = "core/real_data/cascaded_tanks_abc6_receipt_io.py"
+    fake_source_root = tmp_path / "fake-source-root"
+    for relative_path in campaign._REQUIRED_SOURCE_PATHS:
+        source = campaign._REPO_ROOT / relative_path
+        target = fake_source_root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    altered_helper = fake_source_root / helper_path
+    altered_helper.write_bytes(altered_helper.read_bytes() + b"\\n# private mutation")
+    monkeypatch.setattr(campaign, "_REPO_ROOT", fake_source_root)
+
+    manifest = tmp_path / "modified-receipt-io-source.json"
+    manifest_sha256 = _write_manifest(manifest)
+    output = _receipt_root(tmp_path)
+    called = []
+
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError,
+        match="source changed",
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=lambda data: called.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+
+    assert called == []
+    assert not output.exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_manifest_v2_binds_canonical_root_relative_path_and_reviewed_head(
+    tmp_path,
+) -> None:
+    manifest = tmp_path / "manifest-v2.json"
+    _write_manifest(manifest)
+    payload = json.loads(manifest.read_text("ascii"))
+
+    assert payload["schema_version"] == 2
+    assert payload["repository_root_realpath"] == str(tmp_path.resolve())
+    assert payload["receipt_root_relative"] == campaign.RECEIPT_ROOT_RELATIVE
+    assert payload["reviewed_git_head"] == "a" * 40
+    assert campaign._strict_manifest_schema(payload)
+
+
+def test_active_head_mismatch_fails_before_receipt_directory_or_claim(
+    tmp_path, monkeypatch
+) -> None:
+    manifest = tmp_path / "private-head-manifest.json"
+    manifest_sha256 = _write_manifest(manifest)
+    receipt_directory = _receipt_root(tmp_path)
+    fit_calls = []
+    monkeypatch.setattr(campaign, "_current_git_head", lambda: "b" * 40)
+
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError,
+        match="differs from the manifest reviewed_git_head",
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            receipt_directory,
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+
+    assert fit_calls == []
+    assert not receipt_directory.exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_caller_receipt_path_must_equal_manifest_root_join_before_claim(
+    tmp_path,
+) -> None:
+    manifest = tmp_path / "private-path-manifest.json"
+    manifest_sha256 = _write_manifest(manifest)
+    fit_calls = []
+    alternate_directory = tmp_path / "caller-selected-receipts"
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError, match="must equal the manifest"
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            alternate_directory,
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+
+    assert fit_calls == []
+    assert not alternate_directory.exists()
+    assert not _receipt_root(tmp_path).exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_preexisting_copied_artifacts_symlink_fails_before_campaign_claim(
+    tmp_path,
+) -> None:
+    manifest = tmp_path / "private-symlink-manifest.json"
+    manifest_sha256 = _write_manifest(manifest)
+    copied_artifacts = tmp_path / "copied-artifacts"
+    copied_artifacts.mkdir()
+    (tmp_path / "artifacts").symlink_to(copied_artifacts, target_is_directory=True)
+    receipt_directory = _receipt_root(tmp_path)
+    fit_calls = []
+
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError,
+        match="symlinked path component",
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            receipt_directory,
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+
+    assert fit_calls == []
+    assert tuple(copied_artifacts.iterdir()) == ()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_manifest_root_symlink_alias_fails_before_claim(tmp_path) -> None:
+    manifest = tmp_path / "private-root-alias-manifest.json"
+    root_alias = tmp_path / "checkout-alias"
+    root_alias.symlink_to(tmp_path, target_is_directory=True)
+
+    def use_alias(payload):
+        payload["repository_root_realpath"] = str(root_alias)
+
+    manifest_sha256 = _write_manifest(manifest, mutate=use_alias)
+    fit_calls = []
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError,
+        match="manifest checkout root differs from the active source checkout root",
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            _receipt_root(tmp_path),
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+
+    assert fit_calls == []
+    assert not _receipt_root(tmp_path).exists()
+    assert not _test_claim_path(tmp_path).exists()
 
 
 @pytest.mark.parametrize(
     "mutate",
     (
         lambda payload: payload.__setitem__("schema_version", True),
+        lambda payload: payload.__setitem__("receipt_root_relative", "../receipts"),
+        lambda payload: payload.__setitem__("repository_root_realpath", "relative/root"),
+        lambda payload: payload.__setitem__("reviewed_git_head", "not-a-commit"),
         lambda payload: payload["ordered_cases"][1].__setitem__("case_index", True),
         lambda payload: payload["execution_contract"].__setitem__("worker_count", True),
         lambda payload: payload.__setitem__("unreviewed_extra_field", 1),
@@ -702,6 +1013,9 @@ def test_manifest_hash_and_roster_checks_fail_before_claim(tmp_path) -> None:
     ),
     ids=(
         "bool-schema",
+        "traversal-receipt-path",
+        "relative-checkout-root",
+        "invalid-reviewed-head",
         "bool-roster-index",
         "bool-worker-count",
         "extra-key",
@@ -714,8 +1028,7 @@ def test_manifest_strict_schema_rejects_bad_types_and_source_hash_sets(
 ) -> None:
     manifest = tmp_path / "invalid-schema.json"
     manifest_sha256 = _write_manifest(manifest, mutate=mutate)
-    output = tmp_path / "run-output"
-    output.mkdir()
+    output = _receipt_root(tmp_path)
     called = []
 
     with pytest.raises(
@@ -729,7 +1042,7 @@ def test_manifest_strict_schema_rejects_bad_types_and_source_hash_sets(
             fit_callable=lambda data: called.append(data.case.case_index),
             claim_registry_path=_test_claim_path(tmp_path),
         )
-    assert tuple(output.iterdir()) == ()
+    assert not output.exists()
     assert called == []
     assert not _test_claim_path(tmp_path).exists()
 
