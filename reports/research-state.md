@@ -1,6 +1,64 @@
 # Automated science: current research state
 
-Updated: 2026-09-29T22:23Z. This file records observed state, not inferred execution.
+Updated: 2026-09-29T22:59Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: independent clean-checkout GO and scoped source sync
+
+The ABC6 campaign-fit evidence loader now uses a new standard-library,
+bounded no-follow receipt-I/O module instead of private helpers in unsynced
+`cases.py`. Independent Luna reviewed the exact three-file unit, including
+missing identity, copied evidence tree, symlinked status leaf, and missing or
+altered helper source-pin controls. The focused fake-only suite passed
+**34/34** in both the workspace and a clean `origin/main` archive overlaid
+with only those three files. A sole Luna Git owner pushed the independently
+reviewed unit as content commit
+`9a8a74c3f6bc6ae3cfb52362bad88703cd6eaed3`; fresh fetch verified
+`HEAD == origin/main`. See
+`reports/research-ledger/2026-09-29T2259Z.md`.
+
+This only clears a component packaging/provenance gate. Campaign claim and
+receipt writes still need descriptor-bound identity, followed by scorer,
+runner, target-gate, watchdog, source-closure, manifest and approval reviews.
+A Luna author has the bounded campaign-write task. The reserved
+`ct-abc6-20260928-v1` run remains **UNUSED/HOLD**. No protocol prospective
+target, real tank Qwen/ABC, development-suffix or official-test access, or
+scientific breakthrough occurred. The latest state/ledger edits are local
+pending factual review and Git sync.
+
+## Latest checkpoint: integration dependencies mapped; narrow extraction assigned
+
+Independent Luna mapped the clean-checkout dependency closure after the
+documentation-only Git sync. The stage-1 evidence loader calls two new
+`cases.py` private readers; the target-gate/scorer handshake additionally
+crosses modified `cases.py`, `scoring.py`, and the untracked runner. Current
+source pins deliberately fail closed. Campaign claim/receipt writes, runner
+and scorer reads, and the watchdog-to-integrated-runner launch still lack the
+frozen root/approval binding. See
+`reports/research-ledger/2026-09-29T2240Z.md`.
+
+A Luna author has a bounded task to extract the stage-1 no-follow receipt
+readers into a dependency-neutral module and prove that narrow unit in a
+clean checkout, without changing inference or opening target gates. This
+does not approve the larger integrated campaign. The reserved run remains
+**UNUSED/HOLD**; no real tank or prospective synthetic target was accessed.
+
+## Latest checkpoint: reports synced; stage-1 source lacks clean-checkout dependencies
+
+The sole Luna Git owner pushed seven independently reviewed compact reports as
+content commit `67d4ba1af4a0e3f79b53b0857ddd7773b4de3b08` and fresh-fetch
+verified `HEAD == origin/main`. It deliberately held the three independently
+reviewed stage-1 source/test files: `campaign_fit.py` calls two helper functions
+available only in local modified `cases.py`, absent from fetched `origin/main`;
+the fake scorer fixture also depends on unscoped cases/scorer edits. Thus the
+stage-1 GO is valid for its local component but not a clean-checkout-ready
+commit. See `reports/research-ledger/2026-09-29T2236Z.md`.
+
+An independent Luna is mapping the smallest coherent integration unit and
+remaining receipt-root/claim/marker boundary gaps. No production ABC6 source
+has been pushed from this handoff. `ct-abc6-20260928-v1` remains
+**UNUSED/HOLD**; no protocol prospective target, real tank Qwen/ABC,
+development-suffix or official-test access, or scientific breakthrough
+occurred.
 
 ## Latest checkpoint: independent GO for scoped ABC6 stage 1
 
