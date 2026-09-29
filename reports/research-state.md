@@ -1,6 +1,29 @@
 # Automated science: current research state
 
-Updated: 2026-09-29T22:59Z. This file records observed state, not inferred execution.
+Updated: 2026-09-29T23:30Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: campaign claim/write identity reviewed and synced
+
+An independent Luna reviewed the bounded campaign-fit claim/write repair:
+claims, statuses, failures, summaries, and evidence now publish through
+retained no-follow checkout/receipt directory descriptors with durable parent
+sync. Fake pre-open symlink and post-identity ancestor-swap controls passed;
+the post-claim failure was sealed in the original receipt tree, without decoy
+writes. The focused fake-only suite passed **36/36** both locally and in a
+clean `origin/main` archive overlaid with the two reviewed files. One Luna
+Git owner pushed the exact two-file unit as content commit
+`0b445cbd96370dc577339ad3c43f031f5d71528c` and fresh-fetch verified
+`HEAD == origin/main`. See
+`reports/research-ledger/2026-09-29T2330Z.md`.
+
+Receipt payload schemas remain unchanged. A Luna author is assigned the
+separate scorer/cases target-gate root/marker integration, with fake-only
+controls and a stop condition if the interface requires runner changes.
+Runner, watchdog, separate approval, full source pins, immutable manifest,
+and replay remain uncleared. `ct-abc6-20260928-v1` is **UNUSED/HOLD**;
+there is no protocol prospective target, real tank Qwen/ABC, held-out tank
+access, or scientific breakthrough. This state/ledger update is local pending
+factual review and Git sync.
 
 ## Latest checkpoint: independent clean-checkout GO and scoped source sync
 
