@@ -153,6 +153,14 @@ def _test_claim_path(tmp_path: Path) -> Path:
     return tmp_path / "claim-registry" / f"{campaign.RUN_ID}.claim"
 
 
+def _anchored_claim_test_path(tmp_path: Path) -> Path:
+    return (
+        tmp_path
+        / campaign.CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{campaign.RUN_ID}.claim"
+    )
+
+
 def _receipt_root(tmp_path: Path) -> Path:
     return tmp_path.resolve() / campaign.RECEIPT_ROOT_RELATIVE
 
@@ -300,14 +308,11 @@ def test_campaign_runs_exact_ordered_prefix_views_and_writes_gate_receipts(
     assert summary["case_count"] == 24
     assert summary["claim_sha256"] == result.claim_sha256
 
-    second_root = tmp_path / "second-private-checkout"
-    second_root.mkdir()
-    monkeypatch.setattr(
-        campaign, "_active_checkout_root_path", lambda: second_root.resolve()
-    )
+    saved_receipts = tmp_path / "saved-first-run-receipts"
+    output.rename(saved_receipts)
     second_manifest = tmp_path / "second-private-manifest.json"
     second_manifest_sha256 = _write_manifest(second_manifest)
-    second_output = _receipt_root(second_root)
+    second_output = _receipt_root(tmp_path)
     second_calls = []
     with pytest.raises(campaign.ABC6CampaignAlreadyClaimedError):
         campaign._run_campaign_with_fit_callable_for_test(
@@ -682,14 +687,16 @@ def test_evidence_publication_failure_is_terminal_and_returns_no_execution(
     monkeypatch.setattr(
         campaign, "build_synthetic_training_bundle", _fake_training_bundle
     )
-    real_publish = campaign._write_exclusive_durable
+    real_publish = campaign._write_exclusive_durable_at
 
-    def fail_first_case_evidence(path, payload):
-        if Path(path).name == "case-00.training-evidence.json":
+    def fail_first_case_evidence(directory_fd, filename, payload):
+        if filename == "case-00.training-evidence.json":
             raise OSError("private evidence write failure")
-        return real_publish(path, payload)
+        return real_publish(directory_fd, filename, payload)
 
-    monkeypatch.setattr(campaign, "_write_exclusive_durable", fail_first_case_evidence)
+    monkeypatch.setattr(
+        campaign, "_write_exclusive_durable_at", fail_first_case_evidence
+    )
     with pytest.raises(campaign.ABC6CampaignExecutionError, match="publication failed"):
         campaign._run_campaign_with_fit_callable_and_evidence_for_test(
             manifest,
@@ -969,6 +976,133 @@ def test_preexisting_copied_artifacts_symlink_fails_before_campaign_claim(
     assert not _test_claim_path(tmp_path).exists()
 
 
+def test_preexisting_global_claim_ancestor_symlink_fails_without_decoy_claim(
+    tmp_path, monkeypatch
+) -> None:
+    manifest = tmp_path / "private-claim-parent-symlink-manifest.json"
+    manifest_sha256 = _write_manifest(manifest)
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    decoy_evaluations = tmp_path / "copied-evaluations"
+    decoy_claims = (
+        decoy_evaluations
+        / "cascaded_tanks_abc6_campaign_fit"
+        / "claims"
+    )
+    decoy_claims.mkdir(parents=True)
+    (artifacts / "evaluations").symlink_to(
+        decoy_evaluations, target_is_directory=True
+    )
+    output = _receipt_root(tmp_path)
+    fit_calls = []
+    bundle_calls = []
+    monkeypatch.setattr(
+        campaign,
+        "build_synthetic_training_bundle",
+        lambda: bundle_calls.append("built"),
+    )
+
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError,
+        match="campaign global claim parent.*symlinked path component",
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_anchored_claim_test_path(tmp_path),
+        )
+
+    assert fit_calls == []
+    assert bundle_calls == []
+    assert output.is_dir()
+    assert tuple(output.iterdir()) == ()
+    assert tuple(decoy_claims.iterdir()) == ()
+    assert not (decoy_claims / f"{campaign.RUN_ID}.claim").exists()
+
+
+def test_post_identity_ancestor_swap_seals_failure_in_anchored_receipt_tree(
+    tmp_path, monkeypatch
+) -> None:
+    manifest = tmp_path / "private-post-claim-swap-manifest.json"
+    manifest_sha256 = _write_manifest(manifest)
+    output = _receipt_root(tmp_path)
+    decoy_artifacts = tmp_path / "copied-artifacts"
+    decoy_receipt_root = (
+        decoy_artifacts
+        / "cascaded_tanks_abc6_synthetic"
+        / "ct-abc6-20260928-v1"
+        / "receipts"
+    )
+    decoy_claim_parent = (
+        decoy_artifacts
+        / "evaluations"
+        / "cascaded_tanks_abc6_campaign_fit"
+        / "claims"
+    )
+    decoy_receipt_root.mkdir(parents=True)
+    decoy_claim_parent.mkdir(parents=True)
+    saved_artifacts = tmp_path / "artifacts-opened-before-swap"
+    artifacts = tmp_path / "artifacts"
+    fit_calls = []
+    monkeypatch.setattr(
+        campaign, "build_synthetic_training_bundle", _fake_training_bundle
+    )
+
+    def swap_ancestor_during_fit(data):
+        fit_calls.append(data.case.case_index)
+        if data.case.case_index == 0:
+            artifacts.rename(saved_artifacts)
+            artifacts.symlink_to(decoy_artifacts, target_is_directory=True)
+        return _fake_result(data)
+
+    with pytest.raises(
+        campaign.ABC6CampaignExecutionError,
+        match="campaign path changed during case 0",
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=swap_ancestor_during_fit,
+            claim_registry_path=_anchored_claim_test_path(tmp_path),
+        )
+
+    saved_receipt_root = (
+        saved_artifacts
+        / "cascaded_tanks_abc6_synthetic"
+        / "ct-abc6-20260928-v1"
+        / "receipts"
+    )
+    saved_claim_parent = (
+        saved_artifacts
+        / "evaluations"
+        / "cascaded_tanks_abc6_campaign_fit"
+        / "claims"
+    )
+    assert fit_calls == [0]
+    assert (saved_claim_parent / f"{campaign.RUN_ID}.claim").is_file()
+    assert (saved_receipt_root / campaign.CLAIM_FILENAME).is_file()
+    for component in ("fit", "baseline"):
+        status = json.loads(
+            (
+                saved_receipt_root
+                / f"case-00.{component}-status.json"
+            ).read_text("ascii")
+        )
+        assert status["status"] == "failed"
+    failure = json.loads(
+        (saved_receipt_root / campaign.FAILURE_FILENAME).read_text("ascii")
+    )
+    assert failure["stop_reason"] == "campaign_path_identity_changed_during_case"
+    assert failure["completed_case_count"] == 0
+    assert failure["case_index"] == 0
+    assert failure["resume_allowed"] is False
+    assert tuple(decoy_receipt_root.iterdir()) == ()
+    assert tuple(decoy_claim_parent.iterdir()) == ()
+
+
 def test_manifest_root_symlink_alias_fails_before_claim(tmp_path) -> None:
     manifest = tmp_path / "private-root-alias-manifest.json"
     root_alias = tmp_path / "checkout-alias"
@@ -1052,16 +1186,24 @@ def test_atomic_case_status_publication_is_immutable_and_case_gate_compatible(
 ) -> None:
     directory = tmp_path / "receipts"
     directory.mkdir()
-    fit_path, fit_sha = campaign._write_case_status(directory, 0, "fit", "complete")
-    baseline_path, baseline_sha = campaign._write_case_status(
-        directory, 0, "baseline", "incomplete"
-    )
+    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fit_path, fit_sha = campaign._write_case_status(
+            directory_fd, directory, 0, "fit", "complete"
+        )
+        baseline_path, baseline_sha = campaign._write_case_status(
+            directory_fd, directory, 0, "baseline", "incomplete"
+        )
+        with pytest.raises(FileExistsError):
+            campaign._write_case_status(
+                directory_fd, directory, 0, "fit", "failed"
+            )
+    finally:
+        os.close(directory_fd)
 
     assert hashlib.sha256(fit_path.read_bytes()).hexdigest() == fit_sha
     assert hashlib.sha256(baseline_path.read_bytes()).hexdigest() == baseline_sha
     fit_bytes = fit_path.read_bytes()
-    with pytest.raises(FileExistsError):
-        campaign._write_case_status(directory, 0, "fit", "failed")
     assert fit_path.read_bytes() == fit_bytes
 
     for case_index in range(1, cases.CASE_COUNT):

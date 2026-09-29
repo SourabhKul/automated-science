@@ -59,6 +59,9 @@ RECEIPT_ROOT_RELATIVE: Final = (
     "artifacts/cascaded_tanks_abc6_synthetic/"
     "ct-abc6-20260928-v1/receipts"
 )
+CAMPAIGN_CLAIM_PARENT_RELATIVE: Final = (
+    "artifacts/evaluations/cascaded_tanks_abc6_campaign_fit/claims"
+)
 CLAIM_FILENAME: Final = "campaign.claim"
 SUMMARY_FILENAME: Final = "campaign.training-summary.json"
 EVIDENCE_DIRECTORY_NAME: Final = "training-evidence"
@@ -200,6 +203,7 @@ class ABC6ReceiptRootIdentity:
     def verify(self) -> None:
         """Fail if either retained descriptor or its canonical path changed."""
 
+        _validate_receipt_root_relative(self.receipt_root_relative)
         try:
             root_stat = os.fstat(self._repository_root_fd)
             receipt_stat = os.fstat(self._receipt_root_fd)
@@ -252,6 +256,29 @@ class ABC6ReceiptRootIdentity:
 
     def duplicate_receipt_root_fd(self) -> int:
         self.verify()
+        return os.dup(self._receipt_root_fd)
+
+    def duplicate_receipt_root_fd_for_durable_write(self) -> int:
+        """Duplicate the already-open receipt directory without path lookup.
+
+        This is intentionally usable after an ancestor path swap so terminal
+        failure evidence remains directed at the directory opened pre-claim.
+        """
+
+        try:
+            receipt_stat = os.fstat(self._receipt_root_fd)
+        except (OSError, TypeError) as error:
+            raise ABC6CampaignPreflightError(
+                "campaign receipt directory anchor is closed"
+            ) from error
+        if (
+            not stat.S_ISDIR(receipt_stat.st_mode)
+            or (receipt_stat.st_dev, receipt_stat.st_ino)
+            != (self.receipt_root_device, self.receipt_root_inode)
+        ):
+            raise ABC6CampaignPreflightError(
+                "campaign receipt directory anchor identity changed"
+            )
         return os.dup(self._receipt_root_fd)
 
     @property
@@ -1068,16 +1095,26 @@ def _open_directory_nofollow(path: Path, *, label: str) -> int:
 
 
 def _validate_receipt_root_relative(value: object) -> str:
+    if type(value) is not str or value != RECEIPT_ROOT_RELATIVE:
+        raise ABC6CampaignPreflightError(
+            "receipt_root_relative must equal the fixed canonical campaign path"
+        )
+    return _validate_canonical_relative_path(
+        value, label="receipt_root_relative"
+    )
+
+
+def _validate_canonical_relative_path(value: object, *, label: str) -> str:
     if (
         type(value) is not str
-        or value != RECEIPT_ROOT_RELATIVE
+        or not value
         or Path(value).is_absolute()
         or "\\" in value
         or any(part in {"", ".", ".."} for part in value.split("/"))
         or str(Path(value)) != value
     ):
         raise ABC6CampaignPreflightError(
-            "receipt_root_relative must equal the fixed canonical campaign path"
+            f"{label} must be a canonical traversal-free relative path"
         )
     return value
 
@@ -1087,7 +1124,7 @@ def _open_relative_directory_nofollow(
 ) -> int:
     """Walk a canonical relative directory path from an already-open root."""
 
-    _validate_receipt_root_relative(relative_path)
+    _validate_canonical_relative_path(relative_path, label=label)
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     current_fd = os.dup(root_fd)
     try:
@@ -1578,12 +1615,11 @@ def _preflight_manifest_and_open_checkout_root(
         raise
 
 
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+def _fsync_directory_at(directory_fd: int) -> None:
+    info = os.fstat(directory_fd)
+    if not stat.S_ISDIR(info.st_mode):
+        raise OSError("durable publication parent is not a directory")
+    os.fsync(directory_fd)
 
 
 def _write_all(descriptor: int, payload: bytes) -> None:
@@ -1595,32 +1631,57 @@ def _write_all(descriptor: int, payload: bytes) -> None:
         remaining = remaining[count:]
 
 
-def _write_exclusive_durable(path: Path, payload: bytes) -> None:
-    """Atomically publish immutable bytes with no replacement on collision."""
+def _write_exclusive_durable_at(
+    directory_fd: int, filename: str, payload: bytes
+) -> None:
+    """Atomically publish immutable bytes through an anchored directory FD."""
 
-    directory = path.parent
-    temporary_path = directory / f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-    descriptor = os.open(
-        temporary_path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-        0o600,
+    if (
+        not isinstance(filename, str)
+        or filename in {"", ".", ".."}
+        or Path(filename).name != filename
+        or "/" in filename
+        or "\\" in filename
+    ):
+        raise ValueError("durable publication filename must be a leaf")
+    temporary_name = (
+        f".{filename}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
     )
+    descriptor: int | None = None
+    temporary_created = False
     try:
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        temporary_created = True
         _write_all(descriptor, payload)
         os.fsync(descriptor)
-    finally:
         os.close(descriptor)
-    try:
-        # Same-directory hard-link publication is atomic and fails if the final
-        # immutable receipt already exists; os.replace would permit rewriting.
-        os.link(temporary_path, path)
-        _fsync_directory(directory)
+        descriptor = None
+
+        # Same-directory hard-link publication is atomic, descriptor-relative,
+        # and fails if the final immutable receipt already exists.
+        os.link(
+            temporary_name,
+            filename,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        _fsync_directory_at(directory_fd)
     finally:
-        try:
-            temporary_path.unlink()
-            _fsync_directory(directory)
-        except FileNotFoundError:
-            pass
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary_created:
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+            else:
+                _fsync_directory_at(directory_fd)
 
 
 def _status_receipt_payload(case_index: int, component: str, status: str) -> bytes:
@@ -1638,8 +1699,38 @@ def _status_receipt_payload(case_index: int, component: str, status: str) -> byt
     return _canonical_json(body)
 
 
+def _relative_file_parts_under_checkout(
+    repository_root_realpath: str,
+    file_path: str | os.PathLike[str],
+    *,
+    label: str,
+) -> tuple[str, str, str]:
+    try:
+        file_text = os.fspath(file_path)
+    except TypeError as error:
+        raise ABC6CampaignPreflightError(f"{label} must be an absolute path") from error
+    if type(file_text) is not str:
+        raise ABC6CampaignPreflightError(f"{label} must use a text path")
+    path = Path(file_text)
+    if not path.is_absolute() or str(path) != file_text:
+        raise ABC6CampaignPreflightError(f"{label} must be canonical and absolute")
+    root = Path(repository_root_realpath)
+    try:
+        relative = path.relative_to(root).as_posix()
+    except ValueError as error:
+        raise ABC6CampaignPreflightError(
+            f"{label} must be inside the anchored checkout root"
+        ) from error
+    relative = _validate_canonical_relative_path(relative, label=label)
+    parts = relative.split("/")
+    if len(parts) < 2:
+        raise ABC6CampaignPreflightError(f"{label} must include a parent directory")
+    return "/".join(parts[:-1]), parts[-1], relative
+
+
 def _write_case_status(
-    receipt_directory: Path,
+    receipt_directory_fd: int,
+    receipt_directory_path: Path,
     case_index: int,
     component: str,
     status: str,
@@ -1648,9 +1739,10 @@ def _write_case_status(
         raise ValueError("component must be 'fit' or 'baseline'")
     if status not in _FINAL_STATUSES:
         raise ValueError("status must be a final receipt status")
-    path = receipt_directory / f"case-{case_index:02d}.{component}-status.json"
+    filename = f"case-{case_index:02d}.{component}-status.json"
+    path = receipt_directory_path / filename
     payload = _status_receipt_payload(case_index, component, status)
-    _write_exclusive_durable(path, payload)
+    _write_exclusive_durable_at(receipt_directory_fd, filename, payload)
     return path, hashlib.sha256(payload).hexdigest()
 
 
@@ -1664,39 +1756,46 @@ def _claim_run(
     receipt_directory: Path,
     manifest_sha256: str,
     claim_registry_path: Path,
+    *,
+    receipt_directory_fd: int,
+    receipt_root_identity: ABC6ReceiptRootIdentity,
+    require_fixed_claim_path: bool,
 ) -> str:
-    local_claim_path = receipt_directory / CLAIM_FILENAME
-    if local_claim_path.exists() or local_claim_path.is_symlink():
-        raise ABC6CampaignAlreadyClaimedError(
-            "the one-use run ID is already claimed; resume and retry are forbidden"
-        )
-    try:
-        entries = tuple(receipt_directory.iterdir())
-    except OSError as error:
+    if receipt_directory != receipt_root_identity.receipt_root_path:
         raise ABC6CampaignPreflightError(
-            "cannot inventory run output directory"
-        ) from error
-    if entries:
+            "campaign receipt path differs from its anchored receipt root"
+        )
+    if os.listdir(receipt_directory_fd):
         raise ABC6CampaignPreflightError(
             "run output directory must be empty before the one-use claim"
         )
-    if not receipt_directory.is_dir() or receipt_directory.is_symlink():
-        raise ABC6CampaignPreflightError(
-            "run output directory must be a real directory"
+    claim_parent_relative, claim_filename, claim_relative = (
+        _relative_file_parts_under_checkout(
+            receipt_root_identity.repository_root_realpath,
+            claim_registry_path,
+            label="campaign global claim path",
         )
+    )
+    expected_claim_relative = (
+        f"{CAMPAIGN_CLAIM_PARENT_RELATIVE}/{RUN_ID}.claim"
+    )
+    if require_fixed_claim_path and claim_relative != expected_claim_relative:
+        raise ABC6CampaignPreflightError(
+            "campaign global claim path differs from its fixed source-derived path"
+        )
+
+    receipt_root_identity.verify()
+    repository_root_fd = receipt_root_identity.duplicate_repository_root_fd()
     try:
-        claim_registry_path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
-        raise ABC6CampaignPreflightError(
-            "cannot create the fixed project-root run-ID registry"
-        ) from error
-    if (
-        claim_registry_path.parent.is_symlink()
-        or not claim_registry_path.parent.is_dir()
-    ):
-        raise ABC6CampaignPreflightError(
-            "run-ID registry parent must be a real directory"
+        claim_parent_fd = _open_relative_directory_nofollow(
+            repository_root_fd,
+            claim_parent_relative,
+            label="campaign global claim parent",
+            create=True,
         )
+    finally:
+        os.close(repository_root_fd)
+
     claim = {
         "schema_version": 1,
         "protocol_id": PROTOCOL_ID,
@@ -1709,32 +1808,97 @@ def _claim_run(
         "claim_semantics": "consumed_once_no_resume",
     }
     payload = _canonical_json(claim)
-    descriptor: int | None = None
+    claim_sha256 = hashlib.sha256(payload).hexdigest()
     try:
-        descriptor = os.open(
-            claim_registry_path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            0o600,
-        )
-        _write_all(descriptor, payload)
-        os.fsync(descriptor)
-        _fsync_directory(claim_registry_path.parent)
-    except FileExistsError as error:
-        raise ABC6CampaignAlreadyClaimedError(
-            "the fixed project-root registry already consumed this one-use run ID"
-        ) from error
+        # Recheck the opened tree and receipt before the irreversible global
+        # claim. Every subsequent write still uses the retained directory FDs.
+        receipt_root_identity.verify()
+        if os.listdir(receipt_directory_fd):
+            raise ABC6CampaignPreflightError(
+                "run output directory must be empty before the one-use claim"
+            )
+        verification_root_fd = receipt_root_identity.duplicate_repository_root_fd()
+        try:
+            current_claim_parent_fd = _open_relative_directory_nofollow(
+                verification_root_fd,
+                claim_parent_relative,
+                label="campaign global claim parent",
+            )
+            try:
+                opened_info = os.fstat(claim_parent_fd)
+                current_info = os.fstat(current_claim_parent_fd)
+                if (opened_info.st_dev, opened_info.st_ino) != (
+                    current_info.st_dev,
+                    current_info.st_ino,
+                ):
+                    raise ABC6CampaignPreflightError(
+                        "campaign global claim parent identity changed"
+                    )
+            finally:
+                os.close(current_claim_parent_fd)
+        finally:
+            os.close(verification_root_fd)
+        try:
+            _write_exclusive_durable_at(
+                claim_parent_fd,
+                claim_filename,
+                payload,
+            )
+        except FileExistsError as error:
+            raise ABC6CampaignAlreadyClaimedError(
+                "the fixed project-root registry already consumed this one-use run ID"
+            ) from error
+        except BaseException as error:
+            try:
+                _write_failure_receipt(
+                    receipt_directory_fd,
+                    manifest_sha256=manifest_sha256,
+                    claim_sha256=claim_sha256,
+                    completed_cases=0,
+                    case_index=None,
+                    stop_reason="global_campaign_claim_publication_uncertain",
+                    exception_type=type(error).__name__,
+                )
+            except BaseException as failure_error:
+                raise ABC6CampaignExecutionError(
+                    "global campaign claim publication is uncertain and no terminal "
+                    "failure receipt could be durably published"
+                ) from failure_error
+            raise ABC6CampaignExecutionError(
+                "global campaign claim publication is uncertain; run is terminal"
+            ) from error
+        # The registry claim above is authoritative. The local copy is written
+        # through the already-open receipt directory, never through its path.
+        try:
+            _write_exclusive_durable_at(
+                receipt_directory_fd, CLAIM_FILENAME, payload
+            )
+        except BaseException as error:
+            try:
+                _write_failure_receipt(
+                    receipt_directory_fd,
+                    manifest_sha256=manifest_sha256,
+                    claim_sha256=claim_sha256,
+                    completed_cases=0,
+                    case_index=None,
+                    stop_reason="local_campaign_claim_publication_failed",
+                    exception_type=type(error).__name__,
+                )
+            except BaseException as failure_error:
+                raise ABC6CampaignExecutionError(
+                    "global campaign claim is committed but local claim and terminal "
+                    "failure receipt could not be durably published"
+                ) from failure_error
+            raise ABC6CampaignExecutionError(
+                "global campaign claim is committed but local claim publication failed"
+            ) from error
+        return claim_sha256
     finally:
-        if descriptor is not None:
-            os.close(descriptor)
-    # Retain a local linkable receipt in the per-run output folder.  The
-    # registry claim above is authoritative and remains consumed if this
-    # secondary publication fails.
-    _write_exclusive_durable(local_claim_path, payload)
-    return hashlib.sha256(payload).hexdigest()
+        os.close(claim_parent_fd)
 
 
 def _write_failure_receipt(
-    receipt_directory: Path,
+    receipt_directory_fd: int,
     *,
     manifest_sha256: str,
     claim_sha256: str,
@@ -1758,8 +1922,9 @@ def _write_failure_receipt(
         "resume_allowed": False,
     }
     failure["payload_sha256"] = hashlib.sha256(_canonical_json(failure)).hexdigest()
-    _write_exclusive_durable(
-        receipt_directory / FAILURE_FILENAME,
+    _write_exclusive_durable_at(
+        receipt_directory_fd,
+        FAILURE_FILENAME,
         _canonical_json(failure),
     )
 
@@ -1791,7 +1956,8 @@ def _result_statuses(
 
 
 def _record_failed_case(
-    receipt_directory: Path,
+    receipt_directory_fd: int,
+    receipt_directory_path: Path,
     *,
     case: ABC6Case,
     manifest_sha256: str,
@@ -1803,11 +1969,19 @@ def _record_failed_case(
     # The case-level schema intentionally accepts "failed" for both components.
     # Existing immutable receipts are never rewritten if storage failed midway.
     for component in _COMPONENTS:
-        path = receipt_directory / f"case-{case.case_index:02d}.{component}-status.json"
-        if not path.exists():
-            _write_case_status(receipt_directory, case.case_index, component, "failed")
+        filename = f"case-{case.case_index:02d}.{component}-status.json"
+        try:
+            os.stat(filename, dir_fd=receipt_directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            _write_case_status(
+                receipt_directory_fd,
+                receipt_directory_path,
+                case.case_index,
+                component,
+                "failed",
+            )
     _write_failure_receipt(
-        receipt_directory,
+        receipt_directory_fd,
         manifest_sha256=manifest_sha256,
         claim_sha256=claim_sha256,
         completed_cases=completed_cases,
@@ -1868,7 +2042,8 @@ def _summary_payload(
 
 
 def _publish_training_evidence(
-    receipt_directory: Path,
+    receipt_directory_fd: int,
+    receipt_directory_path: Path,
     *,
     campaign_result: ABC6CampaignResult,
     bundle: ABC6TrainingBundle,
@@ -1877,68 +2052,81 @@ def _publish_training_evidence(
     """Durably publish canonical bundle/case evidence and its terminal index."""
 
     _validate_execution_shape(campaign_result, bundle, results)
-    evidence_directory = receipt_directory / EVIDENCE_DIRECTORY_NAME
-    evidence_directory.mkdir(mode=0o700, exist_ok=False)
-    _fsync_directory(receipt_directory)
-
-    bundle_filename = "training-bundle.evidence.json"
-    bundle_payload = _bundle_evidence_payload(bundle)
-    _write_exclusive_durable(evidence_directory / bundle_filename, bundle_payload)
-    bundle_digest = _canonical_sha256(bundle_payload)
-
-    case_entries: list[dict[str, object]] = []
-    for case, status, result in zip(
-        CASE_ROSTER, campaign_result.case_statuses, results, strict=True
-    ):
-        payload = _case_evidence_payload(case, result)
-        filename = f"case-{case.case_index:02d}.training-evidence.json"
-        _write_exclusive_durable(evidence_directory / filename, payload)
-        case_entries.append(
-            {
-                "filename": filename,
-                "sha256": _canonical_sha256(payload),
-                "roster_index": case.case_index,
-                "case_identity": _case_identity(case),
-                "fit_status": status.fit_status,
-                "baseline_status": status.baseline_status,
-            }
+    try:
+        os.mkdir(EVIDENCE_DIRECTORY_NAME, mode=0o700, dir_fd=receipt_directory_fd)
+    except OSError as error:
+        raise ABC6CampaignExecutionError(
+            "durable training evidence directory could not be created safely"
+        ) from error
+    _fsync_directory_at(receipt_directory_fd)
+    evidence_directory_fd = _open_evidence_directory_at(receipt_directory_fd)
+    try:
+        bundle_filename = "training-bundle.evidence.json"
+        bundle_payload = _bundle_evidence_payload(bundle)
+        _write_exclusive_durable_at(
+            evidence_directory_fd, bundle_filename, bundle_payload
         )
+        bundle_digest = _canonical_sha256(bundle_payload)
 
-    status_receipts: list[dict[str, object]] = []
-    for case, status in zip(CASE_ROSTER, campaign_result.case_statuses, strict=True):
-        for component in _COMPONENTS:
-            status_receipts.append(
+        case_entries: list[dict[str, object]] = []
+        for case, status, result in zip(
+            CASE_ROSTER, campaign_result.case_statuses, results, strict=True
+        ):
+            payload = _case_evidence_payload(case, result)
+            filename = f"case-{case.case_index:02d}.training-evidence.json"
+            _write_exclusive_durable_at(evidence_directory_fd, filename, payload)
+            case_entries.append(
                 {
-                    "filename": f"case-{case.case_index:02d}.{component}-status.json",
-                    "sha256": getattr(status, f"{component}_receipt_sha256"),
-                    "case_index": case.case_index,
-                    "case_id": case.case_id,
-                    "component": component,
-                    "status": getattr(status, f"{component}_status"),
+                    "filename": filename,
+                    "sha256": _canonical_sha256(payload),
+                    "roster_index": case.case_index,
+                    "case_identity": _case_identity(case),
+                    "fit_status": status.fit_status,
+                    "baseline_status": status.baseline_status,
                 }
             )
-    terminal: dict[str, object] = {
-        "schema_version": 1,
-        "protocol_id": campaign_result.protocol_id,
-        "run_id": campaign_result.run_id,
-        "manifest_sha256": campaign_result.manifest_sha256,
-        "claim_sha256": campaign_result.claim_sha256,
-        "training_summary_filename": campaign_result.summary_path.name,
-        "training_summary_sha256": campaign_result.summary_sha256,
-        "roster_sha256": _roster_sha256(),
-        "ordered_case_identities": _roster_identities(),
-        "status_receipts": status_receipts,
-        "bundle_artifact": {
-            "filename": bundle_filename,
-            "sha256": bundle_digest,
-        },
-        "case_artifacts": case_entries,
-    }
-    terminal["payload_sha256"] = _canonical_sha256(_canonical_json(terminal))
-    terminal_bytes = _canonical_json(terminal)
-    manifest_path = receipt_directory / EVIDENCE_MANIFEST_FILENAME
-    _write_exclusive_durable(manifest_path, terminal_bytes)
-    return manifest_path, _canonical_sha256(terminal_bytes)
+
+        status_receipts: list[dict[str, object]] = []
+        for case, status in zip(CASE_ROSTER, campaign_result.case_statuses, strict=True):
+            for component in _COMPONENTS:
+                status_receipts.append(
+                    {
+                        "filename": f"case-{case.case_index:02d}.{component}-status.json",
+                        "sha256": getattr(status, f"{component}_receipt_sha256"),
+                        "case_index": case.case_index,
+                        "case_id": case.case_id,
+                        "component": component,
+                        "status": getattr(status, f"{component}_status"),
+                    }
+                )
+        terminal: dict[str, object] = {
+            "schema_version": 1,
+            "protocol_id": campaign_result.protocol_id,
+            "run_id": campaign_result.run_id,
+            "manifest_sha256": campaign_result.manifest_sha256,
+            "claim_sha256": campaign_result.claim_sha256,
+            "training_summary_filename": campaign_result.summary_path.name,
+            "training_summary_sha256": campaign_result.summary_sha256,
+            "roster_sha256": _roster_sha256(),
+            "ordered_case_identities": _roster_identities(),
+            "status_receipts": status_receipts,
+            "bundle_artifact": {
+                "filename": bundle_filename,
+                "sha256": bundle_digest,
+            },
+            "case_artifacts": case_entries,
+        }
+        terminal["payload_sha256"] = _canonical_sha256(_canonical_json(terminal))
+        terminal_bytes = _canonical_json(terminal)
+        _write_exclusive_durable_at(
+            receipt_directory_fd,
+            EVIDENCE_MANIFEST_FILENAME,
+            terminal_bytes,
+        )
+        manifest_path = receipt_directory_path / EVIDENCE_MANIFEST_FILENAME
+        return manifest_path, _canonical_sha256(terminal_bytes)
+    finally:
+        os.close(evidence_directory_fd)
 
 
 def _execute_campaign(
@@ -1978,6 +2166,7 @@ def _execute_campaign(
             fit_callable=fit_callable,
             claim_registry_path=claim_registry_path,
             capture_training_evidence=capture_training_evidence,
+            require_fixed_claim_path=require_reviewed_runtime,
         )
         if isinstance(result, ABC6TrainingCampaignExecution):
             transferred = True
@@ -1994,27 +2183,76 @@ def _execute_campaign_after_preflight(
     fit_callable: Callable[[ABC6TrainingCaseData], object],
     claim_registry_path: Path,
     capture_training_evidence: bool,
+    require_fixed_claim_path: bool,
 ) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
-    # Root and receipt identities are rechecked immediately before the
-    # irreversible O_EXCL campaign claim.
+    """Claim once, then keep writes anchored to the opened receipt directory."""
+
     receipt_identity.verify()
     directory = receipt_identity.receipt_root_path
-    if os.listdir(receipt_identity._receipt_root_fd):
-        raise ABC6CampaignPreflightError(
-            "run output directory must be empty before the one-use claim"
+    receipt_directory_fd = receipt_identity.duplicate_receipt_root_fd_for_durable_write()
+    try:
+        if os.listdir(receipt_directory_fd):
+            raise ABC6CampaignPreflightError(
+                "run output directory must be empty before the one-use claim"
+            )
+        claim_sha256 = _claim_run(
+            directory,
+            verified_manifest_sha256,
+            claim_registry_path,
+            receipt_directory_fd=receipt_directory_fd,
+            receipt_root_identity=receipt_identity,
+            require_fixed_claim_path=require_fixed_claim_path,
         )
-    receipt_identity.verify()
-    claim_sha256 = _claim_run(
-        directory,
-        verified_manifest_sha256,
-        claim_registry_path,
-    )
+        try:
+            receipt_identity.verify()
+        except BaseException as error:
+            try:
+                _write_failure_receipt(
+                    receipt_directory_fd,
+                    manifest_sha256=verified_manifest_sha256,
+                    claim_sha256=claim_sha256,
+                    completed_cases=0,
+                    case_index=None,
+                    stop_reason="campaign_path_identity_changed_after_claim",
+                    exception_type=type(error).__name__,
+                )
+            except BaseException as receipt_error:
+                raise ABC6CampaignExecutionError(
+                    "campaign path changed after the one-use claim and terminal "
+                    "failure receipt could not be sealed"
+                ) from receipt_error
+            raise ABC6CampaignExecutionError(
+                "campaign path changed after the one-use claim; run is terminal"
+            ) from error
+        return _execute_campaign_after_claim(
+            verified_manifest_sha256,
+            claim_sha256,
+            receipt_identity,
+            receipt_directory_fd,
+            directory,
+            fit_callable=fit_callable,
+            capture_training_evidence=capture_training_evidence,
+        )
+    finally:
+        os.close(receipt_directory_fd)
+
+
+def _execute_campaign_after_claim(
+    verified_manifest_sha256: str,
+    claim_sha256: str,
+    receipt_root_identity: ABC6ReceiptRootIdentity,
+    receipt_directory_fd: int,
+    directory: Path,
+    *,
+    fit_callable: Callable[[ABC6TrainingCaseData], object],
+    capture_training_evidence: bool,
+) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
 
     try:
         bundle = build_synthetic_training_bundle()
     except BaseException as error:
         _write_failure_receipt(
-            directory,
+            receipt_directory_fd,
             manifest_sha256=verified_manifest_sha256,
             claim_sha256=claim_sha256,
             completed_cases=0,
@@ -2025,39 +2263,89 @@ def _execute_campaign_after_preflight(
         raise ABC6CampaignExecutionError(
             "training-data construction failed after the one-use claim; run is terminal"
         ) from error
+    try:
+        receipt_root_identity.verify()
+    except BaseException as error:
+        try:
+            _write_failure_receipt(
+                receipt_directory_fd,
+                manifest_sha256=verified_manifest_sha256,
+                claim_sha256=claim_sha256,
+                completed_cases=0,
+                case_index=None,
+                stop_reason="campaign_path_identity_changed_during_training_data_build",
+                exception_type=type(error).__name__,
+            )
+        except BaseException as receipt_error:
+            raise ABC6CampaignExecutionError(
+                "campaign path changed after claim and terminal failure receipt "
+                "could not be sealed"
+            ) from receipt_error
+        raise ABC6CampaignExecutionError(
+            "campaign path changed after claim during training-data construction"
+        ) from error
 
     case_statuses: list[ABC6CaseStatus] = []
     training_results: list[training.ABC6TrainingResult] | None = (
         [] if capture_training_evidence else None
     )
     for expected_index, expected_case in enumerate(CASE_ROSTER):
+        try:
+            receipt_root_identity.verify()
+        except BaseException as error:
+            try:
+                _record_failed_case(
+                    receipt_directory_fd,
+                    directory,
+                    case=expected_case,
+                    manifest_sha256=verified_manifest_sha256,
+                    claim_sha256=claim_sha256,
+                    completed_cases=len(case_statuses),
+                    stop_reason="campaign_path_identity_changed_before_case",
+                    error=error,
+                )
+            except BaseException as receipt_error:
+                raise ABC6CampaignExecutionError(
+                    "campaign path changed after claim and current case failure "
+                    "could not be sealed"
+                ) from receipt_error
+            raise ABC6CampaignExecutionError(
+                f"campaign path changed before case {expected_index}; run is terminal"
+            ) from error
         # Never trust a consumer-supplied order: verify the frozen view and then
         # retrieve it again by its exact roster index.
-        if expected_case != case_by_index(expected_index):
-            raise ABC6CampaignPreflightError(
-                "runtime case roster changed after preflight"
-            )
-        data = bundle.data_for_case(expected_index)
-        if data.case != expected_case:
-            error = ValueError("training bundle view identity differs from roster")
-            _record_failed_case(
-                directory,
-                case=expected_case,
-                manifest_sha256=verified_manifest_sha256,
-                claim_sha256=claim_sha256,
-                completed_cases=len(case_statuses),
-                stop_reason="training_case_view_identity_mismatch",
-                error=error,
-            )
+        try:
+            if expected_case != case_by_index(expected_index):
+                raise ValueError("runtime case roster changed after preflight")
+            data = bundle.data_for_case(expected_index)
+            if data.case != expected_case:
+                raise ValueError("training bundle view identity differs from roster")
+        except BaseException as error:
+            try:
+                _record_failed_case(
+                    receipt_directory_fd,
+                    directory,
+                    case=expected_case,
+                    manifest_sha256=verified_manifest_sha256,
+                    claim_sha256=claim_sha256,
+                    completed_cases=len(case_statuses),
+                    stop_reason="training_case_view_identity_mismatch",
+                    error=error,
+                )
+            except BaseException as receipt_error:
+                raise ABC6CampaignExecutionError(
+                    "case view identity failed and terminal failure receipt could not "
+                    "be sealed"
+                ) from receipt_error
             raise ABC6CampaignExecutionError(
                 f"case {expected_index} identity mismatch; run is terminal"
             ) from error
-
         try:
             result = fit_callable(data)
         except BaseException as error:
             try:
                 _record_failed_case(
+                    receipt_directory_fd,
                     directory,
                     case=expected_case,
                     manifest_sha256=verified_manifest_sha256,
@@ -2075,10 +2363,33 @@ def _execute_campaign_after_preflight(
                 f"case {expected_index} training failed; run is terminal and non-resumable"
             ) from error
         try:
+            receipt_root_identity.verify()
+        except BaseException as error:
+            try:
+                _record_failed_case(
+                    receipt_directory_fd,
+                    directory,
+                    case=expected_case,
+                    manifest_sha256=verified_manifest_sha256,
+                    claim_sha256=claim_sha256,
+                    completed_cases=len(case_statuses),
+                    stop_reason="campaign_path_identity_changed_during_case",
+                    error=error,
+                )
+            except BaseException as receipt_error:
+                raise ABC6CampaignExecutionError(
+                    "campaign path changed during a case and terminal failure "
+                    "receipt could not be sealed"
+                ) from receipt_error
+            raise ABC6CampaignExecutionError(
+                f"campaign path changed during case {expected_index}; run is terminal"
+            ) from error
+        try:
             fit_status, baseline_status = _result_statuses(result, expected_case)
         except BaseException as error:
             try:
                 _record_failed_case(
+                    receipt_directory_fd,
                     directory,
                     case=expected_case,
                     manifest_sha256=verified_manifest_sha256,
@@ -2098,15 +2409,23 @@ def _execute_campaign_after_preflight(
 
         try:
             fit_path, fit_receipt_sha256 = _write_case_status(
-                directory, expected_index, "fit", fit_status
+                receipt_directory_fd,
+                directory,
+                expected_index,
+                "fit",
+                fit_status,
             )
             baseline_path, baseline_receipt_sha256 = _write_case_status(
-                directory, expected_index, "baseline", baseline_status
+                receipt_directory_fd,
+                directory,
+                expected_index,
+                "baseline",
+                baseline_status,
             )
         except BaseException as error:
             try:
                 _write_failure_receipt(
-                    directory,
+                    receipt_directory_fd,
                     manifest_sha256=verified_manifest_sha256,
                     claim_sha256=claim_sha256,
                     completed_cases=len(case_statuses),
@@ -2144,11 +2463,16 @@ def _execute_campaign_after_preflight(
     )
     summary_path = directory / SUMMARY_FILENAME
     try:
-        _write_exclusive_durable(summary_path, summary_bytes)
+        receipt_root_identity.verify()
+        _write_exclusive_durable_at(
+            receipt_directory_fd,
+            SUMMARY_FILENAME,
+            summary_bytes,
+        )
     except OSError as error:
         try:
             _write_failure_receipt(
-                directory,
+                receipt_directory_fd,
                 manifest_sha256=verified_manifest_sha256,
                 claim_sha256=claim_sha256,
                 completed_cases=len(statuses),
@@ -2162,6 +2486,25 @@ def _execute_campaign_after_preflight(
             ) from receipt_error
         raise ABC6CampaignExecutionError(
             "all case receipts exist but summary publication failed; run is terminal"
+        ) from error
+    except BaseException as error:
+        try:
+            _write_failure_receipt(
+                receipt_directory_fd,
+                manifest_sha256=verified_manifest_sha256,
+                claim_sha256=claim_sha256,
+                completed_cases=len(statuses),
+                case_index=None,
+                stop_reason="campaign_path_identity_changed_before_summary",
+                exception_type=type(error).__name__,
+            )
+        except BaseException as receipt_error:
+            raise ABC6CampaignExecutionError(
+                "campaign path changed before summary and terminal failure receipt "
+                "could not be sealed"
+            ) from receipt_error
+        raise ABC6CampaignExecutionError(
+            "campaign path changed before summary; run is terminal"
         ) from error
     overall_status: Literal["complete", "incomplete"] = (
         "complete"
@@ -2182,10 +2525,32 @@ def _execute_campaign_after_preflight(
         summary_sha256=hashlib.sha256(summary_bytes).hexdigest(),
     )
     if training_results is None:
+        try:
+            receipt_root_identity.verify()
+        except BaseException as error:
+            try:
+                _write_failure_receipt(
+                    receipt_directory_fd,
+                    manifest_sha256=verified_manifest_sha256,
+                    claim_sha256=claim_sha256,
+                    completed_cases=len(statuses),
+                    case_index=None,
+                    stop_reason="campaign_path_identity_changed_after_summary",
+                    exception_type=type(error).__name__,
+                )
+            except BaseException as receipt_error:
+                raise ABC6CampaignExecutionError(
+                    "campaign path changed after summary and terminal failure "
+                    "receipt could not be sealed"
+                ) from receipt_error
+            raise ABC6CampaignExecutionError(
+                "campaign path changed after summary; run is terminal"
+            ) from error
         return campaign_result
     detailed_results = tuple(training_results)
     try:
         evidence_manifest_path, evidence_manifest_sha256 = _publish_training_evidence(
+            receipt_directory_fd,
             directory,
             campaign_result=campaign_result,
             bundle=bundle,
@@ -2194,7 +2559,7 @@ def _execute_campaign_after_preflight(
     except BaseException as error:
         try:
             _write_failure_receipt(
-                directory,
+                receipt_directory_fd,
                 manifest_sha256=verified_manifest_sha256,
                 claim_sha256=claim_sha256,
                 completed_cases=len(statuses),
@@ -2212,10 +2577,10 @@ def _execute_campaign_after_preflight(
             "failed; run is terminal"
         ) from error
     execution = ABC6TrainingCampaignExecution(
-        campaign_result=campaign_result,
-        evidence_manifest_path=evidence_manifest_path,
-        evidence_manifest_sha256=evidence_manifest_sha256,
-        receipt_root_identity=receipt_identity,
+            campaign_result=campaign_result,
+            evidence_manifest_path=evidence_manifest_path,
+            evidence_manifest_sha256=evidence_manifest_sha256,
+            receipt_root_identity=receipt_root_identity,
         _training_bundle=bundle,
         _training_results=detailed_results,
     )
@@ -2224,7 +2589,7 @@ def _execute_campaign_after_preflight(
     except BaseException as error:
         try:
             _write_failure_receipt(
-                directory,
+                receipt_directory_fd,
                 manifest_sha256=verified_manifest_sha256,
                 claim_sha256=claim_sha256,
                 completed_cases=len(statuses),
