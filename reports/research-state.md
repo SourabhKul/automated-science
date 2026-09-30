@@ -1,6 +1,29 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T16:08Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T16:33Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: isolated supervised authority primitive reviewed and synced
+
+After the documented Darwin alias HOLD, a Luna author split parent-observed
+launch-image and child-observed runtime-image bindings. Independent Luna
+reproduced **8/8** fake-only tests locally and in a clean overlay, rejected
+wrong-vector/launch/runtime bindings, and accepted a controlled fake child
+with distinct `bin/python3.14` and `Python.app` images under the same
+PID/start/stable-vector binding. The sole Luna Git owner pushed only the
+two reviewed authority source/test files as
+`c35f288b4fd7c64ad6e96531488d3619f986bd5b`; fresh fetch verified
+`HEAD == origin/main`. The old 2-failure/4-pass result remains negative
+history, corrected to state that its original diagnostic also observed a
+different `argv[0]`. See `reports/research-ledger/2026-09-30T1629Z.md`.
+
+This is an isolated fake-tested primitive, **not** an integrated launch
+grant. No production entrypoint consumes it. Its caller must still verify
+durable statuses, summary and forecast before scoring activation; the fake
+invalid-identity test does not prove production pre-claim ordering. Source
+pins, runner/watchdog/campaign/scorer integration, immutable manifest,
+versioned approval with review hash, and separate GO remain HOLD. The
+reserved synthetic campaign stays UNUSED/HOLD, with no protocol prospective
+target, real tank Qwen/ABC, held-out access or scientific breakthrough.
 
 ## Latest checkpoint: read-only replay component reviewed and synced
 
@@ -22,11 +45,13 @@ supervised-child grant, immutable manifest, versioned approval and separate
 GO remain HOLD. An isolated two-file grant primitive passed **6/6** author
 fake-only tests, but independent Luna reproduced **2 failures / 4 passes**
 locally and in a clean overlay. Parent and child see different Darwin Python
-executable images for the same PID/start/argv: launch `bin/python3.14` versus
-observed `Python.app/Contents/MacOS/Python`. The primitive wrongly requires
-those images to be identical, so independent review is **HOLD** and a bounded
-dual-identity repair is underway. It remains untracked and is not production
-authority. The reserved synthetic
+executable images for the same PID/start: launch `bin/python3.14` versus
+observed `Python.app/Contents/MacOS/Python`. In the original diagnostic their
+observed `argv[0]` also differed; an earlier ledger statement that the full
+vector matched was overstated. The draft's combined process-identity check
+rejected that valid child, so independent review was **HOLD** and a bounded
+dual-identity repair was assigned. At that checkpoint it was untracked and
+not production authority. The reserved synthetic
 run remains UNUSED/HOLD. No protocol prospective target, real tank Qwen/ABC,
 held-out target access or breakthrough occurred.
 
