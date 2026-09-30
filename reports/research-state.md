@@ -1,6 +1,53 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T21:59Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T23:31Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: ABC6 grant-record correction in bounded fake-only implementation
+
+At the `23:24Z` read-only Luna check, no ABC6 process or reserved run
+artifacts/claims/markers existed. Exact fixed Qwen was listed by oMLX HTTP
+200. A fresh fetch verified `main == origin/main ==
+dba16b289a61756cf4cf7c2fca5643183b6abf39`, but that pushed preclaim
+component remains **HOLD** after the mismatched-FD/self-hashed-bindings fake
+probe. Independent Luna gave a bounded design GO to the revised terminal-v3
+publication-snapshot and separately expected full binding contract, with two
+wording corrections now applied. A Luna max author is implementing only a
+fake-only correction; no exact-byte code review or corrective Git push exists
+yet. The reserved synthetic campaign remains UNUSED/HOLD and all real target
+boundaries remain closed. See `reports/research-ledger/2026-09-30T2331Z.md`
+and the grant-record binding amendment.
+
+## Latest checkpoint: pushed preclaim component reclassified HOLD after grant probe
+
+Independent Luna max initially reproduced **104/104** fake-only tests in the
+checkout and clean overlay and pushed the two-file preclaim replay change as
+`dba16b289a61756cf4cf7c2fca5643183b6abf39`, with fresh
+HEAD==origin/main. A later fake-only probe in that same review found the
+grant-record verifier accepting a terminal descriptor FD 10 with record FD
+11 and arbitrary self-hashed bindings; replay incorrectly returned `failed`.
+The reviewer reclassified the **pushed component HOLD**. Source pins remain
+closed and no campaign/target access occurred. The primary proposed a
+terminal-v3 raw grant-record hash and exact FD/bindings check; independent
+Luna design review is pending. No corrective code is approved or running.
+See `reports/research-ledger/2026-09-30T2240Z.md` and
+`reports/cascaded-tanks-abc6-grant-record-binding-amendment-2026-09-30.md`.
+
+## Latest checkpoint: staged preclaim replay authored; independent review pending
+
+A Luna max author changed only ABC6 replay and fake tests for the
+prechild/before-campaign-claim stage. Its final exact two-file hashes passed
+**104/104** focused fake-only tests in the checkout and clean `origin/main`
+overlay after a shared watchdog-claim helper adjustment; compile/diff checks
+passed. It uses anchored no-follow absence/revalidation, requires child
+attestation and verified reap for observed-child outcomes, treats
+unstructured prechild and marker-without-score as unreplayable, and leaves
+partial 48-status chains fail-closed. This is **author evidence only**;
+independent Luna max is reviewing the exact bytes before any code sync. The
+earlier Stage 1 component is synced at `6cfd574f24a8ce30785c439fb78c6f5a0edfdf29`,
+and factual state plus eight ledgers at
+`f8714a22adcde2c2dbd4a4cf869be67dcc832f78` with fresh HEAD==origin/main
+at that sync. Reserved synthetic run UNUSED/HOLD. See
+`reports/research-ledger/2026-09-30T2226Z.md`.
 
 ## Latest checkpoint: terminal-v2 Stage 1 independently reviewed and synced
 
