@@ -87,6 +87,8 @@ _RUN_DIRECTORY_RELATIVE = (
 )
 _MANIFEST_RELATIVE = f"{_RUN_DIRECTORY_RELATIVE}/manifest-v2.json"
 _APPROVAL_RELATIVE = f"{_RUN_DIRECTORY_RELATIVE}/approval-go.json"
+_REVIEW_REPORT_FILENAME = "independent-review-report.md"
+_REVIEW_REPORT_RELATIVE = f"{_RUN_DIRECTORY_RELATIVE}/{_REVIEW_REPORT_FILENAME}"
 _RECEIPT_ROOT_RELATIVE = f"{_RUN_DIRECTORY_RELATIVE}/receipts"
 _CAMPAIGN_CLAIM_PARENT_RELATIVE = (
     "artifacts/evaluations/cascaded_tanks_abc6_campaign_fit/claims"
@@ -143,6 +145,7 @@ class _PreflightAnchors:
     directory_identities: dict[str, tuple[int, int]]
     manifest_file: _PinnedFile
     approval_file: _PinnedFile
+    review_report_file: _PinnedFile
     watchdog_file: _PinnedFile
 
     @property
@@ -449,6 +452,11 @@ def _verify_preflight_anchors(
         label="separate approval record",
     )
     _verify_pinned_file(
+        anchors.review_report_file,
+        anchors.directories,
+        label="independent review report",
+    )
+    _verify_pinned_file(
         anchors.watchdog_file,
         anchors.directories,
         label="reviewed watchdog source",
@@ -537,6 +545,14 @@ def _open_preflight_anchors(
             _APPROVAL_RELATIVE,
             label="separate approval record",
         )
+        review_report_file = _file_pin(
+            root_fd,
+            directories,
+            _REVIEW_REPORT_RELATIVE,
+            label="independent review report",
+        )
+        if not review_report_file.raw:
+            raise WatchdogError("independent review report is empty")
         watchdog_file = _file_pin(
             root_fd,
             directories,
@@ -582,6 +598,7 @@ def _open_preflight_anchors(
             directory_identities=directory_identities,
             manifest_file=manifest_file,
             approval_file=approval_file,
+            review_report_file=review_report_file,
             watchdog_file=watchdog_file,
         )
         if approval_file.raw == b"":
@@ -1344,6 +1361,8 @@ APPROVAL_RECORD_KEYS = {
     "receipt_directory",
     "watchdog_launch_vector_template",
     "campaign_child_launch_vector",
+    "review_report_path",
+    "review_report_sha256",
 }
 APPROVAL_SHA_PLACEHOLDER = "<APPROVAL_RECORD_SHA256>"
 
@@ -1419,6 +1438,7 @@ def _load_and_validate_approval_record(
     receipt_directory: Path,
     campaign_launch_vector: Sequence[str],
     actual_watchdog_args: Sequence[str],
+    review_report_file: _PinnedFile,
     reviewed_git_head: str | None = None,
     watchdog_script_sha256: str | None = None,
     raw_bytes: bytes | None = None,
@@ -1452,9 +1472,22 @@ def _load_and_validate_approval_record(
         or set(decoded) != APPROVAL_RECORD_KEYS
         or _canonical_json(decoded) != raw
         or type(decoded.get("schema_version")) is not int
-        or decoded.get("schema_version") != 1
+        or decoded.get("schema_version") != 2
     ):
         raise WatchdogError("approval record schema is incomplete or contains unknown fields")
+
+    expected_review_report_path = str(_REPO_ROOT / _REVIEW_REPORT_RELATIVE)
+    review_report_path = decoded.get("review_report_path")
+    review_report_sha256 = decoded.get("review_report_sha256")
+    if (
+        review_report_file.relative_path != _REVIEW_REPORT_RELATIVE
+        or review_report_path != expected_review_report_path
+        or not _is_sha256(review_report_sha256)
+        or hashlib.sha256(review_report_file.raw).hexdigest() != review_report_sha256
+    ):
+        raise WatchdogError(
+            "approval record does not bind the fixed independent review report bytes"
+        )
 
     reviewer = decoded.get("reviewer_id")
     approved_at = decoded.get("approved_at_utc")
@@ -1466,7 +1499,7 @@ def _load_and_validate_approval_record(
         else watchdog_script_sha256
     )
     if (
-        decoded.get("record_type") != "abc6_independent_approval_and_launch_v1"
+        decoded.get("record_type") != "abc6_independent_approval_and_launch_v2"
         or decoded.get("status") != "approved"
         or decoded.get("protocol_id") != PROTOCOL_ID
         or decoded.get("run_id") != RUN_ID
@@ -1563,6 +1596,7 @@ def _production_preflight(
                 anchors.watchdog_file.raw
             ).hexdigest(),
             raw_bytes=anchors.approval_file.raw,
+            review_report_file=anchors.review_report_file,
         )
         anchors.verify(require_unused=True)
         return manifest, loaded_sha256, approval, anchors
@@ -1975,6 +2009,10 @@ def _supervise_command(
         "watchdog_attestation": run_identity.get("watchdog_attestation"),
         "claim_semantics": "consumed_once_no_resume",
     }
+    if preflight_anchors is not None:
+        # Revalidate the independent report and every other preflight pin as
+        # the final check before consuming the one-use watchdog claim.
+        preflight_anchors.verify(require_unused=True)
     claim_sha256 = _claim_once(
         claim_path,
         claim,

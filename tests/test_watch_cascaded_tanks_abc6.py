@@ -76,6 +76,10 @@ def _private_preflight_fixture(
     root.mkdir(parents=True)
     run_directory = root / watchdog._RUN_DIRECTORY_RELATIVE
     run_directory.mkdir(parents=True)
+    review_report_path = run_directory / watchdog._REVIEW_REPORT_FILENAME
+    review_report_raw = b"# Private fake independent review\n\nStatus: fake-only fixture.\n"
+    review_report_path.write_bytes(review_report_raw)
+    review_report_sha256 = hashlib.sha256(review_report_raw).hexdigest()
     receipt_directory = root / watchdog._RECEIPT_ROOT_RELATIVE
     receipt_directory.mkdir(parents=True)
     (root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE).mkdir(parents=True)
@@ -143,8 +147,8 @@ def _private_preflight_fixture(
         "e" * 64,
     ]
     approval: dict[str, object] = {
-        "schema_version": 1,
-        "record_type": "abc6_independent_approval_and_launch_v1",
+        "schema_version": 2,
+        "record_type": "abc6_independent_approval_and_launch_v2",
         "status": "approved",
         "protocol_id": watchdog.PROTOCOL_ID,
         "run_id": watchdog.RUN_ID,
@@ -162,6 +166,8 @@ def _private_preflight_fixture(
             approval_path=approval_path,
         ),
         "campaign_child_launch_vector": launch_vector,
+        "review_report_path": str(review_report_path),
+        "review_report_sha256": review_report_sha256,
     }
     approval_raw = watchdog._canonical_json(approval)
     approval_path.write_bytes(approval_raw)
@@ -179,6 +185,8 @@ def _private_preflight_fixture(
         "receipt": receipt_directory,
         "approval": approval_path,
         "approval_sha256": approval_sha256,
+        "review_report": review_report_path,
+        "review_report_sha256": review_report_sha256,
         "actual_args": actual_args,
         "child_vector": launch_vector,
         "manifest_body": manifest,
@@ -1155,8 +1163,8 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
 
     def write_record(extra: dict[str, object] | None = None) -> str:
         record: dict[str, object] = {
-            "schema_version": 1,
-            "record_type": "abc6_independent_approval_and_launch_v1",
+            "schema_version": 2,
+            "record_type": "abc6_independent_approval_and_launch_v2",
             "status": "approved",
             "protocol_id": watchdog.PROTOCOL_ID,
             "run_id": watchdog.RUN_ID,
@@ -1176,6 +1184,8 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
                 approval_path=approval_path,
             ),
             "campaign_child_launch_vector": campaign_vector,
+            "review_report_path": str(fixture["review_report"]),
+            "review_report_sha256": fixture["review_report_sha256"],
         }
         if extra:
             record.update(extra)
@@ -1195,6 +1205,8 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
     )
     assert verified_sha == manifest_sha256
     assert record["reviewed_git_head"] == head
+    assert record["review_report_path"] == str(fixture["review_report"])
+    assert record["review_report_sha256"] == fixture["review_report_sha256"]
     assert manifest["protocol_id"] == watchdog.PROTOCOL_ID
     assert campaign_vector[1] == str(
         Path(watchdog._REPO_ROOT) / "scripts/run_cascaded_tanks_abc6_synthetic.py"
@@ -1211,6 +1223,57 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
             approval_path=approval_path,
             approval_sha256=unknown_sha,
             actual_watchdog_args=[*actual_args[:-1], unknown_sha],
+        )
+
+    v1_sha = write_record(
+        {
+            "schema_version": 1,
+            "record_type": "abc6_independent_approval_and_launch_v1",
+        }
+    )
+    with pytest.raises(watchdog.WatchdogError, match="schema is incomplete"):
+        _production_preflight_from_fixture(
+            {**fixture, "approval_sha256": v1_sha, "actual_args": [*actual_args[:-1], v1_sha]}
+        )
+
+    missing_review_sha = write_record()
+    record_without_path = json.loads(approval_path.read_text())
+    record_without_path.pop("review_report_path")
+    raw_without_path = watchdog._canonical_json(record_without_path)
+    approval_path.write_bytes(raw_without_path)
+    missing_review_sha = hashlib.sha256(raw_without_path).hexdigest()
+    with pytest.raises(watchdog.WatchdogError, match="schema is incomplete"):
+        _production_preflight_from_fixture(
+            {**fixture, "approval_sha256": missing_review_sha, "actual_args": [*actual_args[:-1], missing_review_sha]}
+        )
+
+    missing_review_sha = write_record()
+    record_without_digest = json.loads(approval_path.read_text())
+    record_without_digest.pop("review_report_sha256")
+    raw_without_digest = watchdog._canonical_json(record_without_digest)
+    approval_path.write_bytes(raw_without_digest)
+    missing_review_sha = hashlib.sha256(raw_without_digest).hexdigest()
+    with pytest.raises(watchdog.WatchdogError, match="schema is incomplete"):
+        _production_preflight_from_fixture(
+            {**fixture, "approval_sha256": missing_review_sha, "actual_args": [*actual_args[:-1], missing_review_sha]}
+        )
+
+    bad_path_sha = write_record({"review_report_path": str(fixture["root"] / "elsewhere.md")})
+    with pytest.raises(watchdog.WatchdogError, match="does not bind the fixed independent review report"):
+        _production_preflight_from_fixture(
+            {**fixture, "approval_sha256": bad_path_sha, "actual_args": [*actual_args[:-1], bad_path_sha]}
+        )
+
+    bad_digest_sha = write_record({"review_report_sha256": "A" * 64})
+    with pytest.raises(watchdog.WatchdogError, match="does not bind the fixed independent review report"):
+        _production_preflight_from_fixture(
+            {**fixture, "approval_sha256": bad_digest_sha, "actual_args": [*actual_args[:-1], bad_digest_sha]}
+        )
+
+    mismatched_digest = write_record({"review_report_sha256": "f" * 64})
+    with pytest.raises(watchdog.WatchdogError, match="does not bind the fixed independent review report"):
+        _production_preflight_from_fixture(
+            {**fixture, "approval_sha256": mismatched_digest, "actual_args": [*actual_args[:-1], mismatched_digest]}
         )
 
     wrong_head_sha = write_record({"reviewed_git_head": "f" * 40})
@@ -1336,7 +1399,7 @@ def test_manifest_root_mismatch_and_training_only_vector_fail_before_claim(
         _production_preflight_from_fixture(valid_fixture)
 
 
-@pytest.mark.parametrize("control_file", ["manifest", "approval"])
+@pytest.mark.parametrize("control_file", ["manifest", "approval", "review_report"])
 @pytest.mark.parametrize("leaf_kind", ["fifo", "symlink"])
 def test_control_file_fifo_or_symlink_fails_nonblocking_before_claim(
     tmp_path: Path,
@@ -1364,6 +1427,95 @@ def test_control_file_fifo_or_symlink_fails_nonblocking_before_claim(
         / f"{watchdog.RUN_ID}.watchdog.claim"
     )
     assert not claim.exists()
+
+
+def test_tampered_review_report_bytes_fail_before_one_use_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    report = fixture["review_report"]
+    assert isinstance(report, Path)
+    report.write_bytes(report.read_bytes() + b"tampered after approval\n")
+    with pytest.raises(watchdog.WatchdogError, match="does not bind the fixed independent review report"):
+        _production_preflight_from_fixture(fixture)
+    claim = (
+        fixture["root"]
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    )
+    assert not claim.exists()
+
+
+def test_missing_review_report_fails_before_one_use_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    report = fixture["review_report"]
+    assert isinstance(report, Path)
+    report.unlink()
+    with pytest.raises(watchdog.WatchdogError, match="independent review report is missing or unsafe"):
+        _production_preflight_from_fixture(fixture)
+    claim = (
+        fixture["root"]
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    )
+    assert not claim.exists()
+
+
+def test_review_report_swap_after_preflight_fails_at_immediate_preclaim_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    _manifest, _verified_sha, _approval, anchors = _production_preflight_from_fixture(fixture)
+    report = fixture["review_report"]
+    assert isinstance(report, Path)
+    claim_reached = False
+    original_utc_now = watchdog._utc_now
+
+    def swap_report_before_final_anchor_check() -> str:
+        replacement = report.with_name("review-report-replacement.md")
+        replacement.write_bytes(report.read_bytes())
+        report.unlink()
+        replacement.rename(report)
+        return original_utc_now()
+
+    def forbidden_claim(*_args: object, **_kwargs: object) -> str:
+        nonlocal claim_reached
+        claim_reached = True
+        raise AssertionError("claim attempted before independent report revalidation")
+
+    monkeypatch.setattr(watchdog, "_utc_now", swap_report_before_final_anchor_check)
+    monkeypatch.setattr(watchdog, "_claim_once", forbidden_claim)
+    executable = Path(os.sys.executable)
+    run_identity = {
+        "protocol_id": watchdog.PROTOCOL_ID,
+        "run_id": watchdog.RUN_ID,
+        "manifest_sha256": fixture["manifest_sha256"],
+        "approval_record_sha256": fixture["approval_sha256"],
+    }
+    try:
+        with pytest.raises(watchdog.WatchdogError, match="independent review report path or bytes changed"):
+            watchdog._supervise_command(
+                launch_vector=[str(executable), "private-fake-child"],
+                observed_executable_path=executable,
+                observed_executable_sha256=watchdog._sha256_file(executable),
+                claim_path=watchdog._expected_project_claim_path(
+                    fixture["root"], watchdog.RUN_ID
+                ),
+                receipt_path=report.parent / "receipts" / "watchdog-terminal-receipt.json",
+                run_identity=run_identity,
+                claim_project_root=fixture["root"],
+                preflight_anchors=anchors,
+            )
+    finally:
+        anchors.close()
+    assert claim_reached is False
+    assert not (
+        fixture["root"]
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    ).exists()
 
 
 def test_manifest_swap_to_fifo_after_watchdog_pin_fails_before_claim_or_child(
