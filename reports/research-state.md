@@ -1,6 +1,53 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T03:52Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T04:26Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: runner synced; supervised launch remains held
+
+Independent Luna reviewed the exact ABC6 runner source/test unit and
+**79/79** focused fake-only tests in the worktree and a clean `origin/main`
+archive overlay. The runner's typed schema-v2 identity, full status gate,
+anchored target-free forecast, missing/mismatched status rejection, and
+valid incomplete-case null behavior were checked. One Git owner pushed the
+two-file unit as `68c10ed1df5389fbba223e01522d4f8d9938e434` and
+fresh-fetch verified `HEAD == origin/main` with a clean worktree. A separate
+Luna launch audit found that the watchdog still calls the training-only
+entrypoint and lacks preclaim root/path equality and end-to-end terminal
+replay. Full source pins intentionally fail closed. See
+`reports/research-ledger/2026-09-30T0426Z.md`.
+
+The primary froze candidate manifest/approval locations, launch authority,
+and ordered gates in
+`reports/cascaded-tanks-abc6-supervised-launch-decision-2026-09-30.md`.
+That document authorizes implementation and fake-only review, **not** a
+campaign claim or launch. Physical root, final HEAD, hashes, immutable
+manifest and independent GO still require verification. The reserved
+`ct-abc6-20260928-v1` run remains **UNUSED/HOLD**; no protocol prospective
+target, real tank Qwen/ABC, held-out tank access, or scientific breakthrough
+occurred. These new documents are local pending factual review/Git sync.
+
+## Latest checkpoint: runner fixed-path unit reviewed and synced
+
+The ABC6 runner now uses the typed schema-v2 checkout/receipt-root identity,
+verifies all 48 statuses before scorer handoff, and publishes/reads its
+target-free forecast through the anchored receipt descriptor. Its fake tests
+reject pre-open symlinks, post-open ancestor swaps, and missing or
+result-mismatched statuses before marker or target materialization, while
+preserving valid incomplete-case null forecasts. Independent Luna verified
+the exact two-file runner unit and **79/79** focused fake-only tests in both
+the working tree and a clean `origin/main` archive overlay. The sole Git
+owner pushed it as content commit
+`68c10ed1df5389fbba223e01522d4f8d9938e434` and fresh-fetch verified
+`HEAD == origin/main`, with a clean worktree. See
+`reports/research-ledger/2026-09-30T0417Z.md`.
+
+An independent Luna is mapping the remaining supervised-launch gaps in the
+watchdog, immutable manifest, separate approval, full source closure/pins,
+and terminal replay. Integrated source pins remain fail-closed. The reserved
+`ct-abc6-20260928-v1` campaign remains **UNUSED/HOLD**; no protocol
+prospective target, real tank Qwen/ABC, held-out tank access, or scientific
+breakthrough occurred. This state/ledger update is local pending factual
+review and Git sync.
 
 ## Latest checkpoint: scorer/gate FIFO repair independently cleared and synced
 
