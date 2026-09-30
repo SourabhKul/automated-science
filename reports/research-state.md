@@ -1,6 +1,76 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T19:46Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T20:19Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: actual-child persistent-clock cleanup remains HOLD
+
+Independent Luna max matched the two local watchdog/test hashes and replayed
+**69/69** fake-only focused tests in both the current checkout and a clean
+baseline overlay; the launcher-transition test passed 10/10 repetitions.
+It nevertheless gave **HOLD**: after a child starts, a persistent
+`time.monotonic()` failure enters the exception cleanup, where
+`_terminate_process_group()` calls that same failing clock and escapes
+before child reap or failed terminal/ACK publication. The new elapsed-time
+test used a `Popen` stub that raised and therefore did not cover a live child.
+A Luna max author is making one bounded cleanup repair and a fake-child
+regression. These two files remain local, unreviewed for sync; source pins
+and all synthetic/real launch gates remain closed. See
+`reports/research-ledger/2026-09-30T2019Z.md`.
+
+## Latest checkpoint: persistent-clock author repair awaits independent replay
+
+The Luna author changed only watchdog and Stage 2A fake tests to keep
+persistent UTC/monotonic failures from stranding a consumed claim. It reports
+a failed terminal plus readback ACK even when `_utc_now()` keeps failing;
+prechild timer failure records no child timer and zero elapsed, while a final
+elapsed-sample failure records JSON `null` rather than an invented duration.
+`py_compile` passed and a pinned-Python focused run reported **69/69 tests
+passed**. One earlier run had a transient existing launcher-transition test
+failure; that test passed alone and the next focused run passed. The two
+local files remain **unreviewed and unsynced**. Independent Luna max is
+replaying exact hashes, persistent faults, replay schema and bounded
+flakiness before component GO. See
+`reports/research-ledger/2026-09-30T2014Z.md`.
+
+## Latest checkpoint: persistent clock faults keep watchdog terminal repair on HOLD
+
+Independent Luna max verified the two local watchdog/test hashes and
+reproduced **68/68** focused fake tests in both the checkout and clean
+baseline overlay; a broader focused suite passed **84/84**. It nevertheless
+gave **HOLD**. A persistent `_utc_now()` failure reappears in the intervention
+snapshot inside exception handling and escapes before terminal publication/
+ACK after a consumed claim. A repeated `time.monotonic()` failure in
+post-monitor elapsed calculation outside the guard can do likewise. The
+one-shot tests missed both. Luna is repairing only these two terminal paths
+with persistent-fault fake controls. The two-file patch is unreviewed for
+sync and remains local. See `reports/research-ledger/2026-09-30T2004Z.md`.
+
+## Latest checkpoint: postclaim clock-fault author controls pass; review pending
+
+The Luna author made a local two-file watchdog/test repair for the previously
+identified gap: `_utc_now()` and `time.monotonic()` now execute inside the
+terminal-monitoring guard. In private fake faults at each call after the
+durable claim, it reports no child/grant/campaign claim, a failed terminal
+receipt and readback acknowledgement, truthful claim-time fallback, no child
+timer, and zero elapsed time. The author reports `py_compile` and **68/68**
+focused pinned-Python tests passing. These two bytes are **unreviewed and
+unsynced**; independent Luna max is reproducing and checking for any other
+postclaim gap and replay inconsistency before a scoped sync. Full campaign
+remains HOLD. See `reports/research-ledger/2026-09-30T1958Z.md`.
+
+## Latest checkpoint: component and compact evidence synced; terminal gap next
+
+The independent Luna Git owner fact-checked and synced the state plus seven
+interval ledgers as `39021ed749a4f138a3ce4303a86becc2ab8503e1`, after
+correcting the ledger count and distinguishing fake in-memory hashes from
+production source-map artifacts. Fresh fetch verified `HEAD == origin/main ==
+FETCH_HEAD` on `main`, clean worktree at sync. The Stage 2A six-file
+component remains at `1be2b39e93d858f4316750600bdc082af1b2e98b`, with
+22/22 independent fake-only focused tests. This is still component evidence,
+not a launch. A Luna max author is now repairing only the watchdog's
+postclaim timestamp-initialization window so exceptions cannot bypass a
+durable failed terminal receipt. No result is claimed for that edit yet.
+See `reports/research-ledger/2026-09-30T1950Z.md`.
 
 ## Latest checkpoint: Stage 2A component independently reviewed and synced
 
