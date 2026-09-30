@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T16:43Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T17:00Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: approval-v2 report preclaim gate reviewed and synced
+
+The watchdog now accepts only the reviewed version-2 approval shape with the
+fixed independent review-report path and SHA-256. It reads the report through
+a bounded, nonblocking, no-follow descriptor and rechecks report/root
+identity and bytes immediately before its one-use claim. An independent Luna
+reproduced **60/60** fake-only tests locally and in a clean overlay, including
+v1/malformed/missing/tampered/FIFO/symlink/replaced-report failures before
+claim or child launch. The existing child-exit test passed 10/10 in each
+environment during review. The sole Luna Git owner pushed only the reviewed
+watchdog source/test as `e18939efed722e717a788952e476002b0a942be3`,
+then fresh-fetched `HEAD == origin/main`. See
+`reports/research-ledger/2026-09-30T1700Z.md`.
+
+This does **not** create an approval record or wire the grant into the child.
+The runner's integrated source-pin check still fails closed; a Luna is
+auditing exact source closure and self-hash constraints before any pin
+change. Replay, authority and approval-v2 are reviewed components, but
+end-to-end supervised authorization, immutable manifest, independent GO,
+and the reserved synthetic run remain HOLD. No protocol prospective target,
+real tank Qwen/ABC, held-out target access or breakthrough occurred.
 
 ## Latest checkpoint: approval-v2 provenance gate frozen; wiring held
 
