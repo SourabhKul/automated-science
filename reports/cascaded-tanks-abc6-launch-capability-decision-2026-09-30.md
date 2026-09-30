@@ -8,6 +8,22 @@ The watchdog alone verifies the frozen manifest, separate approval, physical roo
 
 The child verifies the grant against the watchdog claim, manifest and approval hashes, run/protocol IDs, fixed root and receipt path, reviewed HEAD, child vector and process identity. Its grant is one use for the declared training phase and carries a distinct one-use scoring phase through the typed in-memory execution and scorer handoff. Public runner, both campaign-fit functions, and `run_abc6_training_case` require verified training authority before their global claim or production simulation; alternatively make the case-level API private and unreachable as a production entrypoint. `build_synthetic_training_bundle` may remain a source-free deterministic helper for fake/offline controls, but the reserved campaign's production bundle creation must occur only after verified training authority and must not create run artifacts beforehand. The public scorer and deferred target gate require verified scoring authority before the reveal marker or target materialization; the gate may instead be made scorer-internal. A path string, boolean, claim file alone, or a caller-constructible typed object is insufficient. Read-only manifest preflight remains available without a grant. Existing private fake-fit fixtures may have an explicitly test-only issuer that cannot open production source pins.
 
+The scoring phase starts dormant. The supervised child retains its verified,
+process-bound authority while it performs the one declared campaign; the
+campaign may delegate only case-index-bound fit permits to its 24 case calls.
+After all 48 fit/baseline status receipts, summary and target-free forecast
+have been durably written and reverified, the runner may activate scoring
+exactly once, binding that activation to the frozen receipt and forecast
+digests. Only the attested runner holding the sealed process-bound capability
+can activate scoring; the scorer consumes this activated authority before
+claiming the reveal marker. Neither a training-only execution object nor a
+caller-supplied digest grants activation. A fork, changed child identity,
+duplicate case index, repeated activation or second scoring call fails before
+new simulation or target materialization. A failed stage consumes the relevant
+one-use run/condition; it cannot mint a replacement phase or retry under the
+same run ID. This is a lifecycle contract for implementation and fake-only
+review, not an implementation or launch approval.
+
 Receipts link the grant digest, watchdog and campaign claims, manifest/approval and review-report hashes, root/runtime/source identities, child PID/start, phase consumption, 48 statuses, summary, target-free forecast, reveal marker, post-reveal score receipt and watchdog terminal receipt. A missing/invalid grant, phase reuse or failed post-claim stage consumes the condition according to the frozen one-use rules; no direct retry or alternate entrypoint may mint authority for the same run.
 
 ## Review before launch
