@@ -1,6 +1,69 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T20:54Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T21:59Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: terminal-v2 Stage 1 independently reviewed and synced
+
+Independent Luna max matched the five final hashes and reproduced **92/92**
+fake-only focused tests in the current checkout and clean `origin/main`
+overlay, plus **20/20** repetitions each of the formerly flaky source-pin
+and detached-child cases. It confirmed the barriers require five successful
+post-marker PGID samples and retain exact closed-gate/no-claim assertions.
+The source-pin child has a 1.5-second self-release timeout; the detached-parent
+wrapper waits at most one second, with the watchdog's two-second wall cap and
+bounded group cleanup limiting its fallback. Production AccessDenied remains
+fail-closed. The reviewer gave **component GO only** and, as sole Git owner,
+pushed exactly those five
+files non-force in `6cfd574f24a8ce30785c439fb78c6f5a0edfdf29`;
+fresh fetch verified HEAD==origin/main. The current state/ledger docs are
+local pending factual review/sync. Staged partial-chain replay, public grants,
+source/runtime closure, manifest/report/approval and launch GO remain HOLD.
+See `reports/research-ledger/2026-09-30T2159Z.md`.
+
+## Latest checkpoint: test-only barrier passes author controls; review pending
+
+The Luna max author preserved production Stage 1 source hashes and replaced
+the failed fixed-sleep fake-child adjustment with test-only release barriers.
+Each positive fake child stays alive through five successful post-gate or
+post-detach PGID samples before the wrapper releases and reaps it. Author
+repetitions passed **20/20** for each formerly flaky test, and the focused
+combined suites passed **92/92**; compilation and diff check passed. The
+earlier sleep-only **4/5** failure remains negative evidence. This is still
+**local HOLD** pending independent review of exact five-file bytes, clean
+overlay and repetition, followed by one-owner Git sync only on GO. The
+reserved synthetic run remains UNUSED/HOLD. See
+`reports/research-ledger/2026-09-30T2155Z.md`.
+
+## Latest checkpoint: Stage 1 schema reviewed but test race holds sync
+
+Independent Luna max matched all four Stage 1 hashes and passed **108/108**
+fake-only focused tests in both the current checkout and a clean overlay.
+It confirmed terminal-v2 capture/replay semantics and unchanged fail-closed
+source pins. It still gave **HOLD**: 20 repeated positive fake tests reproduced
+fast-child identity races (`9/10` launcher/source-pin, `7/10` detached-child
+passes), and instrumented failures traced to `psutil.AccessDenied` on
+`root.cmdline()` as the direct child exits. The watchdog writes a failed
+terminal and safely reaps; no target bypass occurred. A Luna max author is
+making a **test-only** bounded child-lifetime adjustment so positive fixtures
+remain alive through identity attestation, leaving production fail-closed
+behavior untouched. Code remains local, unsynced, and launch HOLD. See
+`reports/research-ledger/2026-09-30T2139Z.md`.
+
+## Latest checkpoint: terminal-v2 Stage 1 authored, independent review pending
+
+A Luna max author completed the bounded four-file watchdog/replay/test Stage 1
+locally. It reports terminal-v2 tri-state capture, strict replay validation,
+UTC-null monotonic ordering, unavailable-first fail closed, unchanged ACK v1,
+and repair of the stale replay fixture. Isolated pinned-runtime fake-only
+suites passed **20/20 replay, 12/12 Stage 2A, and 60/60 watchdog**;
+compilation and diff check passed. Two combined runs were **not clean**:
+89 passed/2 failed, then 91 passed/1 failed, with fast fake-child identity
+sampling races in previously present tests. Individual reruns passed. This
+timing failure is an explicit independent-review gate, not waived. Four
+local files remain **unreviewed and unsynced**; source pins and partial-chain
+replay stay closed. The reviewed clock-order design and compact earlier
+evidence are synced at `3a5cfec4145d5273a6730ac68bdd189f629ebef4`.
+See `reports/research-ledger/2026-09-30T2123Z.md`.
 
 ## Latest checkpoint: clock-order amendment design GO; implementation still HOLD
 
