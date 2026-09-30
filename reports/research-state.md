@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T13:44Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T14:26Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: terminal acknowledgement reviewed and synced
+
+An independent Luna reviewed the exact watchdog acknowledgement source and
+tests, reproducing **55/55** fake-only tests locally and in a clean archive
+overlay. A private fake replay probe accepted a canonical acknowledgement
+left by a post-effect link error, rejected an acknowledgement symlink, and
+classified failed terminal readback with no acknowledgement as unreplayable.
+The one-use claim blocked a second child. The sole Luna Git owner pushed
+only the reviewed watchdog source/test as
+`c57fb81db1866fb9c2450f513c467606ccdec2eb`; fresh fetch verified
+`HEAD == origin/main`. The revised terminal evidence decision was separately
+reviewed and synced as `2bfdab42ccedcfa4ffd7b91cfb693f7d235a619e`.
+See `reports/research-ledger/2026-09-30T1426Z.md`.
+
+This is a terminal-publication component, **not** a full replay or launch
+approval. A Luna author is building a separate read-only post-score evidence
+verifier using fake data. Complete independent replay, supervised-child grant,
+versioned approval review hash, integrated source/runtime pins, immutable
+manifest and separate GO remain HOLD. The reserved synthetic run stays
+UNUSED/HOLD. No protocol prospective target, real tank Qwen/ABC, held-out
+target access or scientific breakthrough occurred.
 
 ## Latest checkpoint: terminal readback needs durable acknowledgement
 
