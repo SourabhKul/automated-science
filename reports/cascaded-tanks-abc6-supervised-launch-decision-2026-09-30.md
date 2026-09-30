@@ -18,7 +18,26 @@ that identity. The immutable schema-v2 manifest location for this one run is
 `artifacts/cascaded_tanks_abc6_synthetic/ct-abc6-20260928-v1/manifest-v2.json`;
 the separate approval-record location is
 `artifacts/cascaded_tanks_abc6_synthetic/ct-abc6-20260928-v1/approval-go.json`.
-Both are host-local, ignored artifacts. The receipt root remains exactly
+The independent reviewer report is a separate compact, immutable host-local
+file at
+`artifacts/cascaded_tanks_abc6_synthetic/ct-abc6-20260928-v1/independent-review-report.md`.
+The approval record must use schema version **2** and record type
+`abc6_independent_approval_and_launch_v2`. It retains every v1 identity and
+exact launch-vector field, and adds exactly
+`review_report_path` and `review_report_sha256`. The path must equal that
+fixed location and the digest must be lowercase canonical SHA-256 of the
+reviewed report bytes. Before any watchdog claim, read the report through a
+bounded, nonblocking, no-follow regular-file descriptor under its pinned
+parent and compare its bytes to the approval's digest. A missing, altered,
+swapped, FIFO or symlink report fails closed. Version-1 approval records and
+v2 records with an absent, extra or invalid review binding cannot authorize
+this run. The report's scientific and operational GO content is assessed by
+the independent Luna reviewer and primary before the approval is created;
+the watchdog's byte check provides provenance, not semantic or cryptographic
+authentication against someone who controls the local checkout. No report
+or approval file is created by this decision.
+The manifest, report and approval are host-local, ignored artifacts. The
+receipt root remains exactly
 `artifacts/cascaded_tanks_abc6_synthetic/ct-abc6-20260928-v1/receipts`, and
 the terminal receipt is `watchdog-terminal-receipt.json` beneath that root.
 The final reviewed Git HEAD, source/runtime hashes, manifest SHA, exact
