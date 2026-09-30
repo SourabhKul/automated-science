@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -42,6 +43,18 @@ from core.real_data.cascaded_tanks_models import (
 
 _WEIGHTS = (0.25, 0.75)
 _FAKE_TARGETS = {"A": (1.0,) * 60, "B": (2.0,) * 60, "M": (3.0,) * 60}
+
+
+def _assert_score_event(event, *, stage):
+    assert event["stage"] == stage
+    assert event["clock"] == "host-local-monotonic-ns"
+    assert type(event["monotonic_ns"]) is int
+    assert 0 <= event["monotonic_ns"] <= (2**63 - 1)
+    assert isinstance(event["occurred_at_utc"], str)
+    assert event["occurred_at_utc"].endswith("Z")
+    assert len(event["occurred_at_utc"]) <= 32
+    parsed = datetime.fromisoformat(event["occurred_at_utc"].replace("Z", "+00:00"))
+    assert parsed.tzinfo == timezone.utc
 
 
 def _parameter_rows(case_index: int) -> tuple[tuple[float, ...], tuple[float, ...]]:
@@ -549,6 +562,76 @@ def _fake_execution(receipts: Path, training, results):
         if summary_path.exists()
         else "2" * 64
     )
+    evidence_directory = receipts / campaign_fit.EVIDENCE_DIRECTORY_NAME
+    evidence_directory.mkdir(parents=True, exist_ok=True)
+    bundle_filename = "training-bundle.evidence.json"
+    bundle_bytes = _canonical_json(
+        {
+            "private_fake_fixture": True,
+            "kind": "abc6_training_bundle",
+            "case_count": len(CASE_ROSTER),
+        }
+    )
+    (evidence_directory / bundle_filename).write_bytes(bundle_bytes)
+    case_artifacts = []
+    status_receipts = []
+    for case, status in zip(CASE_ROSTER, statuses, strict=True):
+        filename = f"case-{case.case_index:02d}.training-evidence.json"
+        case_bytes = _canonical_json(
+            {
+                "private_fake_fixture": True,
+                "case_index": case.case_index,
+                "case_id": case.case_id,
+                "fit_status": status.fit_status,
+                "baseline_status": status.baseline_status,
+            }
+        )
+        (evidence_directory / filename).write_bytes(case_bytes)
+        case_artifacts.append(
+            {
+                "filename": filename,
+                "sha256": hashlib.sha256(case_bytes).hexdigest(),
+                "roster_index": case.case_index,
+                "case_identity": campaign_fit._case_identity(case),
+                "fit_status": status.fit_status,
+                "baseline_status": status.baseline_status,
+            }
+        )
+        for component in ("fit", "baseline"):
+            status_receipts.append(
+                {
+                    "filename": f"case-{case.case_index:02d}.{component}-status.json",
+                    "sha256": getattr(status, f"{component}_receipt_sha256"),
+                    "case_index": case.case_index,
+                    "case_id": case.case_id,
+                    "component": component,
+                    "status": getattr(status, f"{component}_status"),
+                }
+            )
+    evidence_manifest = {
+        "schema_version": 1,
+        "protocol_id": cases.PROTOCOL_ID,
+        "run_id": cases.RUN_ID,
+        "manifest_sha256": "a" * 64,
+        "claim_sha256": "b" * 64,
+        "training_summary_filename": campaign_fit.SUMMARY_FILENAME,
+        "training_summary_sha256": summary_sha256,
+        "roster_sha256": campaign_fit._roster_sha256(),
+        "ordered_case_identities": campaign_fit._roster_identities(),
+        "status_receipts": status_receipts,
+        "bundle_artifact": {
+            "filename": bundle_filename,
+            "sha256": hashlib.sha256(bundle_bytes).hexdigest(),
+        },
+        "case_artifacts": case_artifacts,
+    }
+    evidence_manifest["payload_sha256"] = hashlib.sha256(
+        _canonical_json(evidence_manifest)
+    ).hexdigest()
+    evidence_manifest_bytes = _canonical_json(evidence_manifest)
+    (receipts / campaign_fit.EVIDENCE_MANIFEST_FILENAME).write_bytes(
+        evidence_manifest_bytes
+    )
     overall_status = (
         "complete"
         if all(
@@ -570,7 +653,7 @@ def _fake_execution(receipts: Path, training, results):
     return campaign_fit.ABC6TrainingCampaignExecution(
         campaign_result=campaign_result,
         evidence_manifest_path=(receipts / campaign_fit.EVIDENCE_MANIFEST_FILENAME),
-        evidence_manifest_sha256="c" * 64,
+        evidence_manifest_sha256=hashlib.sha256(evidence_manifest_bytes).hexdigest(),
         receipt_root_identity=_private_receipt_identity(receipts),
         _training_bundle=training,
         _training_results=tuple(results),
@@ -702,6 +785,8 @@ def test_pre_marker_failure_never_calls_target_generator_or_claims_marker(
 
     assert calls == []
     assert not marker.exists()
+    assert not (receipts / scoring.TARGET_ARRAYS_ARTIFACT_FILENAME).exists()
+    assert not (receipts / scoring.SCORE_RECEIPT_FILENAME).exists()
 
 
 def test_bare_mutated_posterior_and_matching_forecast_are_rejected_pre_marker(
@@ -864,13 +949,11 @@ def test_success_scores_fake_targets_and_emits_protocol_diagnostics(
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
 
-    output = _private_score(
-        monkeypatch,
-        receipts,
-        training,
-        results,
-        forecasts,
-        simulator=_fake_simulator,
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    output = scoring.score_deferred_abc6_synthetic(
+        *prepared, simulator=_fake_simulator
     )
 
     assert marker.is_file()
@@ -889,6 +972,117 @@ def test_success_scores_fake_targets_and_emits_protocol_diagnostics(
     assert len(output.m_training_residual_means) == 2
     assert output.model_choice is None
     assert output.bayes_factors is None
+    assert output.target_arrays_artifact_path == (
+        receipts / scoring.TARGET_ARRAYS_ARTIFACT_FILENAME
+    )
+    assert output.score_receipt_path == receipts / scoring.SCORE_RECEIPT_FILENAME
+    assert output.target_arrays_artifact_sha256 == hashlib.sha256(
+        output.target_arrays_artifact_path.read_bytes()
+    ).hexdigest()
+    assert output.score_receipt_sha256 == hashlib.sha256(
+        output.score_receipt_path.read_bytes()
+    ).hexdigest()
+    assert output.forecast_array_sha256 == scoring._forecast_array_sha256(prepared[1])
+    assert output.score_result_sha256 is not None
+
+    score_receipt_raw = output.score_receipt_path.read_bytes()
+    score_receipt = json.loads(score_receipt_raw.decode("ascii"))
+    score_receipt_body = {
+        key: value for key, value in score_receipt.items() if key != "payload_sha256"
+    }
+    assert score_receipt_raw == scoring._canonical_json(score_receipt)
+    assert score_receipt["payload_sha256"] == scoring._sha256(
+        scoring._canonical_json(score_receipt_body)
+    )
+    assert score_receipt["outcome"] == "complete"
+    _assert_score_event(score_receipt["score_event"], stage="score_complete")
+    assert output.score_event_monotonic_ns == score_receipt["score_event"][
+        "monotonic_ns"
+    ]
+    assert output.score_event_utc == score_receipt["score_event"]["occurred_at_utc"]
+    assert (score_receipt["protocol_id"], score_receipt["run_id"]) == (
+        cases.PROTOCOL_ID,
+        cases.RUN_ID,
+    )
+    assert score_receipt["training"]["manifest_sha256"] == (
+        prepared[0].campaign_result.manifest_sha256
+    )
+    assert len(score_receipt["training"]["status_receipts"]) == 48
+    assert len(score_receipt["training"]["case_statuses"]) == 24
+    assert score_receipt["training"]["case_statuses"][14]["fit_status"] == (
+        "incomplete"
+    )
+    assert score_receipt["training"]["summary_sha256"] == (
+        prepared[0].campaign_result.summary_sha256
+    )
+    assert len(score_receipt["training"]["evidence"]["case_artifacts"]) == 24
+    assert score_receipt["target_free_forecast"]["artifact_sha256"] == prepared[3]
+    assert score_receipt["target_free_forecast"]["forecast_array_sha256"] == (
+        output.forecast_array_sha256
+    )
+    assert score_receipt["reveal_marker"]["sha256"] == output.reveal_marker_sha256
+    assert score_receipt["prospective_targets"]["target_sha256_by_truth"] == [
+        list(row) for row in output.target_sha256_by_truth
+    ]
+    assert score_receipt["prospective_targets"]["N"] == {
+        "prospective_target_generated": False,
+        "prospective_score_computed": False,
+        "mechanism_abstention": True,
+        "status": "mechanism_abstention_no_target_no_score",
+    }
+    target_arrays_raw = output.target_arrays_artifact_path.read_bytes()
+    target_arrays = json.loads(target_arrays_raw.decode("ascii"))
+    assert target_arrays_raw == scoring._canonical_json(target_arrays)
+    assert tuple(row["truth_id"] for row in target_arrays["targets"]) == (
+        "A",
+        "B",
+        "M",
+    )
+    assert target_arrays["target_sha256_encoding"] == (
+        "float64-little-endian-c-order"
+    )
+    assert target_arrays["N"]["prospective_target_generated"] is False
+    assert score_receipt["score_result_sha256"] == output.score_result_sha256
+    assert score_receipt["score_result"]["case_scores"] == scoring._json_ready(
+        output.case_scores
+    )
+    incomplete_row = score_receipt["score_result"]["case_scores"][14]
+    assert incomplete_row["abc_weighted_mean_rmse"] is None
+    assert incomplete_row["abc_weighted_median_rmse"] is None
+    assert incomplete_row["baseline_coherent_rmse"] is None
+    assert incomplete_row["parameter_intervals"] is None
+    assert len(score_receipt["score_result"]["paired_horizon_contrasts"]) == 8
+    assert len(score_receipt["score_result"]["m_training_residual_means"]) == 2
+    n_receipt_diagnostics = score_receipt["score_result"]["no_crossing_diagnostics"]
+    assert len(n_receipt_diagnostics) == 2
+    assert all(item["mechanism_abstention"] for item in n_receipt_diagnostics)
+    assert all(item["prospective_score"] is None for item in n_receipt_diagnostics)
+    null_pair = next(
+        item
+        for item in score_receipt["score_result"]["paired_horizon_contrasts"]
+        if item["truth_id"] == "A" and item["replicate"] == 2
+    )
+    assert null_pair["abc_weighted_mean_rmse_s_minus_l"] is None
+    assert score_receipt["score_result"]["m_training_residual_means"][0][
+        "truth_inclusion_claim"
+    ] is False
+    score_payload = scoring._score_result_payload(output)
+    assert scoring._sha256(scoring._canonical_json(score_payload)) == (
+        output.score_result_sha256
+    )
+
+    # The marker and immutable score receipt together prevent a second scoring
+    # attempt from regenerating targets or publishing a replacement result.
+    with pytest.raises(
+        scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
+    ):
+        scoring.score_deferred_abc6_synthetic(
+            *prepared, simulator=_fake_simulator
+        )
+    assert calls == ["generate"]
+    assert hashlib.sha256(output.score_receipt_path.read_bytes()).hexdigest() == (
+        output.score_receipt_sha256
+    )
 
     n_scores = [score for score in output.case_scores if score.truth_id == "N"]
     assert len(n_scores) == 2
@@ -1010,6 +1204,28 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     assert first.value.retry_forbidden is True
     assert marker.is_file()
     assert calls == ["generate"]
+    failure_receipt_path = receipts / scoring.SCORE_RECEIPT_FILENAME
+    assert failure_receipt_path.is_file()
+    failure_receipt_raw = failure_receipt_path.read_bytes()
+    failure_receipt = json.loads(failure_receipt_raw.decode("ascii"))
+    assert failure_receipt["outcome"] == "failed"
+    assert failure_receipt["failure_checkpoint"]["stage"] == "target_hash_validation"
+    assert failure_receipt["failure_checkpoint"]["retry_forbidden"] is True
+    failure_event = failure_receipt["score_event"]
+    _assert_score_event(failure_event, stage="target_hash_validation")
+    assert failure_receipt["failure_checkpoint"]["occurred_at_monotonic_ns"] == (
+        failure_event["monotonic_ns"]
+    )
+    assert failure_receipt["failure_checkpoint"]["occurred_at_utc"] == (
+        failure_event["occurred_at_utc"]
+    )
+    assert failure_receipt["reveal_marker"]["sha256"] == first.value.marker_sha256
+    assert failure_receipt["prospective_targets"]["target_sha256_by_truth"] == [
+        ["A", None],
+        ["B", None],
+        ["M", None],
+    ]
+    assert not (receipts / scoring.TARGET_ARRAYS_ARTIFACT_FILENAME).exists()
     with pytest.raises(
         scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
     ):
@@ -1018,6 +1234,65 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
             simulator=_fake_simulator,
         )
     assert calls == ["generate"]
+
+
+def test_score_receipt_write_failure_records_terminal_checkpoint_when_possible(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = _private_receipt_root(tmp_path)
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    materializer_calls = _install_fake_gate(monkeypatch, marker, project_root)
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    real_publish = campaign_fit._write_exclusive_durable_at
+    score_receipt_attempts = []
+
+    def fail_first_score_receipt_write(directory_fd, filename, payload):
+        if filename == scoring.SCORE_RECEIPT_FILENAME:
+            score_receipt_attempts.append(filename)
+            if len(score_receipt_attempts) == 1:
+                raise OSError("private fake score receipt write fault")
+        return real_publish(directory_fd, filename, payload)
+
+    monkeypatch.setattr(
+        campaign_fit, "_write_exclusive_durable_at", fail_first_score_receipt_write
+    )
+    with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as failure:
+        scoring.score_deferred_abc6_synthetic(
+            *prepared, simulator=_fake_simulator
+        )
+
+    assert failure.value.condition_consumed is True
+    assert failure.value.retry_forbidden is True
+    assert failure.value.failure_stage == "score_receipt_publication"
+    assert marker.is_file()
+    assert materializer_calls == ["generate"]
+    assert score_receipt_attempts == [
+        scoring.SCORE_RECEIPT_FILENAME,
+        scoring.SCORE_RECEIPT_FILENAME,
+    ]
+    receipt_path = receipts / scoring.SCORE_RECEIPT_FILENAME
+    assert receipt_path.is_file()
+    assert failure.value.score_receipt_path == receipt_path
+    assert failure.value.score_receipt_sha256 == hashlib.sha256(
+        receipt_path.read_bytes()
+    ).hexdigest()
+    receipt = json.loads(receipt_path.read_text("ascii"))
+    assert receipt["outcome"] == "failed"
+    assert receipt["failure_checkpoint"]["stage"] == "score_receipt_publication"
+    assert receipt["failure_checkpoint"]["retry_forbidden"] is True
+    assert receipt["score_result_sha256"] is not None
+
+    with pytest.raises(
+        scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
+    ):
+        scoring.score_deferred_abc6_synthetic(
+            *prepared, simulator=_fake_simulator
+        )
+    assert materializer_calls == ["generate"]
 
 
 def test_fifo_marker_readback_is_bounded_nonblocking_and_consumes_claim(
@@ -1103,6 +1378,126 @@ def test_claim_parent_swap_after_marker_is_terminal_and_never_materializes(
     assert calls == []
     assert (saved_parent / marker.name).is_file()
     assert (copied_parent / marker.name).is_file()
+    failure_receipt_path = receipts / scoring.SCORE_RECEIPT_FILENAME
+    assert failure_receipt_path.is_file()
+    failure_receipt = json.loads(failure_receipt_path.read_text("ascii"))
+    assert failure_receipt["outcome"] == "failed"
+    assert failure_receipt["failure_checkpoint"]["stage"] == (
+        "post_marker_anchor_retention"
+    )
+
+
+def test_marker_parent_dup_fault_records_failure_and_never_retries_targets(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = _private_receipt_root(tmp_path)
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    materializer_calls = _install_fake_gate(monkeypatch, marker, project_root)
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    original_claim = scoring._claim_reveal_marker
+    original_dup = os.dup
+    state = {"marker_parent_fd": None, "faulted": False}
+
+    def claim_then_capture(path, payload, *, root_anchor):
+        claim = original_claim(path, payload, root_anchor=root_anchor)
+        assert claim.marker_parent_anchor is not None
+        state["marker_parent_fd"] = claim.marker_parent_anchor.descriptor
+        return claim
+
+    def fail_marker_parent_dup_once(descriptor):
+        if (
+            descriptor == state["marker_parent_fd"]
+            and not state["faulted"]
+        ):
+            state["faulted"] = True
+            raise OSError("private fake marker-parent dup fault")
+        return original_dup(descriptor)
+
+    monkeypatch.setattr(scoring, "_claim_reveal_marker", claim_then_capture)
+    monkeypatch.setattr(scoring.os, "dup", fail_marker_parent_dup_once)
+    with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as failure:
+        scoring.score_deferred_abc6_synthetic(
+            *prepared, simulator=_fake_simulator
+        )
+
+    assert state["faulted"] is True
+    assert failure.value.condition_consumed is True
+    assert failure.value.retry_forbidden is True
+    assert failure.value.failure_stage == "post_marker_anchor_retention"
+    assert marker.is_file()
+    assert materializer_calls == []
+    failure_receipt_path = receipts / scoring.SCORE_RECEIPT_FILENAME
+    assert failure_receipt_path.is_file()
+    failure_receipt = json.loads(failure_receipt_path.read_text("ascii"))
+    assert failure_receipt["outcome"] == "failed"
+    assert failure_receipt["failure_checkpoint"]["stage"] == (
+        "post_marker_anchor_retention"
+    )
+    _assert_score_event(
+        failure_receipt["score_event"], stage="post_marker_anchor_retention"
+    )
+    assert failure_receipt["failure_checkpoint"]["occurred_at_monotonic_ns"] == (
+        failure_receipt["score_event"]["monotonic_ns"]
+    )
+    assert not (receipts / scoring.TARGET_ARRAYS_ARTIFACT_FILENAME).exists()
+
+    with pytest.raises(
+        scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
+    ):
+        scoring.score_deferred_abc6_synthetic(
+            *prepared, simulator=_fake_simulator
+        )
+    assert materializer_calls == []
+
+
+def test_receipt_ancestor_swap_after_marker_never_writes_to_decoy_tree(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = _private_receipt_root(tmp_path)
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    materializer_calls = _install_fake_gate(monkeypatch, marker, project_root)
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    original_issue = cases._issue_scoring_target_handoff
+    saved_artifacts = project_root / "artifacts-before-score-root-swap"
+    decoy_artifacts = tmp_path.resolve() / "decoy-score-artifacts"
+    decoy_artifacts.mkdir()
+    decoy_receipt_root = decoy_artifacts / Path(
+        campaign_fit.RECEIPT_ROOT_RELATIVE
+    ).relative_to("artifacts")
+    decoy_receipt_root.mkdir(parents=True)
+
+    def issue_then_swap(*args, **kwargs):
+        handoff = original_issue(*args, **kwargs)
+        (project_root / "artifacts").rename(saved_artifacts)
+        (project_root / "artifacts").symlink_to(
+            decoy_artifacts, target_is_directory=True
+        )
+        return handoff
+
+    monkeypatch.setattr(cases, "_issue_scoring_target_handoff", issue_then_swap)
+    with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as failure:
+        scoring.score_deferred_abc6_synthetic(
+            *prepared, simulator=_fake_simulator
+        )
+
+    assert failure.value.condition_consumed is True
+    assert failure.value.failure_stage == "target_materialization"
+    assert materializer_calls == []
+    saved_receipts = saved_artifacts / Path(
+        campaign_fit.RECEIPT_ROOT_RELATIVE
+    ).relative_to("artifacts")
+    assert (saved_receipts / scoring.SCORE_RECEIPT_FILENAME).is_file()
+    assert not (decoy_receipt_root / scoring.SCORE_RECEIPT_FILENAME).exists()
+    assert not (decoy_receipt_root / scoring.TARGET_ARRAYS_ARTIFACT_FILENAME).exists()
+    assert not (decoy_artifacts / "evaluations").exists()
 
 
 def test_forecast_identity_and_weights_are_checked_before_marker(tmp_path, monkeypatch):

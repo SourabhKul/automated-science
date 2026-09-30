@@ -17,6 +17,7 @@ import json
 import math
 import os
 import stat
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -61,6 +62,8 @@ _PROJECT_ROOT: Final = Path(__file__).resolve().parents[2]
 _SOURCE_ROOT: Final = Path(__file__).resolve().parents[2]
 _TRAINING_SUMMARY_FILENAME: Final = "campaign.training-summary.json"
 _FORECAST_ARTIFACT_FILENAME: Final = "campaign.target-free-forecasts.json"
+TARGET_ARRAYS_ARTIFACT_FILENAME: Final = "campaign.prospective-target-arrays.json"
+SCORE_RECEIPT_FILENAME: Final = "campaign.deferred-score-receipt.json"
 _INTEGRATED_SOURCE_PATHS: Final = (
     "scripts/run_cascaded_tanks_abc6_synthetic.py",
     "core/real_data/cascaded_tanks_abc6_forecast.py",
@@ -76,6 +79,7 @@ _REVEAL_MARKER_PATH: Final = (
 )
 _WEIGHT_SUM_ABS_TOL: Final = 1.0e-12
 _MAX_HANDOFF_ARTIFACT_BYTES: Final = 128 * 1024 * 1024
+_MAX_SCORE_RECEIPT_BYTES: Final = 16 * 1024 * 1024
 
 _TRUTH_PARAMETERS: Final = {
     "A": ("O2", (0.50, 0.40, 0.50, 0.50, 0.50, 3.0)),
@@ -96,7 +100,15 @@ class ABC6RevealAlreadyConsumedError(ABC6ScoringError):
 class ABC6DeferredScoreConsumedError(RuntimeError):
     """A post-marker error; the synthetic confirmation condition stays consumed."""
 
-    def __init__(self, message: str, *, marker_sha256: str):
+    def __init__(
+        self,
+        message: str,
+        *,
+        marker_sha256: str,
+        score_receipt_path: Path | None = None,
+        score_receipt_sha256: str | None = None,
+        failure_stage: str | None = None,
+    ):
         super().__init__(
             f"{message}; reveal condition consumed, retry forbidden "
             f"(marker sha256 {marker_sha256})"
@@ -104,6 +116,9 @@ class ABC6DeferredScoreConsumedError(RuntimeError):
         self.condition_consumed = True
         self.retry_forbidden = True
         self.marker_sha256 = marker_sha256
+        self.score_receipt_path = score_receipt_path
+        self.score_receipt_sha256 = score_receipt_sha256
+        self.failure_stage = failure_stage
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +217,14 @@ class ABC6DeferredScoreResult:
     m_training_residual_means: tuple[ABC6MTrainingResidualMeans, ...]
     model_choice: None = None
     bayes_factors: None = None
+    target_arrays_artifact_path: Path | None = None
+    target_arrays_artifact_sha256: str | None = None
+    forecast_array_sha256: str | None = None
+    score_result_sha256: str | None = None
+    score_receipt_path: Path | None = None
+    score_receipt_sha256: str | None = None
+    score_event_monotonic_ns: int | None = None
+    score_event_utc: str | None = None
 
 
 @dataclass(slots=True)
@@ -210,6 +233,14 @@ class _ABC6RevealMarkerClaim:
 
     marker_sha256: str
     marker_parent_anchor: cases._DirectoryAnchor | None
+    marker_relative_path: str
+    marker_parent_device: int
+    marker_parent_inode: int
+    marker_device: int
+    marker_inode: int
+    marker_size: int
+    marker_mtime_ns: int
+    marker_ctime_ns: int
 
     def take_parent_anchor(self) -> cases._DirectoryAnchor:
         anchor = self.marker_parent_anchor
@@ -217,6 +248,32 @@ class _ABC6RevealMarkerClaim:
             raise ABC6ScoringError("reveal marker directory anchor was already transferred")
         self.marker_parent_anchor = None
         return anchor
+
+    def duplicate_parent_anchor(self) -> cases._DirectoryAnchor:
+        anchor = self.marker_parent_anchor
+        if anchor is None:
+            raise ABC6ScoringError(
+                "reveal marker parent was already transferred to its scoring handoff"
+            )
+        try:
+            return cases._DirectoryAnchor(anchor.path, os.dup(anchor.descriptor))
+        except Exception as error:
+            raise ABC6ScoringError(
+                "cannot retain the pinned reveal-marker parent for score evidence"
+            ) from error
+
+    def receipt_identity(self) -> dict[str, object]:
+        return {
+            "relative_path": self.marker_relative_path,
+            "sha256": self.marker_sha256,
+            "parent_device": self.marker_parent_device,
+            "parent_inode": self.marker_parent_inode,
+            "device": self.marker_device,
+            "inode": self.marker_inode,
+            "size_bytes": self.marker_size,
+            "mtime_ns": self.marker_mtime_ns,
+            "ctime_ns": self.marker_ctime_ns,
+        }
 
     def close(self) -> None:
         if self.marker_parent_anchor is not None:
@@ -1278,6 +1335,7 @@ def _claim_reveal_marker(
     parent_fd = parent_anchor.descriptor
     payload = _canonical_json(dict(marker_payload))
     transferred = False
+    marker_info: os.stat_result | None = None
     try:
         try:
             descriptor = os.open(
@@ -1302,6 +1360,9 @@ def _claim_reveal_marker(
                     raise OSError("reveal marker write made no progress")
                 remaining = remaining[written:]
             os.fsync(descriptor)
+            marker_info = os.fstat(descriptor)
+            if not stat.S_ISREG(marker_info.st_mode) or marker_info.st_size != len(payload):
+                raise OSError("reveal marker is not a complete regular file")
         except OSError as error:
             # Leave any partial marker in place: uncertain creation consumes the ID.
             raise ABC6ScoringError(
@@ -1346,9 +1407,20 @@ def _claim_reveal_marker(
             raise ABC6ScoringError(
                 "durable reveal marker path identity changed; retry forbidden"
             ) from error
+        if marker_info is None:  # pragma: no cover - guarded by successful write.
+            raise ABC6ScoringError("reveal marker has no captured file identity")
+        relative_path = marker_path.relative_to(root_anchor.path).as_posix()
         claim = _ABC6RevealMarkerClaim(
-            _sha256(recorded_bytes),
-            marker_anchor,
+            marker_sha256=_sha256(recorded_bytes),
+            marker_parent_anchor=marker_anchor,
+            marker_relative_path=relative_path,
+            marker_parent_device=marker_anchor.device,
+            marker_parent_inode=marker_anchor.inode,
+            marker_device=marker_info.st_dev,
+            marker_inode=marker_info.st_ino,
+            marker_size=marker_info.st_size,
+            marker_mtime_ns=marker_info.st_mtime_ns,
+            marker_ctime_ns=marker_info.st_ctime_ns,
         )
         transferred = True
         return claim
@@ -1715,6 +1787,595 @@ def _target_vectors_and_hashes(
     return vectors, tuple(computed)
 
 
+def _forecast_array_sha256(frozen: ABC6FrozenForecastRoster) -> str:
+    """Hash every retained particle and baseline array in roster order."""
+
+    payload = {
+        "schema_version": 1,
+        "protocol_id": PROTOCOL_ID,
+        "run_id": RUN_ID,
+        "forecast_roster_sha256": frozen.roster_sha256,
+        "ordered_case_sha256": list(frozen.case_sha256),
+        "forecasts": [_json_ready(item) for item in frozen.forecasts],
+    }
+    return _sha256(_canonical_json(payload))
+
+
+def _score_result_payload(result: ABC6DeferredScoreResult) -> dict[str, object]:
+    """Return the stable score body, excluding receipt metadata to avoid recursion."""
+
+    return {
+        "protocol_id": result.protocol_id,
+        "run_id": result.run_id,
+        "reveal_marker_sha256": result.reveal_marker_sha256,
+        "target_sha256_by_truth": [list(row) for row in result.target_sha256_by_truth],
+        "case_scores": _json_ready(result.case_scores),
+        "paired_horizon_contrasts": _json_ready(result.paired_horizon_contrasts),
+        "parameter_inclusion_counts": _json_ready(result.parameter_inclusion_counts),
+        "no_crossing_diagnostics": _json_ready(result.no_crossing_diagnostics),
+        "m_training_residual_means": _json_ready(result.m_training_residual_means),
+        "model_choice": None,
+        "bayes_factors": None,
+    }
+
+
+def _target_arrays_artifact(
+    target_vectors: Mapping[str, tuple[float, ...]],
+    target_hashes: tuple[tuple[str, str], ...],
+) -> bytes:
+    if tuple(target_vectors) != ("A", "B", "M") or tuple(
+        name for name, _digest in target_hashes
+    ) != ("A", "B", "M"):
+        raise ABC6ScoringError("target-array artifact requires the fixed A/B/M order")
+    body: dict[str, object] = {
+        "schema_version": 1,
+        "record_type": "cascaded_tanks_abc6_prospective_target_arrays",
+        "protocol_id": PROTOCOL_ID,
+        "run_id": RUN_ID,
+        "truth_ids": ["A", "B", "M"],
+        "target_sha256_encoding": "float64-little-endian-c-order",
+        "target_sha256_by_truth": [list(row) for row in target_hashes],
+        "targets": [
+            {"truth_id": truth, "values": list(target_vectors[truth])}
+            for truth in ("A", "B", "M")
+        ],
+        "N": {
+            "prospective_target_generated": False,
+            "prospective_score_computed": False,
+            "status": "mechanism_abstention_no_target_no_score",
+        },
+    }
+    body["payload_sha256"] = _sha256(_canonical_json(body))
+    return _canonical_json(body)
+
+
+def _training_evidence_links(
+    receipt_anchor: cases._DirectoryAnchor,
+    execution: campaign_fit.ABC6TrainingCampaignExecution,
+) -> dict[str, object]:
+    """Link every durable fit/baseline cost and failure artifact into the result."""
+
+    try:
+        raw = cases._read_regular_file_at(
+            receipt_anchor.descriptor,
+            campaign_fit.EVIDENCE_MANIFEST_FILENAME,
+            maximum_bytes=_MAX_HANDOFF_ARTIFACT_BYTES,
+            label="training evidence manifest for score receipt",
+        )
+        manifest = json.loads(
+            raw.decode("ascii"),
+            object_pairs_hook=_strict_json_object,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"invalid JSON number: {value}")
+            ),
+        )
+    except Exception as error:
+        raise ABC6ScoringError(
+            "verified training evidence manifest could not be linked to score receipt"
+        ) from error
+    if (
+        not isinstance(manifest, dict)
+        or _sha256(raw) != execution.evidence_manifest_sha256
+        or raw != _canonical_json(manifest)
+        or manifest.get("schema_version") != 1
+        or manifest.get("protocol_id") != PROTOCOL_ID
+        or manifest.get("run_id") != RUN_ID
+        or manifest.get("manifest_sha256")
+        != execution.campaign_result.manifest_sha256
+        or manifest.get("claim_sha256") != execution.campaign_result.claim_sha256
+        or manifest.get("training_summary_filename") != _TRAINING_SUMMARY_FILENAME
+        or manifest.get("training_summary_sha256")
+        != execution.campaign_result.summary_sha256
+    ):
+        raise ABC6ScoringError(
+            "training evidence manifest changed before score receipt publication"
+        )
+    case_artifacts = manifest.get("case_artifacts")
+    bundle_artifact = manifest.get("bundle_artifact")
+    if (
+        not isinstance(case_artifacts, list)
+        or len(case_artifacts) != CASE_COUNT
+        or not isinstance(bundle_artifact, dict)
+        or set(bundle_artifact) != {"filename", "sha256"}
+        or bundle_artifact.get("filename") != "training-bundle.evidence.json"
+        or not _is_sha256(bundle_artifact.get("sha256"))
+    ):
+        raise ABC6ScoringError("training evidence artifact roster is malformed")
+    expected_case_links: list[dict[str, object]] = []
+    expected_receipts = [
+        {
+            "filename": f"case-{status.case_index:02d}.{component}-status.json",
+            "sha256": getattr(status, f"{component}_receipt_sha256"),
+            "case_index": status.case_index,
+            "case_id": status.case_id,
+            "component": component,
+            "status": getattr(status, f"{component}_status"),
+        }
+        for status in execution.campaign_result.case_statuses
+        for component in ("fit", "baseline")
+    ]
+    if manifest.get("status_receipts") != expected_receipts:
+        raise ABC6ScoringError(
+            "training evidence manifest status chain differs from score execution"
+        )
+    evidence_anchor: cases._DirectoryAnchor | None = None
+    try:
+        evidence_anchor = cases._open_relative_directory_anchor(
+            receipt_anchor,
+            campaign_fit.EVIDENCE_DIRECTORY_NAME,
+            label="training evidence artifacts",
+        )
+        bundle_raw = cases._read_regular_file_at(
+            evidence_anchor.descriptor,
+            str(bundle_artifact["filename"]),
+            maximum_bytes=_MAX_HANDOFF_ARTIFACT_BYTES,
+            label="training bundle evidence",
+        )
+        if _sha256(bundle_raw) != bundle_artifact["sha256"]:
+            raise ABC6ScoringError("training bundle evidence digest changed")
+        for index, (row, case, status) in enumerate(
+            zip(
+                case_artifacts,
+                CASE_ROSTER,
+                execution.campaign_result.case_statuses,
+                strict=True,
+            )
+        ):
+            expected_filename = f"case-{index:02d}.training-evidence.json"
+            if (
+                not isinstance(row, dict)
+                or row.get("filename") != expected_filename
+                or row.get("roster_index") != index
+                or row.get("case_identity") != campaign_fit._case_identity(case)
+                or row.get("fit_status") != status.fit_status
+                or row.get("baseline_status") != status.baseline_status
+                or not _is_sha256(row.get("sha256"))
+            ):
+                raise ABC6ScoringError(
+                    f"training evidence artifact link is malformed at case {index}"
+                )
+            case_raw = cases._read_regular_file_at(
+                evidence_anchor.descriptor,
+                expected_filename,
+                maximum_bytes=_MAX_HANDOFF_ARTIFACT_BYTES,
+                label=f"training evidence for case {index}",
+            )
+            if _sha256(case_raw) != row["sha256"]:
+                raise ABC6ScoringError(
+                    f"training evidence digest changed at case {index}"
+                )
+            expected_case_links.append(
+                {
+                    "roster_index": index,
+                    "filename": expected_filename,
+                    "sha256": row["sha256"],
+                    "fit_status": row["fit_status"],
+                    "baseline_status": row["baseline_status"],
+                }
+            )
+        cases._verify_directory_anchor_path(
+            evidence_anchor, label="training evidence artifacts"
+        )
+    except Exception as error:
+        if isinstance(error, ABC6ScoringError):
+            raise
+        raise ABC6ScoringError(
+            "training evidence artifact links could not be reverified"
+        ) from error
+    finally:
+        if evidence_anchor is not None:
+            evidence_anchor.close()
+    return {
+        "manifest_filename": campaign_fit.EVIDENCE_MANIFEST_FILENAME,
+        "manifest_sha256": execution.evidence_manifest_sha256,
+        "artifact_directory": campaign_fit.EVIDENCE_DIRECTORY_NAME,
+        "bundle_artifact": {
+            "filename": bundle_artifact["filename"],
+            "sha256": bundle_artifact["sha256"],
+        },
+        "case_artifacts": expected_case_links,
+        "diagnostics_location": "case_artifacts contain complete fit/baseline costs and failure evidence",
+    }
+
+
+def _score_receipt_payload(
+    *,
+    outcome: Literal["complete", "failed"],
+    execution: campaign_fit.ABC6TrainingCampaignExecution,
+    receipt_hashes: tuple[tuple[str, str], ...],
+    summary_sha256: str,
+    forecast_artifact_sha256: str,
+    frozen: ABC6FrozenForecastRoster,
+    forecast_array_sha256: str,
+    marker_identity: Mapping[str, object],
+    evidence_links: Mapping[str, object],
+    target_hashes: tuple[tuple[str, str], ...] | None,
+    target_arrays_sha256: str | None,
+    score_result: Mapping[str, object] | None,
+    score_result_sha256: str | None,
+    score_event: Mapping[str, object],
+    failure_checkpoint: Mapping[str, object] | None,
+) -> bytes:
+    campaign_result = execution.campaign_result
+    target_hash_map = dict(target_hashes or ())
+    body: dict[str, object] = {
+        "schema_version": 1,
+        "record_type": "cascaded_tanks_abc6_deferred_score_receipt",
+        "outcome": outcome,
+        "protocol_id": PROTOCOL_ID,
+        "run_id": RUN_ID,
+        "training": {
+            "manifest_sha256": campaign_result.manifest_sha256,
+            "claim_sha256": campaign_result.claim_sha256,
+            "status": campaign_result.status,
+            "summary_filename": campaign_result.summary_path.name,
+            "summary_sha256": summary_sha256,
+            "status_receipts": [
+                {"filename": filename, "sha256": digest}
+                for filename, digest in receipt_hashes
+            ],
+            "case_statuses": [
+                {
+                    "case_index": status.case_index,
+                    "case_id": status.case_id,
+                    "fit_status": status.fit_status,
+                    "baseline_status": status.baseline_status,
+                    "fit_receipt_sha256": status.fit_receipt_sha256,
+                    "baseline_receipt_sha256": status.baseline_receipt_sha256,
+                }
+                for status in campaign_result.case_statuses
+            ],
+            "evidence": dict(evidence_links),
+        },
+        "target_free_forecast": {
+            "artifact_filename": _FORECAST_ARTIFACT_FILENAME,
+            "artifact_sha256": forecast_artifact_sha256,
+            "forecast_roster_sha256": frozen.roster_sha256,
+            "ordered_case_sha256": list(frozen.case_sha256),
+            "forecast_array_sha256": forecast_array_sha256,
+            "forecast_array_digest_encoding": (
+                "canonical-json-ordered-full-forecast-records-v1"
+            ),
+        },
+        "reveal_marker": dict(marker_identity),
+        "prospective_targets": {
+            "target_array_artifact_filename": TARGET_ARRAYS_ARTIFACT_FILENAME
+            if target_arrays_sha256 is not None
+            else None,
+            "target_array_artifact_sha256": target_arrays_sha256,
+            "target_sha256_by_truth": [
+                [truth, target_hash_map.get(truth)] for truth in ("A", "B", "M")
+            ],
+            "target_sha256_encoding": "float64-little-endian-c-order",
+            "truth_ids": ["A", "B", "M"] if target_hashes is not None else [],
+            "N": {
+                "prospective_target_generated": False,
+                "prospective_score_computed": False,
+                "mechanism_abstention": True,
+                "status": "mechanism_abstention_no_target_no_score",
+            },
+        },
+        "score_result": None if score_result is None else dict(score_result),
+        "score_result_sha256": score_result_sha256,
+        "score_result_digest_encoding": "canonical-json-score-result-body-v1",
+        "score_event": dict(score_event),
+        "failure_checkpoint": (
+            None if failure_checkpoint is None else dict(failure_checkpoint)
+        ),
+        "retry_allowed": False,
+    }
+    body["payload_sha256"] = _sha256(_canonical_json(body))
+    return _canonical_json(body)
+
+
+def _score_event_snapshot(stage: str) -> dict[str, object]:
+    """Capture a bounded same-host ordering point and an audit timestamp."""
+
+    monotonic_ns = time.monotonic_ns()
+    if type(monotonic_ns) is not int or not 0 <= monotonic_ns <= (2**63 - 1):
+        raise ABC6ScoringError("system monotonic clock returned an invalid value")
+    occurred_at_utc = (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+    if len(occurred_at_utc) > 32:
+        raise ABC6ScoringError("UTC audit timestamp exceeds its fixed bound")
+    return {
+        "stage": stage,
+        "monotonic_ns": monotonic_ns,
+        "occurred_at_utc": occurred_at_utc,
+        "clock": "host-local-monotonic-ns",
+    }
+
+
+def _require_score_output_absent(
+    receipt_anchor: cases._DirectoryAnchor,
+) -> None:
+    for filename in (TARGET_ARRAYS_ARTIFACT_FILENAME, SCORE_RECEIPT_FILENAME):
+        try:
+            os.stat(filename, dir_fd=receipt_anchor.descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise ABC6ScoringError(
+                f"could not check for an existing score artifact: {filename}"
+            ) from error
+        raise ABC6ScoringError(
+            f"score output already exists and cannot be replaced: {filename}"
+        )
+
+
+def _duplicate_postscore_root_anchors(
+    gate: cases.DeferredABC6TargetGate,
+    identity: campaign_fit.ABC6ReceiptRootIdentity,
+) -> tuple[cases._DirectoryAnchor, cases._DirectoryAnchor]:
+    """Retain the exact preclaim root and receipt descriptors for terminal output."""
+
+    root_anchor: cases._DirectoryAnchor | None = None
+    receipt_anchor: cases._DirectoryAnchor | None = None
+    try:
+        root_anchor = cases._DirectoryAnchor(
+            gate._root_anchor.path,
+            os.dup(gate._root_anchor.descriptor),
+        )
+        receipt_anchor = cases._DirectoryAnchor(
+            gate._receipt_anchor.path,
+            os.dup(gate._receipt_anchor.descriptor),
+        )
+        runtime = identity.runtime_identity
+        if root_anchor.path != Path(identity.repository_root_realpath) or (
+            receipt_anchor.path
+            != Path(identity.repository_root_realpath)
+            / campaign_fit.RECEIPT_ROOT_RELATIVE
+        ):
+            raise ABC6ScoringError("gate anchors differ from the typed receipt root")
+        if (root_anchor.device, root_anchor.inode) != (
+            runtime["repository_root_device"],
+            runtime["repository_root_inode"],
+        ) or (receipt_anchor.device, receipt_anchor.inode) != (
+            runtime["receipt_root_device"],
+            runtime["receipt_root_inode"],
+        ):
+            raise ABC6ScoringError("gate anchor descriptors differ from runtime identity")
+        return root_anchor, receipt_anchor
+    except Exception:
+        if receipt_anchor is not None:
+            receipt_anchor.close()
+        if root_anchor is not None:
+            root_anchor.close()
+        raise
+
+
+def _reject_existing_reveal_marker(
+    marker_path: Path,
+    root_anchor: cases._DirectoryAnchor,
+) -> None:
+    parent_anchor = _prepare_marker_parent(marker_path, root_anchor)
+    try:
+        try:
+            os.stat(
+                marker_path.name,
+                dir_fd=parent_anchor.descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            raise ABC6ScoringError("cannot inspect the fixed reveal marker") from error
+        raise ABC6RevealAlreadyConsumedError(
+            "the fixed ABC6 reveal marker already exists; this run cannot be retried"
+        )
+    finally:
+        parent_anchor.close()
+
+
+def _read_marker_snapshot(
+    marker_anchor: cases._DirectoryAnchor,
+    marker_identity: Mapping[str, object],
+) -> bytes:
+    filename = str(marker_identity["relative_path"]).rsplit("/", 1)[-1]
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            filename,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=marker_anchor.descriptor,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_size > cases._MAX_REVEAL_MARKER_BYTES
+        ):
+            raise ABC6ScoringError("pinned reveal marker is not a bounded regular file")
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            chunk = os.read(
+                descriptor,
+                min(65536, cases._MAX_REVEAL_MARKER_BYTES + 1 - size),
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > cases._MAX_REVEAL_MARKER_BYTES:
+                raise ABC6ScoringError("pinned reveal marker exceeds its byte limit")
+        after = os.fstat(descriptor)
+        named = os.stat(
+            filename,
+            dir_fd=marker_anchor.descriptor,
+            follow_symlinks=False,
+        )
+    except ABC6ScoringError:
+        raise
+    except OSError as error:
+        raise ABC6ScoringError("pinned reveal marker could not be revalidated") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    stable = (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    )
+    if stable != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ) or stable != (
+        named.st_dev,
+        named.st_ino,
+        named.st_size,
+        named.st_mtime_ns,
+        named.st_ctime_ns,
+    ):
+        raise ABC6ScoringError("pinned reveal marker changed while reading")
+    expected = (
+        marker_identity["device"],
+        marker_identity["inode"],
+        marker_identity["size_bytes"],
+        marker_identity["mtime_ns"],
+        marker_identity["ctime_ns"],
+    )
+    if stable != expected:
+        raise ABC6ScoringError("pinned reveal marker identity changed")
+    raw = b"".join(chunks)
+    if _sha256(raw) != marker_identity["sha256"]:
+        raise ABC6ScoringError("pinned reveal marker digest changed")
+    return raw
+
+
+def _verify_postscore_anchors(
+    *,
+    identity: campaign_fit.ABC6ReceiptRootIdentity,
+    root_anchor: cases._DirectoryAnchor,
+    receipt_anchor: cases._DirectoryAnchor,
+    marker_anchor: cases._DirectoryAnchor,
+    marker_identity: Mapping[str, object],
+    strict_paths: bool,
+) -> None:
+    root_path = Path(identity.repository_root_realpath)
+    if (
+        identity.receipt_root_relative != campaign_fit.RECEIPT_ROOT_RELATIVE
+        or root_anchor.path != root_path
+        or receipt_anchor.path != root_path / campaign_fit.RECEIPT_ROOT_RELATIVE
+        or marker_anchor.path != root_path / str(marker_identity["relative_path"]).rsplit("/", 1)[0]
+    ):
+        raise ABC6ScoringError("post-score receipt or marker path identity is invalid")
+    runtime = identity.runtime_identity
+    for anchor, device_key, inode_key, label in (
+        (root_anchor, "repository_root_device", "repository_root_inode", "checkout"),
+        (receipt_anchor, "receipt_root_device", "receipt_root_inode", "receipt root"),
+    ):
+        info = os.fstat(anchor.descriptor)
+        if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != (
+            runtime[device_key],
+            runtime[inode_key],
+        ):
+            raise ABC6ScoringError(f"pinned {label} descriptor identity changed")
+    marker_info = os.fstat(marker_anchor.descriptor)
+    if not stat.S_ISDIR(marker_info.st_mode) or (
+        marker_info.st_dev,
+        marker_info.st_ino,
+    ) != (
+        marker_identity["parent_device"],
+        marker_identity["parent_inode"],
+    ):
+        raise ABC6ScoringError("pinned reveal-marker parent identity changed")
+    if strict_paths:
+        try:
+            identity.verify()
+            cases._verify_directory_anchor_path(root_anchor, label="pinned checkout")
+            cases._verify_directory_anchor_path(
+                receipt_anchor, label="pinned receipt root"
+            )
+            cases._verify_directory_anchor_path(
+                marker_anchor, label="pinned reveal-marker parent"
+            )
+        except Exception as error:
+            raise ABC6ScoringError(
+                "post-score receipt-root or marker path changed"
+            ) from error
+    _read_marker_snapshot(marker_anchor, marker_identity)
+
+
+def _publish_postscore_artifact(
+    *,
+    filename: str,
+    payload: bytes,
+    execution: campaign_fit.ABC6TrainingCampaignExecution,
+    root_anchor: cases._DirectoryAnchor,
+    receipt_anchor: cases._DirectoryAnchor,
+    marker_anchor: cases._DirectoryAnchor,
+    marker_identity: Mapping[str, object],
+    strict_paths: bool = True,
+) -> str:
+    _verify_postscore_anchors(
+        identity=execution.receipt_root_identity,
+        root_anchor=root_anchor,
+        receipt_anchor=receipt_anchor,
+        marker_anchor=marker_anchor,
+        marker_identity=marker_identity,
+        strict_paths=strict_paths,
+    )
+    try:
+        campaign_fit._write_exclusive_durable_at(
+            receipt_anchor.descriptor, filename, payload
+        )
+        raw = cases._read_regular_file_at(
+            receipt_anchor.descriptor,
+            filename,
+            maximum_bytes=(
+                _MAX_HANDOFF_ARTIFACT_BYTES
+                if filename == TARGET_ARRAYS_ARTIFACT_FILENAME
+                else _MAX_SCORE_RECEIPT_BYTES
+            ),
+            label=filename,
+        )
+    except Exception as error:
+        raise ABC6ScoringError(
+            f"durable post-score artifact publication failed: {filename}"
+        ) from error
+    if raw != payload:
+        raise ABC6ScoringError(
+            f"durable post-score artifact readback changed: {filename}"
+        )
+    _verify_postscore_anchors(
+        identity=execution.receipt_root_identity,
+        root_anchor=root_anchor,
+        receipt_anchor=receipt_anchor,
+        marker_anchor=marker_anchor,
+        marker_identity=marker_identity,
+        strict_paths=strict_paths,
+    )
+    return _sha256(raw)
+
+
 def score_deferred_abc6_synthetic(
     execution: campaign_fit.ABC6TrainingCampaignExecution,
     frozen_forecasts: ABC6FrozenForecastRoster,
@@ -1730,8 +2391,9 @@ def score_deferred_abc6_synthetic(
     rechecks all 48 durable receipts, recomputes the complete target-free
     forecast roster from that evidence, and verifies the durable forecast
     artifact and integrated source pins before the fixed project-root O_EXCL
-    marker. After it exists, every error is reported as a consumed condition
-    and the marker is never removed.
+    marker. After it exists, target arrays and a terminal score-result receipt
+    are published under anchored descriptors. A later error records a failure
+    checkpoint when the pinned paths permit; the marker is never removed.
     """
 
     if not callable(simulator):
@@ -1867,6 +2529,10 @@ def score_deferred_abc6_synthetic(
     )
     if roster_hash != frozen_forecasts.roster_sha256:
         raise ABC6ScoringError("frozen forecast roster hash mismatch")
+    forecast_array_sha256 = _forecast_array_sha256(frozen_forecasts)
+    evidence_links = _training_evidence_links(gate._receipt_anchor, execution)
+    _reject_existing_reveal_marker(_REVEAL_MARKER_PATH, gate._root_anchor)
+    _require_score_output_absent(gate._receipt_anchor)
 
     marker_payload = {
         "schema": "cascaded-tanks-abc6-synthetic-reveal-v1",
@@ -1883,16 +2549,42 @@ def score_deferred_abc6_synthetic(
         "training_summary_sha256": summary_sha256,
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    reveal_claim = _claim_reveal_marker(
-        _REVEAL_MARKER_PATH,
-        marker_payload,
-        root_anchor=gate._root_anchor,
+    postscore_root_anchor, postscore_receipt_anchor = (
+        _duplicate_postscore_root_anchors(gate, receipt_root_identity)
     )
-    marker_sha256 = reveal_claim.marker_sha256
-
     try:
+        reveal_claim = _claim_reveal_marker(
+            _REVEAL_MARKER_PATH,
+            marker_payload,
+            root_anchor=gate._root_anchor,
+        )
+    except BaseException:
+        postscore_receipt_anchor.close()
+        postscore_root_anchor.close()
+        raise
+    marker_sha256 = reveal_claim.marker_sha256
+    marker_identity = reveal_claim.receipt_identity()
+    postscore_marker_anchor: cases._DirectoryAnchor | None = None
+    target_vectors: dict[str, tuple[float, ...]] | None = None
+    target_hashes: tuple[tuple[str, str], ...] | None = None
+    target_arrays_sha256: str | None = None
+    score_payload: dict[str, object] | None = None
+    score_result_sha256: str | None = None
+    score_receipt_sha256: str | None = None
+    stage = "post_marker_anchor_retention"
+    try:
+        postscore_marker_anchor = reveal_claim.duplicate_parent_anchor()
+        _verify_postscore_anchors(
+            identity=receipt_root_identity,
+            root_anchor=postscore_root_anchor,
+            receipt_anchor=postscore_receipt_anchor,
+            marker_anchor=postscore_marker_anchor,
+            marker_identity=marker_identity,
+            strict_paths=True,
+        )
         # Only the scoring owner can issue the gate capability, and it does so
         # after the fixed marker is durably claimed and read back.
+        stage = "target_materialization"
         scoring_handoff = cases._issue_scoring_target_handoff(
             gate,
             marker_sha256,
@@ -1903,8 +2595,21 @@ def score_deferred_abc6_synthetic(
             simulator=simulator,
             _scoring_handoff=scoring_handoff,
         )
+        stage = "target_hash_validation"
         target_vectors, target_hashes = _target_vectors_and_hashes(targets)
+        stage = "target_array_artifact_publication"
+        target_array_bytes = _target_arrays_artifact(target_vectors, target_hashes)
+        target_arrays_sha256 = _publish_postscore_artifact(
+            filename=TARGET_ARRAYS_ARTIFACT_FILENAME,
+            payload=target_array_bytes,
+            execution=execution,
+            root_anchor=postscore_root_anchor,
+            receipt_anchor=postscore_receipt_anchor,
+            marker_anchor=postscore_marker_anchor,
+            marker_identity=marker_identity,
+        )
         # Target hashes are fixed above before any metric is evaluated.
+        stage = "case_scoring"
         scores = tuple(
             _score_case(
                 case_index,
@@ -1916,16 +2621,20 @@ def score_deferred_abc6_synthetic(
             )
             for case_index in range(CASE_COUNT)
         )
+        stage = "paired_contrast_diagnostics"
         paired = _paired_contrasts(scores)
+        stage = "parameter_inclusion_diagnostics"
         inclusion_counts = _parameter_inclusion_counts(scores)
+        stage = "N_ceiling_diagnostics"
         n_diagnostics = _no_crossing_diagnostics(results)
+        stage = "M_training_residual_diagnostics"
         m_residuals = _m_training_residuals(
             results,
             frozen_forecasts.forecasts,
             data,
             simulator=simulator,
         )
-        return ABC6DeferredScoreResult(
+        score_result = ABC6DeferredScoreResult(
             protocol_id=PROTOCOL_ID,
             run_id=RUN_ID,
             reveal_marker_sha256=marker_sha256,
@@ -1936,14 +2645,139 @@ def score_deferred_abc6_synthetic(
             no_crossing_diagnostics=n_diagnostics,
             m_training_residual_means=m_residuals,
         )
-    except ABC6DeferredScoreConsumedError:
-        raise
+        score_payload = _score_result_payload(score_result)
+        score_result_sha256 = _sha256(_canonical_json(score_payload))
+        stage = "score_receipt_publication"
+        score_event = _score_event_snapshot("score_complete")
+        score_receipt_bytes = _score_receipt_payload(
+            outcome="complete",
+            execution=execution,
+            receipt_hashes=receipt_hashes,
+            summary_sha256=summary_sha256,
+            forecast_artifact_sha256=forecast_artifact_sha256,
+            frozen=frozen_forecasts,
+            forecast_array_sha256=forecast_array_sha256,
+            marker_identity=marker_identity,
+            evidence_links=evidence_links,
+            target_hashes=target_hashes,
+            target_arrays_sha256=target_arrays_sha256,
+            score_result=score_payload,
+            score_result_sha256=score_result_sha256,
+            score_event=score_event,
+            failure_checkpoint=None,
+        )
+        score_receipt_sha256 = _publish_postscore_artifact(
+            filename=SCORE_RECEIPT_FILENAME,
+            payload=score_receipt_bytes,
+            execution=execution,
+            root_anchor=postscore_root_anchor,
+            receipt_anchor=postscore_receipt_anchor,
+            marker_anchor=postscore_marker_anchor,
+            marker_identity=marker_identity,
+        )
+        return dataclasses.replace(
+            score_result,
+            target_arrays_artifact_path=(
+                postscore_receipt_anchor.path / TARGET_ARRAYS_ARTIFACT_FILENAME
+            ),
+            target_arrays_artifact_sha256=target_arrays_sha256,
+            forecast_array_sha256=forecast_array_sha256,
+            score_result_sha256=score_result_sha256,
+            score_receipt_path=postscore_receipt_anchor.path / SCORE_RECEIPT_FILENAME,
+            score_receipt_sha256=score_receipt_sha256,
+            score_event_monotonic_ns=int(score_event["monotonic_ns"]),
+            score_event_utc=str(score_event["occurred_at_utc"]),
+        )
     except Exception as error:
+        failure_receipt_error: Exception | None = None
+        failure_receipt_sha256: str | None = None
+        # If duplicating the marker-parent descriptor failed immediately after
+        # the marker claim, the claim still owns its original pinned descriptor.
+        # Transfer that descriptor to the failure writer so the consumed run can
+        # leave a durable checkpoint without reopening a path.
+        if (
+            postscore_marker_anchor is None
+            and reveal_claim.marker_parent_anchor is not None
+        ):
+            try:
+                postscore_marker_anchor = reveal_claim.take_parent_anchor()
+            except Exception as anchor_error:
+                failure_receipt_error = anchor_error
+        failure_event: dict[str, object] | None = None
+        try:
+            failure_event = _score_event_snapshot(stage)
+        except Exception as clock_error:
+            failure_receipt_error = failure_receipt_error or clock_error
+        if (
+            postscore_root_anchor is not None
+            and postscore_receipt_anchor is not None
+            and postscore_marker_anchor is not None
+            and failure_event is not None
+        ):
+            checkpoint = {
+                "stage": stage,
+                "occurred_at_monotonic_ns": failure_event["monotonic_ns"],
+                "occurred_at_utc": failure_event["occurred_at_utc"],
+                "exception_type": type(error).__name__,
+                "message": str(error)[:512],
+                "retry_forbidden": True,
+                "condition_consumed": True,
+            }
+            try:
+                failure_receipt = _score_receipt_payload(
+                    outcome="failed",
+                    execution=execution,
+                    receipt_hashes=receipt_hashes,
+                    summary_sha256=summary_sha256,
+                    forecast_artifact_sha256=forecast_artifact_sha256,
+                    frozen=frozen_forecasts,
+                    forecast_array_sha256=forecast_array_sha256,
+                    marker_identity=marker_identity,
+                    evidence_links=evidence_links,
+                    target_hashes=target_hashes,
+                    target_arrays_sha256=target_arrays_sha256,
+                    score_result=score_payload,
+                    score_result_sha256=score_result_sha256,
+                    score_event=failure_event,
+                    failure_checkpoint=checkpoint,
+                )
+                failure_receipt_sha256 = _publish_postscore_artifact(
+                    filename=SCORE_RECEIPT_FILENAME,
+                    payload=failure_receipt,
+                    execution=execution,
+                    root_anchor=postscore_root_anchor,
+                    receipt_anchor=postscore_receipt_anchor,
+                    marker_anchor=postscore_marker_anchor,
+                    marker_identity=marker_identity,
+                    strict_paths=False,
+                )
+            except Exception as checkpoint_error:
+                failure_receipt_error = checkpoint_error
         raise ABC6DeferredScoreConsumedError(
-            f"deferred synthetic scoring failed after target reveal: {type(error).__name__}",
+            "deferred synthetic scoring failed after target reveal "
+            f"at {stage}: {type(error).__name__}"
+            + (
+                "; durable failure checkpoint could not be published"
+                if failure_receipt_error is not None
+                else "; durable failure checkpoint recorded when possible"
+            ),
             marker_sha256=marker_sha256,
+            score_receipt_path=(
+                None
+                if failure_receipt_sha256 is None
+                or postscore_receipt_anchor is None
+                else postscore_receipt_anchor.path / SCORE_RECEIPT_FILENAME
+            ),
+            score_receipt_sha256=failure_receipt_sha256,
+            failure_stage=stage,
         ) from error
     finally:
+        if postscore_marker_anchor is not None:
+            postscore_marker_anchor.close()
+        if postscore_receipt_anchor is not None:
+            postscore_receipt_anchor.close()
+        if postscore_root_anchor is not None:
+            postscore_root_anchor.close()
         reveal_claim.close()
 
 

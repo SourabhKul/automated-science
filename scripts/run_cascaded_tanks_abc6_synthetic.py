@@ -553,6 +553,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         "run_id": result.deferred_score.run_id,
         "forecast_artifact": str(result.forecast_artifact_path),
         "forecast_artifact_sha256": result.forecast_artifact_sha256,
+        "forecast_array_sha256": result.deferred_score.forecast_array_sha256,
+        "target_arrays_artifact": (
+            None
+            if result.deferred_score.target_arrays_artifact_path is None
+            else str(result.deferred_score.target_arrays_artifact_path)
+        ),
+        "target_arrays_artifact_sha256": (
+            result.deferred_score.target_arrays_artifact_sha256
+        ),
+        "score_result_sha256": result.deferred_score.score_result_sha256,
+        "score_event_monotonic_ns": (
+            result.deferred_score.score_event_monotonic_ns
+        ),
+        "score_event_utc": result.deferred_score.score_event_utc,
+        "score_receipt": (
+            None
+            if result.deferred_score.score_receipt_path is None
+            else str(result.deferred_score.score_receipt_path)
+        ),
+        "score_receipt_sha256": result.deferred_score.score_receipt_sha256,
         "target_sha256_by_truth": result.deferred_score.target_sha256_by_truth,
         "case_count": len(result.deferred_score.case_scores),
     }

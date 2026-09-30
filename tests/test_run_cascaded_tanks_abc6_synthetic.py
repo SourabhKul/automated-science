@@ -325,6 +325,36 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
     assert events.index("frozen") < events.index("typed-scorer-handoff")
     assert events.index("frozen") < len(events)
     assert source_hashes == runner._source_pin_check()
+    failure_receipt_path = receipts / scoring.SCORE_RECEIPT_FILENAME
+    assert failure_receipt_path.is_file()
+    failure_receipt = json.loads(failure_receipt_path.read_text("ascii"))
+    assert failure_receipt["outcome"] == "failed"
+    assert failure_receipt["score_event"]["stage"] == "target_hash_validation"
+    assert type(failure_receipt["score_event"]["monotonic_ns"]) is int
+    assert failure_receipt["score_event"]["clock"] == "host-local-monotonic-ns"
+    assert failure_receipt["score_event"]["occurred_at_utc"].endswith("Z")
+    assert failure_receipt["failure_checkpoint"]["occurred_at_monotonic_ns"] == (
+        failure_receipt["score_event"]["monotonic_ns"]
+    )
+    assert failure_receipt["protocol_id"] == cases.PROTOCOL_ID
+    assert failure_receipt["run_id"] == cases.RUN_ID
+    assert len(failure_receipt["training"]["status_receipts"]) == 48
+    assert failure_receipt["target_free_forecast"]["artifact_sha256"] == (
+        hashlib.sha256(
+            (receipts / runner.FORECAST_ARTIFACT_FILENAME).read_bytes()
+        ).hexdigest()
+    )
+    assert failure_receipt["failure_checkpoint"]["stage"] == (
+        "target_hash_validation"
+    )
+    assert failure_receipt["prospective_targets"]["N"][
+        "prospective_target_generated"
+    ] is False
+    assert failure_receipt["prospective_targets"]["target_sha256_by_truth"] == [
+        ["A", None],
+        ["B", None],
+        ["M", None],
+    ]
 
 
 def test_preopen_artifacts_symlink_fails_before_claim_marker_or_materializer(
