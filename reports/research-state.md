@@ -1,6 +1,31 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T04:26Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T08:28Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: watchdog preclaim duplicate manifest read held
+
+The Luna author completed a local watchdog preclaim repair with bounded
+no-follow manifest/approval reads, root/path and claim checks before its
+one-use claim, and the integrated runner as its child. Its focused fake-only
+suite passed **108/108** locally and in a clean `origin/main` overlay.
+Independent Luna review nevertheless gave **HOLD**: after the watchdog
+pins manifest bytes, campaign strict preflight reopens the manifest through
+`lstat()` then `read_bytes()`. A fake swap to a FIFO between those calls
+blocked before claim. A bounded Luna repair is underway to use the pinned
+bytes/descriptor or an equivalent nonblocking regular-file read. The
+author's final test-file hash conflicted with an intermediate report; the
+reviewer measured the current hash directly. See
+`reports/research-ledger/2026-09-30T0828Z.md`.
+
+Read-only Luna monitoring found no ABC6 process, fixed-run manifest,
+approval, claim, marker, receipt directory, checkpoint or log; oMLX lists
+the exact required Qwen. Fresh `git ls-remote` and local refs matched
+`387403bd44bc13a742715390c881f7d0b395d99f`; only the two watchdog
+source/test files were modified before the new repair. Source pins remain
+fail-closed and `ct-abc6-20260928-v1` **UNUSED/HOLD**. No protocol
+prospective target, real tank Qwen/ABC, held-out tank access or scientific
+breakthrough occurred. This state/ledger update is local pending factual
+review and Git sync.
 
 ## Latest checkpoint: runner synced; supervised launch remains held
 
