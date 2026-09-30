@@ -1,6 +1,37 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T08:49Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T09:54Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: post-reveal evidence synced; watchdog replay still held
+
+The synthetic ABC6 scorer now durably binds the one-use marker, all 48
+training-status receipts, summary/evidence links, target-free forecast,
+A/B/M fake prospective target hashes and full score diagnostics in an
+anchored post-reveal receipt. Success and post-marker failure receipts carry
+host monotonic and UTC event times; a descriptor-duplication fault uses the
+retained marker-parent anchor for a failure checkpoint without generating a
+target or permitting retry. Independent Luna verified the exact four-file
+unit with **66/66** focused fake-only tests locally and in a clean
+`origin/main` overlay, then pushed only those files as
+`f7e80e7d217ebc7fc5fec7351504fbcaa3009a0a`. Fresh fetch verified
+`HEAD == origin/main`. The author ran 83 fake-only tests; the additional
+17 cases were read-only inspected by the reviewer and use fake simulators,
+private IDs and temporary roots, not frozen prospective truths. See
+`reports/research-ledger/2026-09-30T0954Z.md`.
+
+The primary's reviewed supervised-child launch-capability decision was
+synced as `8642f5f108f03e9071a129b22896a65dda548f45`. It requires an
+attested one-use child grant at all side-effecting production entrypoints;
+it is a design, not implemented authorization. A Luna author is separately
+repairing watchdog fit-gate reads using pinned descriptors. Watchdog
+terminal readback, independent replay, complete integrated source pins,
+versioned approval and immutable manifest remain HOLD. Reserved synthetic
+`ct-abc6-20260928-v1` remains **UNUSED/HOLD**. The exact Qwen model was
+available and no research job or reserved-run artifacts existed in the
+08:55Z read-only runtime snapshot; the reviewer rechecked the production
+claim, marker and reserved receipt directory as absent near this sync.
+No protocol prospective target, real tank Qwen/ABC, held-out tank access or
+scientific breakthrough occurred.
 
 ## Latest checkpoint: preclaim repair synced; terminal replay remains held
 
