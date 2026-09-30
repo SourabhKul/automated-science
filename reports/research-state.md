@@ -1,6 +1,30 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T08:28Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T08:49Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: preclaim repair synced; terminal replay remains held
+
+An independent `gpt-6-luna` max reviewer cleared the four-file watchdog and
+campaign-fit manifest-read repair after **67/67** fake-only tests locally and
+in a clean `origin/main` overlay. The FIFO swap after watchdog pinning now
+fails before claim or child; standalone preflight rejects FIFO and symlink
+leaves through bounded no-follow reads. A sole Luna Git owner pushed exactly
+those four files as `69dfb8dd7c5df389aae4dd4542eaaebec69830f4` and
+fresh-fetch verified `HEAD == origin/main`. The prior 08:28Z HOLD remains
+historical evidence, not the current preclaim result. See
+`reports/research-ledger/2026-09-30T0849Z.md`.
+
+An independent launch-chain audit found separate terminal gaps: missing
+post-reveal score receipt, terminal readback/replay, and an end-to-end
+descriptor-bound evidence check. Direct runner authorization and complete
+integrated source pins are also open. The primary froze a terminal/replay
+decision in
+`reports/cascaded-tanks-abc6-terminal-replay-decision-2026-09-30.md`,
+independently reviewed as a scientific/operational specification, not a
+launch approval. The reserved synthetic run is **UNUSED/HOLD**; no protocol
+prospective target, real tank Qwen/ABC, held-out tank target access, or
+scientific breakthrough occurred. Exact Qwen availability and absence of
+running jobs were last directly monitored at 08:28Z, before this code sync.
 
 ## Latest checkpoint: watchdog preclaim duplicate manifest read held
 
