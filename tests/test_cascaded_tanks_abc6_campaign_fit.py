@@ -821,6 +821,23 @@ def test_manifest_hash_and_roster_checks_fail_before_claim(tmp_path) -> None:
     assert called == []
 
 
+def test_campaign_manifest_fifo_is_rejected_by_nonblocking_descriptor_read(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest-v2.json"
+    os.mkfifo(manifest)
+
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError,
+        match="small regular file",
+    ):
+        campaign.preflight_abc6_campaign_manifest(
+            manifest,
+            "0" * 64,
+            require_reviewed_runtime=False,
+        )
+
+
 def test_missing_receipt_io_source_pin_fails_before_claim(tmp_path) -> None:
     manifest = tmp_path / "missing-receipt-io-pin.json"
     helper_path = "core/real_data/cascaded_tanks_abc6_receipt_io.py"

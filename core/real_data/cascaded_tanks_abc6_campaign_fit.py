@@ -1492,6 +1492,7 @@ def preflight_abc6_campaign_manifest(
     expected_sha256: str,
     *,
     require_reviewed_runtime: bool = True,
+    pinned_manifest_bytes: bytes | None = None,
 ) -> str:
     """Validate an external immutable manifest and return its exact file hash.
 
@@ -1499,12 +1500,15 @@ def preflight_abc6_campaign_manifest(
     frozen. This verifies the declared physical checkout and active HEAD, but
     does not validate the separate approval record or enforce the watchdog.
     The approval owner must require its reviewed_git_head to match the manifest.
+    A watchdog that has already read the manifest through its pinned no-follow
+    descriptor may pass those exact bytes here, avoiding a second path lookup.
     """
 
     actual_sha256, decoded, root_fd = _preflight_manifest_and_open_checkout_root(
         manifest_path,
         expected_sha256,
         require_reviewed_runtime=require_reviewed_runtime,
+        pinned_manifest_bytes=pinned_manifest_bytes,
     )
     del decoded
     os.close(root_fd)
@@ -1516,6 +1520,7 @@ def _preflight_manifest_and_open_checkout_root(
     expected_sha256: str,
     *,
     require_reviewed_runtime: bool,
+    pinned_manifest_bytes: bytes | None = None,
 ) -> tuple[str, dict[str, object], int]:
     """Validate the v2 manifest and return its verified checkout-root FD."""
 
@@ -1527,21 +1532,18 @@ def _preflight_manifest_and_open_checkout_root(
         raise ABC6CampaignPreflightError(
             "expected_sha256 must be 64 lowercase hex chars"
         )
-    path = Path(manifest_path)
-    try:
-        path_stat = path.lstat()
-        if (
-            not stat.S_ISREG(path_stat.st_mode)
-            or path_stat.st_size > MAX_MANIFEST_BYTES
-        ):
+    if pinned_manifest_bytes is not None:
+        if type(pinned_manifest_bytes) is not bytes:
+            raise ABC6CampaignPreflightError(
+                "pinned manifest bytes must be an exact bytes value"
+            )
+        raw = pinned_manifest_bytes
+        if len(raw) > MAX_MANIFEST_BYTES:
             raise ABC6CampaignPreflightError(
                 "manifest must be a small regular file, not a symlink"
             )
-        raw = path.read_bytes()
-    except ABC6CampaignPreflightError:
-        raise
-    except OSError as error:
-        raise ABC6CampaignPreflightError("manifest is missing or unreadable") from error
+    else:
+        raw = _read_manifest_bytes_nofollow(manifest_path)
     actual_sha256 = hashlib.sha256(raw).hexdigest()
     if actual_sha256 != expected_sha256:
         raise ABC6CampaignPreflightError("manifest SHA-256 does not match caller pin")
@@ -1577,6 +1579,7 @@ def _preflight_manifest_and_open_checkout_root(
     except BaseException:
         os.close(root_fd)
         raise
+
     try:
         source_hashes = decoded.get("source_hashes")
         if not isinstance(source_hashes, dict):
@@ -1613,6 +1616,70 @@ def _preflight_manifest_and_open_checkout_root(
     except BaseException:
         os.close(root_fd)
         raise
+
+
+def _read_manifest_bytes_nofollow(
+    manifest_path: str | os.PathLike[str],
+) -> bytes:
+    """Read one bounded regular manifest without a FIFO or symlink race."""
+
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+        raise ABC6CampaignPreflightError(
+            "platform cannot enforce no-follow nonblocking manifest reads"
+        )
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            manifest_path,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+        )
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_MANIFEST_BYTES:
+            raise ABC6CampaignPreflightError(
+                "manifest must be a small regular file, not a symlink"
+            )
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            chunk = os.read(descriptor, min(65536, MAX_MANIFEST_BYTES + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > MAX_MANIFEST_BYTES:
+                raise ABC6CampaignPreflightError(
+                    "manifest exceeds its byte limit"
+                )
+        after = os.fstat(descriptor)
+        identity_before = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        )
+        identity_after = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        raw = b"".join(chunks)
+        if identity_before != identity_after or len(raw) != after.st_size:
+            raise ABC6CampaignPreflightError(
+                "manifest identity changed while being read"
+            )
+        return raw
+    except ABC6CampaignPreflightError:
+        raise
+    except OSError as error:
+        raise ABC6CampaignPreflightError(
+            "manifest is missing or unreadable"
+        ) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def _fsync_directory_at(directory_fd: int) -> None:

@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import time
 from pathlib import Path
 
 import psutil
 import pytest
 
+from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign
 from scripts import watch_cascaded_tanks_abc6 as watchdog
 
 
@@ -54,6 +56,125 @@ def _run_fake_child(
         terminate_grace_seconds=0.15,
         kill_reap_grace_seconds=0.20,
     )
+
+
+def _private_preflight_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    child_vector_override: list[str] | None = None,
+) -> dict[str, object]:
+    root = tmp_path / "fake-physical-checkout"
+    root.mkdir(parents=True)
+    run_directory = root / watchdog._RUN_DIRECTORY_RELATIVE
+    run_directory.mkdir(parents=True)
+    receipt_directory = root / watchdog._RECEIPT_ROOT_RELATIVE
+    receipt_directory.mkdir(parents=True)
+    (root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE).mkdir(parents=True)
+    (root / watchdog._SCORER_CLAIM_PARENT_RELATIVE).mkdir(parents=True)
+    script_path = root / "scripts" / "watch_cascaded_tanks_abc6.py"
+    script_path.parent.mkdir()
+    script_path.write_bytes(Path(watchdog.__file__).read_bytes())
+
+    monkeypatch.setattr(watchdog, "_REPO_ROOT", root)
+    monkeypatch.setattr(watchdog, "_SCRIPT_PATH", script_path)
+    head = "d" * 40
+    monkeypatch.setattr(watchdog, "_current_git_head", lambda: head)
+
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "protocol_id": watchdog.PROTOCOL_ID,
+        "run_id": watchdog.RUN_ID,
+        "repository_root_realpath": str(root),
+        "receipt_root_relative": watchdog._RECEIPT_ROOT_RELATIVE,
+        "reviewed_git_head": head,
+        "reviewed_proposal": {"path": "proposal.md", "sha256": "a" * 64},
+        "training_control_manifest_sha256": "b" * 64,
+        "ordered_cases": [],
+        "source_hashes": {},
+        "runtime_fingerprint": {
+            "declared_launch_interpreter_path": watchdog.PINNED_INTERPRETER_PATH,
+            "resolved_running_interpreter_path": watchdog.PINNED_INTERPRETER_PATH,
+            "python_version": watchdog.PINNED_PYTHON_VERSION,
+            "interpreter_sha256": watchdog.PINNED_INTERPRETER_SHA256,
+            "numpy_version": watchdog.PINNED_NUMPY_VERSION,
+            "numpy_module_path": watchdog.PINNED_NUMPY_PATH,
+            "numpy_module_sha256": watchdog.PINNED_NUMPY_SHA256,
+            "psutil_version": watchdog.PINNED_PSUTIL_VERSION,
+            "psutil_module_path": watchdog.PINNED_PSUTIL_PATH,
+            "psutil_module_sha256": watchdog.PINNED_PSUTIL_SHA256,
+        },
+        "execution_contract": {
+            "wall_clock_limit_seconds": int(watchdog.WALL_LIMIT_SECONDS),
+            "runner_tree_rss_limit_bytes": watchdog.RSS_LIMIT_BYTES,
+            "worker_count": 1,
+            "watchdog_enforcement": "external",
+            "independent_manifest_approval_required": True,
+            "prospective_targets_before_receipts": False,
+            "projected_artifact_bytes": 1024,
+        },
+    }
+    manifest_path = root / watchdog._MANIFEST_RELATIVE
+    manifest_raw = watchdog._canonical_json(manifest)
+    manifest_path.write_bytes(manifest_raw)
+    manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
+    approval_path = root / watchdog._APPROVAL_RELATIVE
+    launch_vector = child_vector_override or watchdog._build_campaign_command(
+        manifest_path, manifest_sha256, receipt_directory
+    )
+    actual_args = [
+        "--manifest",
+        str(manifest_path),
+        "--manifest-sha256",
+        manifest_sha256,
+        "--receipt-directory",
+        str(receipt_directory),
+        "--approval-record",
+        str(approval_path),
+        "--approval-record-sha256",
+        "e" * 64,
+    ]
+    approval: dict[str, object] = {
+        "schema_version": 1,
+        "record_type": "abc6_independent_approval_and_launch_v1",
+        "status": "approved",
+        "protocol_id": watchdog.PROTOCOL_ID,
+        "run_id": watchdog.RUN_ID,
+        "manifest_sha256": manifest_sha256,
+        "reviewed_git_head": head,
+        "reviewer_id": "private-fake-reviewer",
+        "approved_at_utc": "2026-09-29T00:00:00Z",
+        "watchdog_script_sha256": hashlib.sha256(script_path.read_bytes()).hexdigest(),
+        "manifest_path": str(manifest_path),
+        "receipt_directory": str(receipt_directory),
+        "watchdog_launch_vector_template": watchdog._watchdog_launch_vector_template(
+            manifest_path=manifest_path,
+            manifest_sha256=manifest_sha256,
+            receipt_directory=receipt_directory,
+            approval_path=approval_path,
+        ),
+        "campaign_child_launch_vector": launch_vector,
+    }
+    approval_raw = watchdog._canonical_json(approval)
+    approval_path.write_bytes(approval_raw)
+    approval_sha256 = hashlib.sha256(approval_raw).hexdigest()
+    actual_args[-1] = approval_sha256
+    monkeypatch.setattr(
+        watchdog,
+        "_campaign_strict_preflight",
+        lambda _path, _sha, *, pinned_manifest_bytes: manifest_sha256,
+    )
+    return {
+        "root": root,
+        "manifest": manifest_path,
+        "manifest_sha256": manifest_sha256,
+        "receipt": receipt_directory,
+        "approval": approval_path,
+        "approval_sha256": approval_sha256,
+        "actual_args": actual_args,
+        "child_vector": launch_vector,
+        "manifest_body": manifest,
+    }
 
 
 def test_fake_child_samples_pid_rss_hashes_receipt_and_excludes_watchdog(
@@ -373,14 +494,12 @@ def test_project_claim_rejects_traversal_run_id_before_filesystem_writes(
 def test_strict_campaign_preflight_failure_precedes_approval_claim_or_launch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    manifest = tmp_path / "manifest.json"
-    approval = tmp_path / "approval.json"
-    receipts = tmp_path / "receipts"
-    manifest.write_text("{}", encoding="ascii")
-    receipts.mkdir()
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
     launch_called = False
 
-    def reject_manifest(_path: Path, _sha: str) -> str:
+    def reject_manifest(
+        _path: Path, _sha: str, *, pinned_manifest_bytes: bytes
+    ) -> str:
         raise RuntimeError("strict source/roster pin rejected")
 
     def should_not_launch(**_kwargs: object):
@@ -392,55 +511,40 @@ def test_strict_campaign_preflight_failure_precedes_approval_claim_or_launch(
     monkeypatch.setattr(watchdog, "_supervise_command", should_not_launch)
     args = [
         "--manifest",
-        str(manifest),
+        str(fixture["manifest"]),
         "--manifest-sha256",
-        "a" * 64,
+        str(fixture["manifest_sha256"]),
         "--receipt-directory",
-        str(receipts),
+        str(fixture["receipt"]),
         "--approval-record",
-        str(approval),
+        str(fixture["approval"]),
         "--approval-record-sha256",
-        "b" * 64,
+        str(fixture["approval_sha256"]),
     ]
 
     with pytest.raises(watchdog.WatchdogError, match="strict manifest/source/runtime/roster"):
         watchdog._main(args)
     assert launch_called is False
-    assert not watchdog._PRODUCTION_CLAIM_PATH.exists()
+    root = fixture["root"]
+    claim = (
+        root
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    )
+    assert not claim.exists()
 
 
 def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    manifest_path = tmp_path / "manifest.json"
-    receipt_directory = tmp_path / "receipts"
-    approval_path = tmp_path / "approval.json"
-    receipt_directory.mkdir()
-    manifest_path.write_text("{}", encoding="ascii")
-    manifest_sha256 = "c" * 64
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    manifest_path = fixture["manifest"]
+    receipt_directory = fixture["receipt"]
+    approval_path = fixture["approval"]
+    manifest_sha256 = fixture["manifest_sha256"]
     head = "d" * 40
-    campaign_vector = watchdog._build_campaign_command(
-        manifest_path, manifest_sha256, receipt_directory
-    )
-    actual_args = [
-        "--manifest",
-        str(manifest_path),
-        "--manifest-sha256",
-        manifest_sha256,
-        "--receipt-directory",
-        str(receipt_directory),
-        "--approval-record",
-        str(approval_path),
-        "--approval-record-sha256",
-        "e" * 64,
-    ]
-    monkeypatch.setattr(watchdog, "_campaign_strict_preflight", lambda *_: manifest_sha256)
-    monkeypatch.setattr(
-        watchdog,
-        "_load_and_check_manifest",
-        lambda *_: ({"protocol_id": watchdog.PROTOCOL_ID, "run_id": watchdog.RUN_ID}, manifest_sha256),
-    )
-    monkeypatch.setattr(watchdog, "_current_git_head", lambda: head)
+    campaign_vector = fixture["child_vector"]
+    actual_args = fixture["actual_args"]
 
     def write_record(extra: dict[str, object] | None = None) -> str:
         record: dict[str, object] = {
@@ -453,7 +557,9 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
             "reviewed_git_head": head,
             "reviewer_id": "independent-review-fixture",
             "approved_at_utc": "2026-09-28T00:00:00Z",
-            "watchdog_script_sha256": _sha256(Path(watchdog.__file__).resolve()),
+            "watchdog_script_sha256": hashlib.sha256(
+                Path(watchdog._SCRIPT_PATH).read_bytes()
+            ).hexdigest(),
             "manifest_path": str(manifest_path),
             "receipt_directory": str(receipt_directory),
             "watchdog_launch_vector_template": watchdog._watchdog_launch_vector_template(
@@ -472,7 +578,7 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
 
     approval_sha256 = write_record()
     actual_args[-1] = approval_sha256
-    manifest, verified_sha, record = watchdog._production_preflight(
+    manifest, verified_sha, record, anchors = watchdog._production_preflight(
         manifest_path=manifest_path,
         manifest_sha256=manifest_sha256,
         receipt_directory=receipt_directory,
@@ -483,6 +589,11 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
     assert verified_sha == manifest_sha256
     assert record["reviewed_git_head"] == head
     assert manifest["protocol_id"] == watchdog.PROTOCOL_ID
+    assert campaign_vector[1] == str(
+        Path(watchdog._REPO_ROOT) / "scripts/run_cascaded_tanks_abc6_synthetic.py"
+    )
+    assert "-c" not in campaign_vector
+    anchors.close()
 
     unknown_sha = write_record({"unreviewed_extra": True})
     with pytest.raises(watchdog.WatchdogError, match="schema is incomplete"):
@@ -495,17 +606,395 @@ def test_approval_launch_record_binds_strict_hash_head_script_and_vectors(
             actual_watchdog_args=[*actual_args[:-1], unknown_sha],
         )
 
-    valid_sha = write_record()
-    monkeypatch.setattr(watchdog, "_current_git_head", lambda: "f" * 40)
+    wrong_head_sha = write_record({"reviewed_git_head": "f" * 40})
     with pytest.raises(watchdog.WatchdogError, match="does not bind current manifest"):
         watchdog._production_preflight(
             manifest_path=manifest_path,
             manifest_sha256=manifest_sha256,
             receipt_directory=receipt_directory,
             approval_path=approval_path,
-            approval_sha256=valid_sha,
-            actual_watchdog_args=[*actual_args[:-1], valid_sha],
+            approval_sha256=wrong_head_sha,
+            actual_watchdog_args=[*actual_args[:-1], wrong_head_sha],
         )
+
+
+def _production_preflight_from_fixture(fixture: dict[str, object]):
+    return watchdog._production_preflight(
+        manifest_path=fixture["manifest"],
+        manifest_sha256=fixture["manifest_sha256"],
+        receipt_directory=fixture["receipt"],
+        approval_path=fixture["approval"],
+        approval_sha256=fixture["approval_sha256"],
+        actual_watchdog_args=fixture["actual_args"],
+    )
+
+
+def test_wrong_receipt_root_path_fails_before_campaign_preflight_or_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    strict_called = False
+    child_called = False
+
+    def strict(*_args: object, **_kwargs: object) -> str:
+        nonlocal strict_called
+        strict_called = True
+        return str(fixture["manifest_sha256"])
+
+    def child(**_kwargs: object):
+        nonlocal child_called
+        child_called = True
+        raise AssertionError("child start reached before root rejection")
+
+    monkeypatch.setattr(watchdog, "_campaign_strict_preflight", strict)
+    monkeypatch.setattr(watchdog, "_supervise_command", child)
+    wrong_receipt = tmp_path / "redirected-receipts"
+    wrong_receipt.mkdir()
+    args = list(fixture["actual_args"])
+    args[args.index("--receipt-directory") + 1] = str(wrong_receipt)
+    with pytest.raises(watchdog.WatchdogError, match="receipt directory"):
+        watchdog._main(args)
+    assert not strict_called
+    assert not child_called
+    root = fixture["root"]
+    claim = (
+        root
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    )
+    assert not claim.exists()
+
+
+def test_wrong_manifest_path_fails_before_campaign_preflight_or_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    strict_called = False
+
+    def strict(*_args: object, **_kwargs: object) -> str:
+        nonlocal strict_called
+        strict_called = True
+        return str(fixture["manifest_sha256"])
+
+    monkeypatch.setattr(watchdog, "_campaign_strict_preflight", strict)
+    args = list(fixture["actual_args"])
+    alternate_manifest = tmp_path / "alternate-manifest-v2.json"
+    alternate_manifest.write_bytes(Path(fixture["manifest"]).read_bytes())
+    args[args.index("--manifest") + 1] = str(alternate_manifest)
+    with pytest.raises(watchdog.WatchdogError, match="fixed run root"):
+        watchdog._main(args)
+    assert not strict_called
+    root = fixture["root"]
+    claim = (
+        root
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    )
+    assert not claim.exists()
+
+
+def test_manifest_root_mismatch_and_training_only_vector_fail_before_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(
+        tmp_path,
+        monkeypatch,
+        child_vector_override=[
+            watchdog.PINNED_PYTHON_BIN,
+            "-c",
+            (
+                "from core.real_data.cascaded_tanks_abc6_campaign_fit import "
+                "run_abc6_training_campaign"
+            ),
+        ],
+    )
+    with pytest.raises(watchdog.WatchdogError, match="does not bind current manifest"):
+        _production_preflight_from_fixture(fixture)
+    root = fixture["root"]
+    claim = (
+        root
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    )
+    assert not claim.exists()
+
+    valid_fixture = _private_preflight_fixture(tmp_path / "wrong-root", monkeypatch)
+    manifest_path = valid_fixture["manifest"]
+    manifest = dict(valid_fixture["manifest_body"])
+    manifest["repository_root_realpath"] = str(tmp_path / "different-checkout")
+    raw = watchdog._canonical_json(manifest)
+    manifest_path.write_bytes(raw)
+    valid_fixture["manifest_sha256"] = hashlib.sha256(raw).hexdigest()
+    with pytest.raises(watchdog.WatchdogError, match="physical-root identity"):
+        _production_preflight_from_fixture(valid_fixture)
+
+
+@pytest.mark.parametrize("control_file", ["manifest", "approval"])
+@pytest.mark.parametrize("leaf_kind", ["fifo", "symlink"])
+def test_control_file_fifo_or_symlink_fails_nonblocking_before_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    control_file: str,
+    leaf_kind: str,
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    path = fixture[control_file]
+    assert isinstance(path, Path)
+    original = path.read_bytes()
+    path.unlink()
+    if leaf_kind == "fifo":
+        os.mkfifo(path)
+    else:
+        target = tmp_path / f"{control_file}-outside.json"
+        target.write_bytes(original)
+        path.symlink_to(target)
+    with pytest.raises(watchdog.WatchdogError):
+        _production_preflight_from_fixture(fixture)
+    root = fixture["root"]
+    claim = (
+        root
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    )
+    assert not claim.exists()
+
+
+def test_manifest_swap_to_fifo_after_watchdog_pin_fails_before_claim_or_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    manifest_path = fixture["manifest"]
+    assert isinstance(manifest_path, Path)
+    pinned_bytes = manifest_path.read_bytes()
+    original_preflight = campaign.preflight_abc6_campaign_manifest
+    swap_reached_campaign = False
+    child_called = False
+
+    def swap_then_run_campaign_preflight(
+        path: Path,
+        manifest_sha256: str,
+        *,
+        pinned_manifest_bytes: bytes,
+    ) -> str:
+        nonlocal swap_reached_campaign
+        assert pinned_manifest_bytes == pinned_bytes
+        path.unlink()
+        os.mkfifo(path)
+        swap_reached_campaign = True
+        return original_preflight(
+            path,
+            manifest_sha256,
+            require_reviewed_runtime=True,
+            pinned_manifest_bytes=pinned_manifest_bytes,
+        )
+
+    def forbidden_child(**_kwargs: object):
+        nonlocal child_called
+        child_called = True
+        raise AssertionError("child launch reached after manifest FIFO swap")
+
+    monkeypatch.setattr(
+        watchdog, "_campaign_strict_preflight", swap_then_run_campaign_preflight
+    )
+    monkeypatch.setattr(watchdog, "_supervise_command", forbidden_child)
+    with pytest.raises(
+        watchdog.WatchdogError,
+        match=(
+            "strict manifest/source/runtime/roster preflight failed: "
+            "manifest schema/type validation failed"
+        ),
+    ):
+        watchdog._main(fixture["actual_args"])
+
+    assert swap_reached_campaign
+    assert not child_called
+    root = fixture["root"]
+    assert isinstance(root, Path)
+    claim_parent = root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+    assert not (claim_parent / f"{watchdog.RUN_ID}.claim").exists()
+    assert not (claim_parent / f"{watchdog.RUN_ID}.watchdog.claim").exists()
+
+
+@pytest.mark.parametrize(
+    "occupied_path",
+    ["campaign_claim", "watchdog_claim", "scorer_marker", "receipt_output"],
+)
+def test_existing_claim_marker_or_output_fails_before_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    occupied_path: str,
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    root = fixture["root"]
+    if occupied_path == "campaign_claim":
+        path = root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE / f"{watchdog.RUN_ID}.claim"
+    elif occupied_path == "watchdog_claim":
+        path = root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE / f"{watchdog.RUN_ID}.watchdog.claim"
+    elif occupied_path == "scorer_marker":
+        path = root / watchdog._SCORER_CLAIM_PARENT_RELATIVE / f"{watchdog.RUN_ID}.claim"
+    else:
+        path = Path(fixture["receipt"]) / "campaign.target-free-forecasts.json"
+    path.write_bytes(b"already-used")
+    strict_called = False
+
+    def strict(*_args: object, **_kwargs: object) -> str:
+        nonlocal strict_called
+        strict_called = True
+        return str(fixture["manifest_sha256"])
+
+    monkeypatch.setattr(watchdog, "_campaign_strict_preflight", strict)
+    with pytest.raises(watchdog.WatchdogError, match="already exists|not empty"):
+        _production_preflight_from_fixture(fixture)
+    assert not strict_called
+
+
+def test_preopen_copied_artifacts_ancestor_symlink_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    root = fixture["root"]
+    artifacts = root / "artifacts"
+    copied = tmp_path / "copied-artifacts"
+    shutil.copytree(artifacts, copied)
+    shutil.rmtree(artifacts)
+    artifacts.symlink_to(copied, target_is_directory=True)
+    strict_called = False
+
+    def strict(*_args: object, **_kwargs: object) -> str:
+        nonlocal strict_called
+        strict_called = True
+        return str(fixture["manifest_sha256"])
+
+    monkeypatch.setattr(watchdog, "_campaign_strict_preflight", strict)
+    with pytest.raises(watchdog.WatchdogError, match="fixed run directory"):
+        _production_preflight_from_fixture(fixture)
+    assert not strict_called
+    assert not (
+        copied
+        / "evaluations/cascaded_tanks_abc6_campaign_fit/claims"
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    ).exists()
+
+
+def test_postopen_copied_ancestor_swap_stops_before_watchdog_claim_or_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    _manifest, _sha, _approval, anchors = _production_preflight_from_fixture(fixture)
+    root = fixture["root"]
+    artifacts = root / "artifacts"
+    original_artifacts = root / "artifacts-pinned"
+    decoy = tmp_path / "decoy-artifacts"
+    shutil.copytree(artifacts, decoy)
+    artifacts.rename(original_artifacts)
+    artifacts.symlink_to(decoy, target_is_directory=True)
+    marker = tmp_path / "child-started"
+    child_calls = 0
+
+    def forbidden_child(*_args: object, **_kwargs: object):
+        nonlocal child_calls
+        child_calls += 1
+        raise AssertionError("child process started after ancestor identity changed")
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", forbidden_child)
+    try:
+        with pytest.raises(watchdog.WatchdogError, match="pinned directory|symlink"):
+            watchdog._supervise_command(
+                launch_vector=[watchdog.PINNED_PYTHON_BIN, "-c", "pass"],
+                observed_executable_path=Path(watchdog.PINNED_PYTHON_APP),
+                observed_executable_sha256=watchdog.PINNED_PYTHON_APP_SHA256,
+                claim_path=watchdog._expected_project_claim_path(root, watchdog.RUN_ID),
+                receipt_path=(
+                    root
+                    / watchdog._RECEIPT_ROOT_RELATIVE
+                    / "watchdog-terminal-receipt.json"
+                ),
+                run_identity={
+                    "protocol_id": watchdog.PROTOCOL_ID,
+                    "run_id": watchdog.RUN_ID,
+                    "manifest_sha256": str(fixture["manifest_sha256"]),
+                },
+                claim_project_root=root,
+                preflight_anchors=anchors,
+                wall_limit_seconds=0.2,
+                rss_limit_bytes=32 * 1024**2,
+                sample_interval_seconds=0.01,
+            )
+    finally:
+        anchors.close()
+    assert child_calls == 0
+    assert not marker.exists()
+    assert not (
+        decoy
+        / "evaluations/cascaded_tanks_abc6_campaign_fit/claims"
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    ).exists()
+    assert not (
+        original_artifacts
+        / "evaluations/cascaded_tanks_abc6_campaign_fit/claims"
+        / f"{watchdog.RUN_ID}.watchdog.claim"
+    ).exists()
+
+
+def test_private_fake_launch_claim_and_terminal_write_use_pinned_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _private_preflight_fixture(tmp_path, monkeypatch)
+    _manifest, _sha, _approval, anchors = _production_preflight_from_fixture(fixture)
+    root = fixture["root"]
+    receipt = Path(fixture["receipt"])
+    claim_path = watchdog._expected_project_claim_path(root, watchdog.RUN_ID)
+    receipt_path = receipt / "watchdog-terminal-receipt.json"
+    root_info = os.fstat(anchors.root_fd)
+    receipt_info = os.fstat(anchors.receipt_root_fd)
+    watchdog_claim_info = os.fstat(anchors.watchdog_claim_parent_fd)
+    scorer_claim_info = os.fstat(
+        anchors.directories[watchdog._SCORER_CLAIM_PARENT_RELATIVE]
+    )
+    try:
+        result = watchdog._supervise_command(
+            launch_vector=[watchdog.PINNED_PYTHON_BIN, "-c", "pass"],
+            observed_executable_path=Path(watchdog.PINNED_PYTHON_APP),
+            observed_executable_sha256=watchdog.PINNED_PYTHON_APP_SHA256,
+            claim_path=claim_path,
+            receipt_path=receipt_path,
+            run_identity={
+                "protocol_id": watchdog.PROTOCOL_ID,
+                "run_id": watchdog.RUN_ID,
+                "manifest_sha256": str(fixture["manifest_sha256"]),
+                "approval_record_sha256": str(fixture["approval_sha256"]),
+                "reviewed_git_head": "d" * 40,
+                "repository_root_realpath": str(root),
+                "receipt_root_relative": watchdog._RECEIPT_ROOT_RELATIVE,
+                "repository_root_device": root_info.st_dev,
+                "repository_root_inode": root_info.st_ino,
+                "receipt_root_device": receipt_info.st_dev,
+                "receipt_root_inode": receipt_info.st_ino,
+                "watchdog_claim_parent_device": watchdog_claim_info.st_dev,
+                "watchdog_claim_parent_inode": watchdog_claim_info.st_ino,
+                "scorer_claim_parent_device": scorer_claim_info.st_dev,
+                "scorer_claim_parent_inode": scorer_claim_info.st_ino,
+            },
+            claim_project_root=root,
+            preflight_anchors=anchors,
+            wall_limit_seconds=1.0,
+            rss_limit_bytes=32 * 1024**2,
+            sample_interval_seconds=0.01,
+        )
+    finally:
+        anchors.close()
+
+    receipt_body = json.loads(receipt_path.read_text(encoding="ascii"))
+    claim_body = json.loads(claim_path.read_text(encoding="ascii"))
+    assert result["receipt"]["status"] == "completed"
+    assert receipt_body["receipt_root_relative"] == watchdog._RECEIPT_ROOT_RELATIVE
+    assert receipt_body["repository_root_realpath"] == str(root)
+    assert receipt_body["watchdog_claim_parent_inode"] == watchdog_claim_info.st_ino
+    assert claim_body["declared_child_launch_vector"] == [
+        watchdog.PINNED_PYTHON_BIN,
+        "-c",
+        "pass",
+    ]
 
 
 def test_existing_one_use_claim_rejects_before_second_child_start(tmp_path: Path) -> None:
