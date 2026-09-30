@@ -1,6 +1,34 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T15:12Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T16:08Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: read-only replay component reviewed and synced
+
+The independent Luna reviewer cleared the ABC6 read-only replay component
+after **14/14** fake-only tests passed locally and in a clean archive overlay.
+Private probes confirmed strict score-failure-before-cap => `failed`,
+cap-before-score => `incomplete`, and equal monotonic event times =>
+`unreplayable` with both events retained. The verifier accepts the reviewed
+watchdog's actual cap-stage values and preserves the earlier consumed-claim,
+partial-chain, failed-terminal and acknowledgement safeguards. The sole Luna
+Git owner pushed only the replay source/test as
+`c78ad7b9d0219df0ed9f8e06b061c02d492ba391`, then fresh-fetched
+`HEAD == origin/main`. The prior 15:12Z and later schema/tie review HOLDs
+remain negative history. See `reports/research-ledger/2026-09-30T1603Z.md`.
+
+The component is not connected to an operational entrypoint. Trusted
+integrated source hashes, full source/runtime pin closure, the attested
+supervised-child grant, immutable manifest, versioned approval and separate
+GO remain HOLD. An isolated two-file grant primitive passed **6/6** author
+fake-only tests, but independent Luna reproduced **2 failures / 4 passes**
+locally and in a clean overlay. Parent and child see different Darwin Python
+executable images for the same PID/start/argv: launch `bin/python3.14` versus
+observed `Python.app/Contents/MacOS/Python`. The primitive wrongly requires
+those images to be identical, so independent review is **HOLD** and a bounded
+dual-identity repair is underway. It remains untracked and is not production
+authority. The reserved synthetic
+run remains UNUSED/HOLD. No protocol prospective target, real tank Qwen/ABC,
+held-out target access or breakthrough occurred.
 
 ## Latest checkpoint: replay classification HOLD; grant lifecycle frozen
 
