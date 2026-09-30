@@ -1,6 +1,26 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T09:54Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T10:17Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: watchdog fit-gate post-read swap HOLD
+
+A Luna author locally changed the watchdog fit gate to read the 48 statuses,
+campaign claim, summary/evidence and target-free forecast through bounded
+no-follow descriptors. The author's **33/33** fake-only tests passed locally
+and in a clean overlay. Independent Luna reproduced those tests but gave
+**HOLD** for syncing the two files: a fake status leaf swapped to a symlink
+immediately after its validated read still let the gate return valid, and a
+fake child exit 0 was then recorded as terminal `completed`. The reviewer
+also verified that static FIFO/symlink leaves fail closed. A bounded repair
+is underway to record each leaf's identity and digest and revalidate all
+leaves before accepting the gate; terminal publication/readback and replay
+remain separate gates. See `reports/research-ledger/2026-09-30T1017Z.md`.
+
+The prior score-receipt unit and compact ledger are synced through
+`166eb6cb1264e6ecac4272b5788b8a4306ed6553`. The watchdog fit-gate
+patch is not synced. Synthetic `ct-abc6-20260928-v1` remains UNUSED/HOLD;
+no protocol prospective target, real tank Qwen/ABC, held-out tank access
+or breakthrough occurred.
 
 ## Latest checkpoint: post-reveal evidence synced; watchdog replay still held
 
