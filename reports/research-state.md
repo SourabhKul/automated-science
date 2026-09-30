@@ -1,6 +1,125 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T18:35Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T19:46Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: Stage 2A component independently reviewed and synced
+
+Independent Luna max matched all six Stage 2A hashes and reproduced the
+focused pinned-Python **22/22** fake tests in both the current checkout and a
+clean baseline overlay. A valid private child receives the grant and reaches
+the intentionally closed integrated source-pin gate before a campaign claim;
+socket setup and claim-failure controls fail before a child. The reviewer gave
+**component GO only** and, as sole Git owner, pushed exactly those six
+source/test files non-force in `1be2b39e93d858f4316750600bdc082af1b2e98b`.
+Fresh fetch verified `HEAD == origin/main == FETCH_HEAD` on `main`. The local
+state file and seven interval ledgers remain unsynced, pending factual review.
+The reviewer also noted a rare postclaim initialization window before the
+watchdog's terminal-monitoring `try`: exceptions there could leave a consumed
+claim without a terminal receipt, although no child/grant would be issued.
+That must be closed before an operational launch. Full source pins, public
+fit/case/scorer permits, manifest, independent replay, final report/approval
+and separate GO remain HOLD. See
+`reports/research-ledger/2026-09-30T1946Z.md`.
+
+## Latest checkpoint: Stage 2A author fake suite reaches closed source gate
+
+The Luna author reports the two bounded Stage 2A repairs complete locally:
+runner grant consumption now occurs directly in the bound runner function,
+and watchdog socket setup precedes its one-use claim with cleanup on setup/
+claim failure. The private fake child receives the grant and reaches the
+unchanged, fail-closed integrated source-pin gate before any campaign claim.
+The author reports `py_compile` passing and **22/22 focused fake tests** under
+pinned Python 3.14 (3.48 seconds), including transition, timeout, setup-fault
+and claim-fault cases. The six source/test files remain **unreviewed and
+unsynced**; independent Luna max is checking exact hashes, baseline diff,
+fake replay and preclaim/side-effect boundaries. Component GO is pending;
+full campaign launch remains HOLD regardless. See
+`reports/research-ledger/2026-09-30T1939Z.md`.
+
+## Latest checkpoint: independent Stage 2A role and failure-path HOLD
+
+Independent Luna reproduced **20/20** pinned-Python fake tests on the
+producer-repaired six-file patch but gave component **HOLD**. A legitimate
+runner receives the grant and then calls `consume_runner_startup` through a
+helper, so strict `_require_role` sees the helper rather than its bound
+`run_cascaded_tanks_abc6_synthetic` function. The passing test expected that
+rejection, not successful arrival at the still-closed source-pin gate. The
+reviewer also found grant socket creation after the durable watchdog claim
+but before the terminal-monitoring guard; a socket creation error could leave
+a consumed claim without a terminal receipt. A Luna max author is making only
+the bounded direct-call and preclaim-socket/cleanup repairs with fake
+regressions. No code is reviewed for Git sync or run. See
+`reports/research-ledger/2026-09-30T1932Z.md`.
+
+## Latest checkpoint: producer transition repair passes fake controls; role gate holds
+
+The Luna author repaired only the Stage 2A grant producer's Darwin exec
+transition handling. Its private fake test withheld two launcher-phase
+observations, issued the grant after stable Python.app observations, and
+preserved separate launcher/runtime identities. A timeout fake consumed the
+watchdog claim, issued no grant or campaign claim, and recorded
+`child_runtime_attestation_timeout`. `py_compile` passed and the focused
+pinned-Python suite reported **20/20 passed** in 3.41 seconds. This is still
+**Stage 2A HOLD**: the valid child receives the grant but then fails closed at
+an existing runner-role callsite check before reaching the source-pin gate.
+The final test explicitly asserts that unresolved rejection. No code has
+been independently approved or synced. An independent Luna max reviewer is
+replaying the exact six new hashes and diagnosing that role gate. See
+`reports/research-ledger/2026-09-30T1927Z.md`.
+
+## Latest checkpoint: independent Stage 2A failure diagnosis
+
+Independent `gpt-6-luna` max reviewed the exact six local Stage 2A hashes
+and reproduced the private pinned-Python handoff test: **2/3 passed** in
+that focused file; the handoff failed closed before source pins/campaign.
+The fake watchdog receipt showed the same PID/start first sampled in the
+Frameworks launcher phase, then about 27 ms later in Python.app. The grant
+had been published with the earlier launcher-phase vector/image, so the
+runner correctly rejected the stable runtime process. A separate dual-image
+authority fake control passed. This is a producer timing/binding fault, not
+a receiver defect. The reviewer gave **HOLD** and recommended a bounded
+post-exec wait, keeping the approved launch image/vector separately pinned
+from child runtime identity. The Stage 2A author is repairing only that
+producer seam with transition/timeout fake tests; no Git sync or production
+run is authorized. See `reports/research-ledger/2026-09-30T1914Z.md`.
+
+## Latest checkpoint: Stage 2A fake handoff fails closed on Darwin image identity
+
+The bounded Luna Stage 2A patch is **local, unreviewed and unsynced**. It wires
+only watchdog→runner anonymous socket transport with canonical
+`ABC6_GRANT_FD`, keeping the exact child argv and integrated source pins
+unchanged. The author passed `py_compile` and reported **18 focused fake-only
+tests passed, one failed** under pinned Python 3.14. In the private overlay,
+the watchdog created/passed/published the grant, but the runner rejected it
+at `ABC6AuthorityError: live child process differs from its runtime image
+binding`, before the source-pin gate or campaign claim. Parent-observed
+Homebrew launcher image and child-self Python.app image differ on Darwin; the
+proper dual-image binding must be diagnosed, not bypassed. The author stopped
+with HOLD and no running test. An independent Luna max reviewer is replaying
+those exact six source/test hashes and diagnosing the failure before any
+repair or code Git sync. See `reports/research-ledger/2026-09-30T1903Z.md`.
+
+Fresh Luna monitoring at 18:58–18:59Z found the exact fixed Qwen available,
+no ABC6/watchdog/runner/pytest process, no reserved run directory/claim/
+marker/checkpoint/log, and fresh-fetched `HEAD == origin/main == FETCH_HEAD ==
+59696fbd3da37c5f0cb9be896bc1757a0f268fcb`. The observed dirty paths
+were only the local Stage 2A source/tests and 18:42Z state/ledger. The
+reserved synthetic run remains UNUSED/HOLD; no protocol prospective target,
+real tank Qwen/ABC, held-out target or breakthrough exists.
+
+## Latest checkpoint: binding design synced; fake-only handoff underway
+
+The independent Luna reviewer fact-checked the binding amendment and both
+18:24Z/18:35Z ledger checkpoints. Acting as sole Git owner, it pushed exactly
+those four compact files non-force in content commit
+`59696fbd3da37c5f0cb9be896bc1757a0f268fcb`; a fresh fetch verified
+`HEAD == origin/main == FETCH_HEAD` on `main` and the worktree clean at that
+sync. One trailing space was removed before staged `diff --check`. A Luna max
+author is now implementing only the watchdog→runner anonymous grant handoff
+with fake fixtures. Its interim mapping identified a possible insertion after
+the watchdog's one-use claim and before the runner's campaign claim, without
+changing the exact child vector or opening source pins. No code completion or
+test outcome is claimed yet. See `reports/research-ledger/2026-09-30T1842Z.md`.
 
 ## Latest checkpoint: ABC6 binding amendment independently reviewed
 
