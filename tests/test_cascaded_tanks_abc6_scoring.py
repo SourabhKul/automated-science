@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
+import stat
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -267,6 +270,41 @@ def _write_receipts(directory: Path, results) -> None:
     _write_training_summary(directory)
 
 
+def _private_receipt_root(tmp_path: Path) -> Path:
+    return tmp_path.resolve() / campaign_fit.RECEIPT_ROOT_RELATIVE
+
+
+def _private_receipt_identity(receipts: Path) -> campaign_fit.ABC6ReceiptRootIdentity:
+    root = receipts.parents[3]
+    if receipts != root / campaign_fit.RECEIPT_ROOT_RELATIVE:
+        raise AssertionError("fake receipts are outside the fixed private receipt root")
+    root_fd = campaign_fit._open_directory_nofollow(
+        root, label="private fake checkout root"
+    )
+    try:
+        receipt_fd = campaign_fit._open_relative_directory_nofollow(
+            root_fd,
+            campaign_fit.RECEIPT_ROOT_RELATIVE,
+            label="private fake receipt root",
+        )
+    except BaseException:
+        os.close(root_fd)
+        raise
+    try:
+        identity = campaign_fit.ABC6ReceiptRootIdentity(
+            repository_root_realpath=str(root),
+            receipt_root_relative=campaign_fit.RECEIPT_ROOT_RELATIVE,
+            repository_root_fd=root_fd,
+            receipt_root_fd=receipt_fd,
+        )
+    except BaseException:
+        os.close(root_fd)
+        os.close(receipt_fd)
+        raise
+    identity.verify()
+    return identity
+
+
 def _canonical_json(value) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
@@ -396,15 +434,18 @@ def _install_fake_gate(
     *,
     bad_hash: bool = False,
 ):
-    project_root.mkdir(exist_ok=True)
+    project_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(scoring, "_PROJECT_ROOT", project_root)
     monkeypatch.setattr(scoring, "_REVEAL_MARKER_PATH", marker_path)
+    monkeypatch.setattr(cases, "_REVEAL_MARKER_PATH", marker_path)
+    monkeypatch.setattr(cases, "_PROJECT_ROOT", project_root)
     calls = []
 
-    def fake_materialize(training, *, simulator):
+    def fake_materialize(training, *, simulator, _scoring_handoff):
         assert marker_path.is_file(), (
             "target generator ran before durable reveal marker"
         )
+        assert _scoring_handoff._used is True
         calls.append("generate")
         return _fake_targets(bad_hash=bad_hash)
 
@@ -412,15 +453,26 @@ def _install_fake_gate(
     return calls
 
 
-def _install_fake_source_contract(monkeypatch) -> tuple[tuple[str, str], ...]:
+def _install_fake_source_contract(
+    monkeypatch, source_root: Path
+) -> tuple[tuple[str, str], ...]:
     integrated = scoring._INTEGRATED_SOURCE_PATHS
     required = tuple(dict.fromkeys((*campaign_fit._REQUIRED_SOURCE_PATHS, *integrated)))
-    digests = {
-        path: hashlib.sha256(f"private fake source pin:{path}".encode()).hexdigest()
-        for path in integrated
-    }
+    source_root.mkdir(parents=True, exist_ok=True)
+    digests = {}
+    for relative_path in required:
+        source_file = source_root / relative_path
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text(
+            f"private fake source: {relative_path}\n", encoding="ascii"
+        )
+        digests[relative_path] = hashlib.sha256(source_file.read_bytes()).hexdigest()
     monkeypatch.setattr(campaign_fit, "_REQUIRED_SOURCE_PATHS", required)
     monkeypatch.setattr(campaign_fit, "_REVIEWED_SOURCE_SHA256", digests)
+    monkeypatch.setattr(campaign_fit, "_REPO_ROOT", source_root)
+    monkeypatch.setattr(scoring, "_SOURCE_ROOT", source_root)
+    monkeypatch.setattr(scoring, "_PROJECT_ROOT", source_root)
+    monkeypatch.setattr(cases, "_PROJECT_ROOT", source_root)
     monkeypatch.setattr(
         campaign_fit,
         "_current_source_hashes",
@@ -430,6 +482,42 @@ def _install_fake_source_contract(monkeypatch) -> tuple[tuple[str, str], ...]:
         },
     )
     return tuple((path, digests[path]) for path in integrated)
+
+
+def test_reveal_claim_rejects_preexisting_ancestor_symlink_before_leaf_creation(
+    tmp_path, monkeypatch,
+) -> None:
+    project_root = tmp_path / "private-claim-project"
+    project_root.mkdir()
+    marker_parent = (
+        project_root
+        / "artifacts"
+        / "evaluations"
+        / "cascaded_tanks_abc6_scoring"
+        / "claims"
+    )
+    marker_parent.parent.mkdir(parents=True)
+    copied_parent = tmp_path / "copied-private-claims"
+    copied_parent.mkdir()
+    marker_parent.symlink_to(copied_parent, target_is_directory=True)
+    marker_path = marker_parent / f"{cases.RUN_ID}.claim"
+    monkeypatch.setattr(cases, "_REVEAL_MARKER_PATH", marker_path)
+    root_anchor = cases._open_directory_anchor(
+        project_root, label="private fake checkout root"
+    )
+
+    try:
+        with pytest.raises(scoring.ABC6ScoringError, match="ancestry.*symlink"):
+            scoring._claim_reveal_marker(
+                marker_path,
+                {"run_id": "private-fake-run"},
+                root_anchor=root_anchor,
+            )
+    finally:
+        root_anchor.close()
+
+    assert not marker_path.exists()
+    assert not (copied_parent / marker_path.name).exists()
 
 
 def _fake_execution(receipts: Path, training, results):
@@ -483,6 +571,7 @@ def _fake_execution(receipts: Path, training, results):
         campaign_result=campaign_result,
         evidence_manifest_path=(receipts / campaign_fit.EVIDENCE_MANIFEST_FILENAME),
         evidence_manifest_sha256="c" * 64,
+        receipt_root_identity=_private_receipt_identity(receipts),
         _training_bundle=training,
         _training_results=tuple(results),
     )
@@ -497,7 +586,8 @@ def _prepare_private_execution_call(
     *,
     frozen=None,
 ):
-    source_hashes = _install_fake_source_contract(monkeypatch)
+    source_root = receipts.parents[len(Path(campaign_fit.RECEIPT_ROOT_RELATIVE).parts) - 1]
+    source_hashes = _install_fake_source_contract(monkeypatch, source_root)
     execution = _fake_execution(receipts, training, results)
 
     def fake_load_verified(self):
@@ -573,7 +663,7 @@ def _private_score(
 
 
 def _fake_marker_paths(tmp_path: Path) -> tuple[Path, Path]:
-    project_root = tmp_path / "private-fake-project"
+    project_root = tmp_path.resolve()
     marker_path = (
         project_root
         / "artifacts"
@@ -589,7 +679,7 @@ def test_pre_marker_failure_never_calls_target_generator_or_claims_marker(
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
@@ -618,7 +708,7 @@ def test_bare_mutated_posterior_and_matching_forecast_are_rejected_pre_marker(
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
@@ -678,7 +768,7 @@ def test_current_campaign_source_allowlist_fails_closed_before_loading_or_reveal
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     execution = _fake_execution(receipts, training, results)
     frozen = scoring.freeze_abc6_forecasts(forecasts)
@@ -705,17 +795,56 @@ def test_current_campaign_source_allowlist_fails_closed_before_loading_or_reveal
     assert not marker.exists()
 
 
+def test_mismatched_checkout_identity_fails_before_marker_or_target_generation(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = _private_receipt_root(tmp_path)
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    calls = _install_fake_gate(monkeypatch, marker, project_root)
+    execution, frozen, artifact_path, artifact_sha256 = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    original_identity = execution.receipt_root_identity
+    foreign_root = tmp_path / "copied-checkout-root"
+    foreign_receipts = foreign_root / campaign_fit.RECEIPT_ROOT_RELATIVE
+    foreign_receipts.mkdir(parents=True)
+    foreign_identity = _private_receipt_identity(foreign_receipts)
+    object.__setattr__(execution, "receipt_root_identity", foreign_identity)
+
+    try:
+        with pytest.raises(
+            scoring.ABC6ScoringError, match="differs from the typed campaign root"
+        ):
+            scoring.score_deferred_abc6_synthetic(
+                execution,
+                frozen,
+                artifact_path,
+                artifact_sha256,
+                simulator=_fake_simulator,
+            )
+    finally:
+        original_identity.close()
+        foreign_identity.close()
+
+    assert calls == []
+    assert not marker.exists()
+
+
 def test_missing_status_roster_fails_before_marker_or_target_generation(
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
+    missing_receipts = _private_receipt_root(tmp_path)
+    missing_receipts.mkdir(parents=True)
 
     with pytest.raises(cases.ABC6StatusReceiptError, match="missing durable receipt"):
         _private_score(
             monkeypatch,
-            tmp_path / "missing-receipts",
+            missing_receipts,
             training,
             results,
             forecasts,
@@ -730,7 +859,7 @@ def test_success_scores_fake_targets_and_emits_protocol_diagnostics(
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
@@ -830,7 +959,7 @@ def test_durable_forecast_artifact_source_tampering_fails_before_marker(
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
@@ -863,7 +992,7 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root, bad_hash=True)
@@ -881,7 +1010,6 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     assert first.value.retry_forbidden is True
     assert marker.is_file()
     assert calls == ["generate"]
-
     with pytest.raises(
         scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
     ):
@@ -892,9 +1020,94 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     assert calls == ["generate"]
 
 
+def test_fifo_marker_readback_is_bounded_nonblocking_and_consumes_claim(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = _private_receipt_root(tmp_path)
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    materializer_calls = _install_fake_gate(monkeypatch, marker, project_root)
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    original_open = os.open
+    readback_flags = []
+
+    def replace_marker_with_fifo(path, flags, mode=0o777, *, dir_fd=None):
+        safe_flags = flags
+        if (
+            path == marker.name
+            and dir_fd is not None
+            and not flags & os.O_CREAT
+            and not flags & os.O_WRONLY
+        ):
+            readback_flags.append(flags)
+            os.unlink(path, dir_fd=dir_fd)
+            os.mkfifo(path, mode=0o600, dir_fd=dir_fd)
+            # Keep a regression without O_NONBLOCK from hanging the test
+            # process. The assertion below still verifies the production flag.
+            safe_flags |= os.O_NONBLOCK
+        return original_open(path, safe_flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(scoring.os, "open", replace_marker_with_fifo)
+    with pytest.raises(
+        scoring.ABC6ScoringError, match="could not read back the durable reveal marker"
+    ):
+        scoring.score_deferred_abc6_synthetic(*prepared, simulator=_fake_simulator)
+
+    assert readback_flags
+    assert all(flags & os.O_NONBLOCK for flags in readback_flags)
+    assert stat.S_ISFIFO(marker.lstat().st_mode)
+    assert materializer_calls == []
+
+    with pytest.raises(
+        scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
+    ):
+        scoring.score_deferred_abc6_synthetic(*prepared, simulator=_fake_simulator)
+    assert materializer_calls == []
+
+
+def test_claim_parent_swap_after_marker_is_terminal_and_never_materializes(
+    tmp_path, monkeypatch
+):
+    training, results, forecasts = _fixture_rosters()
+    receipts = _private_receipt_root(tmp_path)
+    _write_receipts(receipts, results)
+    project_root, marker = _fake_marker_paths(tmp_path)
+    calls = _install_fake_gate(monkeypatch, marker, project_root)
+    original_claim = scoring._claim_reveal_marker
+    saved_parent = marker.parent.with_name("claims-before-swap")
+    copied_parent = tmp_path / "copied-claims-parent"
+
+    def claim_then_redirect(path, payload, *, root_anchor):
+        claim = original_claim(path, payload, root_anchor=root_anchor)
+        shutil.copytree(marker.parent, copied_parent)
+        marker.parent.rename(saved_parent)
+        marker.parent.symlink_to(copied_parent, target_is_directory=True)
+        return claim
+
+    monkeypatch.setattr(scoring, "_claim_reveal_marker", claim_then_redirect)
+    with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as first:
+        _private_score(
+            monkeypatch,
+            receipts,
+            training,
+            results,
+            forecasts,
+            simulator=_fake_simulator,
+        )
+
+    assert first.value.condition_consumed is True
+    assert first.value.retry_forbidden is True
+    assert calls == []
+    assert (saved_parent / marker.name).is_file()
+    assert (copied_parent / marker.name).is_file()
+
+
 def test_forecast_identity_and_weights_are_checked_before_marker(tmp_path, monkeypatch):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
@@ -930,7 +1143,7 @@ def test_status_receipt_exact_integer_types_and_roster_ids_fail_closed(
     tmp_path, monkeypatch, updates, message
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     _rewrite_status_receipt(receipts, 23, "baseline", updates)
     project_root, marker = _fake_marker_paths(tmp_path)
@@ -964,7 +1177,7 @@ def test_training_summary_exact_types_and_ordered_case_ids_fail_before_marker(
     tmp_path, monkeypatch, mutate, message
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     _write_training_summary(receipts, mutate=mutate)
     project_root, marker = _fake_marker_paths(tmp_path)
@@ -988,22 +1201,24 @@ def test_symlinked_fixed_root_ancestor_is_rejected_before_exclusive_claim(
     tmp_path, monkeypatch
 ):
     training, results, forecasts = _fixture_rosters()
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
-    project_root.mkdir()
-    redirect = tmp_path / "redirected-artifacts"
-    redirect.mkdir()
-    (project_root / "artifacts").symlink_to(redirect, target_is_directory=True)
     calls = _install_fake_gate(monkeypatch, marker, project_root)
+    prepared = _prepare_private_execution_call(
+        monkeypatch, receipts, training, results, forecasts
+    )
+    project_root.mkdir(parents=True, exist_ok=True)
+    artifacts = project_root / "artifacts"
+    redirect = tmp_path / "redirected-artifacts"
+    shutil.copytree(artifacts, redirect)
+    saved_artifacts = tmp_path / "original-artifacts"
+    artifacts.rename(saved_artifacts)
+    artifacts.symlink_to(redirect, target_is_directory=True)
 
-    with pytest.raises(scoring.ABC6ScoringError, match="ancestry.*symlink"):
-        _private_score(
-            monkeypatch,
-            receipts,
-            training,
-            results,
-            forecasts,
+    with pytest.raises(scoring.ABC6ScoringError, match="identity changed"):
+        scoring.score_deferred_abc6_synthetic(
+            *prepared,
             simulator=_fake_simulator,
         )
 
@@ -1025,7 +1240,7 @@ def test_boolean_case_and_particle_ids_are_rejected_before_marker(
 ):
     training, results, forecasts = _fixture_rosters()
     original_results = results
-    receipts = tmp_path / "receipts"
+    receipts = _private_receipt_root(tmp_path)
     _write_receipts(receipts, results)
     project_root, marker = _fake_marker_paths(tmp_path)
     calls = _install_fake_gate(monkeypatch, marker, project_root)

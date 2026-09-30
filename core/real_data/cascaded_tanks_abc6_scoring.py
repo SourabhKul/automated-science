@@ -75,6 +75,7 @@ _REVEAL_MARKER_PATH: Final = (
     / f"{RUN_ID}.claim"
 )
 _WEIGHT_SUM_ABS_TOL: Final = 1.0e-12
+_MAX_HANDOFF_ARTIFACT_BYTES: Final = 128 * 1024 * 1024
 
 _TRUTH_PARAMETERS: Final = {
     "A": ("O2", (0.50, 0.40, 0.50, 0.50, 0.50, 3.0)),
@@ -203,6 +204,32 @@ class ABC6DeferredScoreResult:
     bayes_factors: None = None
 
 
+@dataclass(slots=True)
+class _ABC6RevealMarkerClaim:
+    """Durable claim digest plus the exact parent directory used to create it."""
+
+    marker_sha256: str
+    marker_parent_anchor: cases._DirectoryAnchor | None
+
+    def take_parent_anchor(self) -> cases._DirectoryAnchor:
+        anchor = self.marker_parent_anchor
+        if anchor is None:
+            raise ABC6ScoringError("reveal marker directory anchor was already transferred")
+        self.marker_parent_anchor = None
+        return anchor
+
+    def close(self) -> None:
+        if self.marker_parent_anchor is not None:
+            self.marker_parent_anchor.close()
+            self.marker_parent_anchor = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except (AttributeError, OSError):
+            pass
+
+
 def _canonical_json(value: object) -> bytes:
     return json.dumps(
         value,
@@ -225,7 +252,77 @@ def _is_sha256(value: object) -> bool:
     )
 
 
-def _verified_integrated_source_hashes() -> tuple[tuple[str, str], ...]:
+def _root_anchor_for_identity(
+    receipt_root_identity: object,
+) -> cases._DirectoryAnchor:
+    if not isinstance(receipt_root_identity, campaign_fit.ABC6ReceiptRootIdentity):
+        raise ABC6ScoringError("typed campaign receipt-root identity is required")
+    identity = receipt_root_identity
+    try:
+        identity.verify()
+    except Exception as error:
+        raise ABC6ScoringError(
+            "campaign checkout or receipt-root identity changed"
+        ) from error
+    if identity.receipt_root_relative != campaign_fit.RECEIPT_ROOT_RELATIVE:
+        raise ABC6ScoringError("campaign receipt root differs from the fixed path")
+    root_path = Path(identity.repository_root_realpath)
+    if not root_path.is_absolute() or str(root_path) != identity.repository_root_realpath:
+        raise ABC6ScoringError("campaign checkout root path is not canonical")
+    for configured_root, label in (
+        (campaign_fit._REPO_ROOT, "campaign source root"),
+        (_SOURCE_ROOT, "scorer source root"),
+        (_PROJECT_ROOT, "scorer marker root"),
+        (cases._PROJECT_ROOT, "case source root"),
+    ):
+        if cases._absolute_lexical_path(configured_root) != root_path:
+            raise ABC6ScoringError(f"{label} differs from the typed campaign root")
+    try:
+        descriptor = identity.duplicate_repository_root_fd()
+        anchor = cases._DirectoryAnchor(root_path, descriptor)
+    except Exception as error:
+        if "descriptor" in locals():
+            os.close(descriptor)
+        raise ABC6ScoringError("cannot retain the typed checkout-root descriptor") from error
+    runtime = identity.runtime_identity
+    if (anchor.device, anchor.inode) != (
+        runtime["repository_root_device"],
+        runtime["repository_root_inode"],
+    ):
+        anchor.close()
+        raise ABC6ScoringError("typed checkout-root descriptor identity changed")
+    return anchor
+
+
+def _read_relative_project_file(
+    root_anchor: cases._DirectoryAnchor,
+    relative_path: str,
+    *,
+    label: str,
+) -> bytes:
+    parts = cases._validate_relative_directory_path(
+        relative_path, label=f"{label} path"
+    )
+    parent_path = "/".join(parts[:-1])
+    parent_anchor = cases._open_relative_directory_anchor(
+        root_anchor,
+        parent_path,
+        label=f"{label} parent",
+    )
+    try:
+        return cases._read_regular_file_at(
+            parent_anchor.descriptor,
+            parts[-1],
+            maximum_bytes=128 * 1024 * 1024,
+            label=label,
+        )
+    finally:
+        parent_anchor.close()
+
+
+def _verified_integrated_source_hashes(
+    receipt_root_identity: object,
+) -> tuple[tuple[str, str], ...]:
     """Require the runner, forecast, and scorer in the frozen source contract."""
 
     required_paths = getattr(campaign_fit, "_REQUIRED_SOURCE_PATHS", None)
@@ -240,20 +337,26 @@ def _verified_integrated_source_hashes() -> tuple[tuple[str, str], ...]:
         raise ABC6ScoringError(
             "campaign source contract must allowlist and review runner, forecast, and scorer"
         )
+    root_anchor = _root_anchor_for_identity(receipt_root_identity)
     try:
-        if Path(campaign_fit._REPO_ROOT).resolve() != _SOURCE_ROOT.resolve():
-            raise ABC6ScoringError("campaign and scorer source roots do not match")
-        current = campaign_fit._current_source_hashes()
-    except ABC6ScoringError:
-        raise
+        current = {
+            relative_path: _sha256(
+                _read_relative_project_file(
+                    root_anchor,
+                    relative_path,
+                    label=f"campaign source {relative_path}",
+                )
+            )
+            for relative_path in required_paths
+        }
     except Exception as error:
+        if isinstance(error, ABC6ScoringError):
+            raise
         raise ABC6ScoringError(
-            "cannot verify the integrated campaign source contract"
+            "cannot verify source files through the pinned checkout descriptor"
         ) from error
-    if type(current) is not dict or set(current) != set(required_paths):
-        raise ABC6ScoringError(
-            "campaign current source hashes do not match the exact required path set"
-        )
+    finally:
+        root_anchor.close()
 
     checked: list[tuple[str, str]] = []
     for relative_path in _INTEGRATED_SOURCE_PATHS:
@@ -271,7 +374,9 @@ def _verified_integrated_source_hashes() -> tuple[tuple[str, str], ...]:
     return tuple(checked)
 
 
-def _validate_campaign_execution_identity(execution) -> tuple[Path, tuple[str, ...]]:
+def _validate_campaign_execution_identity(
+    execution,
+) -> tuple[campaign_fit.ABC6ReceiptRootIdentity, Path, tuple[str, ...]]:
     """Check the typed campaign identity and the exact 48 status links."""
 
     campaign_result = execution.campaign_result
@@ -288,10 +393,22 @@ def _validate_campaign_execution_identity(execution) -> tuple[Path, tuple[str, .
         or not _is_sha256(execution.evidence_manifest_sha256)
     ):
         raise ABC6ScoringError("verified campaign execution identity is invalid")
+    identity = getattr(execution, "receipt_root_identity", None)
+    if not isinstance(identity, campaign_fit.ABC6ReceiptRootIdentity):
+        raise ABC6ScoringError("campaign execution has no typed receipt-root identity")
+    try:
+        identity.verify()
+    except Exception as error:
+        raise ABC6ScoringError("campaign receipt-root identity is not live") from error
+    if identity.receipt_root_relative != campaign_fit.RECEIPT_ROOT_RELATIVE:
+        raise ABC6ScoringError("campaign receipt path is not the fixed schema-v2 path")
+    receipt_directory = Path(identity.repository_root_realpath) / identity.receipt_root_relative
     summary_path = campaign_result.summary_path
     if (
         not isinstance(summary_path, Path)
-        or summary_path.name != _TRAINING_SUMMARY_FILENAME
+        or summary_path != receipt_directory / _TRAINING_SUMMARY_FILENAME
+        or execution.evidence_manifest_path
+        != receipt_directory / campaign_fit.EVIDENCE_MANIFEST_FILENAME
         or len(campaign_result.case_statuses) != CASE_COUNT
     ):
         raise ABC6ScoringError("verified campaign summary/status roster is incomplete")
@@ -331,7 +448,7 @@ def _validate_campaign_execution_identity(execution) -> tuple[Path, tuple[str, .
     expected_campaign_status = "complete" if statuses_complete else "incomplete"
     if campaign_result.status != expected_campaign_status:
         raise ABC6ScoringError("campaign overall status disagrees with its 48 cases")
-    return summary_path.parent, tuple(expected_receipt_names)
+    return identity, receipt_directory, tuple(expected_receipt_names)
 
 
 def _expected_forecast_artifact_payload(
@@ -385,7 +502,7 @@ def _verify_frozen_forecast_artifact(
     path: str | os.PathLike[str],
     expected_sha256: str,
     *,
-    receipt_directory: Path,
+    receipt_anchor: cases._DirectoryAnchor,
     campaign_result,
     evidence_manifest_sha256: str,
     source_hashes: tuple[tuple[str, str], ...],
@@ -396,17 +513,20 @@ def _verify_frozen_forecast_artifact(
     if not _is_sha256(expected_sha256):
         raise ABC6ScoringError("forecast artifact digest must be a lowercase SHA-256")
     artifact_path = Path(path)
-    expected_path = receipt_directory / _FORECAST_ARTIFACT_FILENAME
+    expected_path = receipt_anchor.path / _FORECAST_ARTIFACT_FILENAME
     if artifact_path != expected_path:
         raise ABC6ScoringError("forecast artifact must be the fixed campaign artifact")
     try:
-        info = artifact_path.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_size > 128 * 1024 * 1024:
-            raise ABC6ScoringError("forecast artifact must be a bounded regular file")
-        raw = artifact_path.read_bytes()
-    except ABC6ScoringError:
-        raise
-    except OSError as error:
+        cases._verify_directory_anchor_path(
+            receipt_anchor, label="status receipt directory"
+        )
+        raw = cases._read_regular_file_at(
+            receipt_anchor.descriptor,
+            _FORECAST_ARTIFACT_FILENAME,
+            maximum_bytes=_MAX_HANDOFF_ARTIFACT_BYTES,
+            label="target-free forecast artifact",
+        )
+    except cases.ABC6StatusReceiptError as error:
         raise ABC6ScoringError(
             "durable target-free forecast artifact is unreadable"
         ) from error
@@ -422,6 +542,14 @@ def _verify_frozen_forecast_artifact(
         raise ABC6ScoringError(
             "durable forecast artifact does not bind the verified evidence/source/forecast roster"
         )
+    try:
+        cases._verify_directory_anchor_path(
+            receipt_anchor, label="status receipt directory"
+        )
+    except cases.ABC6StatusReceiptError as error:
+        raise ABC6ScoringError(
+            "campaign receipt path changed while verifying the forecast artifact"
+        ) from error
     return expected_sha256
 
 
@@ -680,22 +808,21 @@ def _parse_summary_snapshot(raw: bytes) -> dict[str, object]:
 
 
 def _read_verified_training_summary(
-    receipt_directory: Path,
+    receipt_anchor: cases._DirectoryAnchor,
     receipt_statuses: tuple[tuple[str, str], ...],
     receipt_hashes: tuple[tuple[str, str], ...],
 ) -> str:
-    summary_path = receipt_directory / _TRAINING_SUMMARY_FILENAME
     try:
-        info = summary_path.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_size > 1_000_000:
-            raise ABC6ScoringError("training summary must be a small regular file")
-        raw = summary_path.read_bytes()
-    except OSError as error:
+        raw = cases._read_regular_file_at(
+            receipt_anchor.descriptor,
+            _TRAINING_SUMMARY_FILENAME,
+            maximum_bytes=1_000_000,
+            label="training summary",
+        )
+    except cases.ABC6StatusReceiptError as error:
         raise ABC6ScoringError(
             "durable training summary is missing or unreadable"
         ) from error
-    if len(raw) > 1_000_000:
-        raise ABC6ScoringError("training summary exceeds its size limit")
     decoded = _parse_summary_snapshot(raw)
     expected_keys = {
         "schema_version",
@@ -845,34 +972,95 @@ def _read_verified_training_summary(
     return _sha256(raw)
 
 
-def _read_verified_statuses(receipt_directory: str | os.PathLike[str]):
-    gate = open_deferred_abc6_target_gate(receipt_directory)
-    verified = cases._verify_all_status_receipts(Path(receipt_directory))
-    if verified != gate._verified_receipts:
-        raise ABC6ScoringError("status receipt roster changed while opening the gate")
+def _read_verified_statuses(receipt_source: object):
+    """Read status and summary bytes through one no-follow directory anchor.
+
+    The scoring path passes the typed campaign identity and receives a target
+    gate retaining both checkout and receipt descriptors. The runner's earlier
+    target-free status check may pass only a path; that read-only mode opens a
+    no-follow descriptor and never returns a target capability.
+    """
+
+    gate = None
+    temporary_anchor: cases._DirectoryAnchor | None = None
+    if isinstance(receipt_source, campaign_fit.ABC6ReceiptRootIdentity):
+        gate = open_deferred_abc6_target_gate(receipt_source)
+        receipt_anchor = gate._receipt_anchor
+    else:
+        receipt_path = cases._absolute_lexical_path(receipt_source)
+        if not receipt_path.as_posix().endswith("/" + cases.RECEIPT_ROOT_RELATIVE):
+            raise ABC6ScoringError("status receipt path differs from the fixed run root")
+        temporary_anchor = cases._open_directory_anchor(
+            receipt_path,
+            label="status receipt directory",
+        )
+        receipt_anchor = temporary_anchor
     statuses: list[tuple[str, str]] = []
     hashes: list[tuple[str, str]] = []
-    for case in CASE_ROSTER:
-        components: list[str] = []
-        for component in ("fit", "baseline"):
-            path = (
-                Path(receipt_directory)
-                / f"case-{case.case_index:02d}.{component}-status.json"
+    try:
+        if gate is not None:
+            _verify_gate_anchors(gate)
+        else:
+            cases._verify_directory_anchor_path(
+                receipt_anchor, label="status receipt directory"
             )
-            status, digest = cases._read_and_validate_status_receipt(
-                path, case_index=case.case_index, component=component
+        verified = cases._verify_all_status_receipts_at(receipt_anchor.descriptor)
+        for case in CASE_ROSTER:
+            components: list[str] = []
+            for component in ("fit", "baseline"):
+                filename = f"case-{case.case_index:02d}.{component}-status.json"
+                raw = cases._read_regular_file_at(
+                    receipt_anchor.descriptor,
+                    filename,
+                    maximum_bytes=cases._MAX_STATUS_RECEIPT_BYTES,
+                    label="status receipt",
+                )
+                status, digest = cases._validate_status_receipt_bytes(
+                    raw,
+                    filename,
+                    case_index=case.case_index,
+                    component=component,
+                )
+                components.append(status)
+                hashes.append((filename, digest))
+            statuses.append((components[0], components[1]))
+        if tuple(hashes) != verified:
+            raise ABC6ScoringError("status receipts changed during scoring preflight")
+        if gate is not None and tuple(hashes) != gate._verified_receipts:
+            raise ABC6ScoringError("status receipt roster changed while opening the gate")
+        status_tuple = tuple(statuses)
+        hash_tuple = tuple(hashes)
+        summary_hash = _read_verified_training_summary(
+            receipt_anchor, status_tuple, hash_tuple
+        )
+        if gate is not None:
+            _verify_gate_anchors(gate)
+        else:
+            cases._verify_directory_anchor_path(
+                receipt_anchor, label="status receipt directory"
             )
-            components.append(status)
-            hashes.append((path.name, digest))
-        statuses.append((components[0], components[1]))
-    if tuple(hashes) != gate._verified_receipts:
-        raise ABC6ScoringError("status receipts changed during scoring preflight")
-    status_tuple = tuple(statuses)
-    hash_tuple = tuple(hashes)
-    summary_hash = _read_verified_training_summary(
-        Path(receipt_directory), status_tuple, hash_tuple
-    )
-    return gate, status_tuple, hash_tuple, summary_hash
+        return gate, status_tuple, hash_tuple, summary_hash
+    finally:
+        if temporary_anchor is not None:
+            temporary_anchor.close()
+
+
+def _verify_gate_anchors(gate: cases.DeferredABC6TargetGate) -> None:
+    if not isinstance(gate, cases.DeferredABC6TargetGate):
+        raise ABC6ScoringError("scoring requires the typed campaign status gate")
+    try:
+        cases._verify_directory_anchor_path(
+            gate._root_anchor, label="campaign checkout root"
+        )
+        cases._verify_directory_anchor_path(
+            gate._receipt_anchor, label="status receipt directory"
+        )
+    except cases.ABC6StatusReceiptError as error:
+        raise ABC6ScoringError("campaign directory identity changed") from error
+    if gate._receipt_anchor.path != (
+        gate._root_anchor.path / cases.RECEIPT_ROOT_RELATIVE
+    ):
+        raise ABC6ScoringError("campaign receipt gate is bound to another checkout root")
 
 
 def _validated_forecast(
@@ -1047,65 +1235,49 @@ def _validated_forecast(
             )
 
 
-def _prepare_marker_parent(marker_path: Path, project_root: Path) -> int:
-    """Create and open each marker ancestor relative to a pinned root fd."""
+def _prepare_marker_parent(
+    marker_path: Path,
+    root_anchor: cases._DirectoryAnchor,
+) -> cases._DirectoryAnchor:
+    """Create the fixed claims parent relative to the campaign root FD."""
 
-    root = project_root.absolute()
-    marker_path = marker_path.absolute()
-    try:
-        relative_parent = marker_path.parent.relative_to(root)
-    except ValueError as error:
+    marker_path = cases._absolute_lexical_path(marker_path)
+    expected_marker = cases._fixed_reveal_marker_path(root_anchor)
+    if marker_path != expected_marker:
         raise ABC6ScoringError(
-            "reveal marker path must stay under the fixed project root"
+            "reveal marker path differs from the typed campaign checkout root"
+        )
+    try:
+        cases._verify_directory_anchor_path(
+            root_anchor, label="campaign checkout root"
+        )
+        parent_anchor = cases._open_relative_directory_anchor(
+            root_anchor,
+            "artifacts/evaluations/cascaded_tanks_abc6_scoring/claims",
+            label="reveal marker parent",
+            create=True,
+        )
+        cases._verify_directory_anchor_path(
+            parent_anchor, label="reveal marker parent"
+        )
+        return parent_anchor
+    except cases.ABC6StatusReceiptError as error:
+        raise ABC6ScoringError(
+            "reveal marker ancestry is missing or contains a symlink"
         ) from error
-    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    try:
-        current_fd = os.open(root, directory_flags)
-    except OSError as error:
-        raise ABC6ScoringError("fixed project root must be a real directory") from error
-    try:
-        for component in relative_parent.parts:
-            try:
-                next_fd = os.open(component, directory_flags, dir_fd=current_fd)
-            except FileNotFoundError:
-                try:
-                    os.mkdir(component, mode=0o700, dir_fd=current_fd)
-                    os.fsync(current_fd)
-                except FileExistsError:
-                    # Another creator won the race; the no-follow open below
-                    # still verifies the created entry without traversing links.
-                    pass
-                except OSError as error:
-                    raise ABC6ScoringError(
-                        "could not prepare a real reveal marker directory"
-                    ) from error
-                try:
-                    next_fd = os.open(component, directory_flags, dir_fd=current_fd)
-                except OSError as error:
-                    raise ABC6ScoringError(
-                        "reveal marker ancestry cannot contain a symlink or file"
-                    ) from error
-            except OSError as error:
-                raise ABC6ScoringError(
-                    "reveal marker ancestry cannot contain a symlink or file"
-                ) from error
-            os.close(current_fd)
-            current_fd = next_fd
-        return current_fd
-    except BaseException:
-        os.close(current_fd)
-        raise
 
 
 def _claim_reveal_marker(
     marker_path: Path,
     marker_payload: Mapping[str, object],
     *,
-    project_root: Path,
-) -> str:
-    marker_path = marker_path.absolute()
-    parent_fd = _prepare_marker_parent(marker_path, project_root)
+    root_anchor: cases._DirectoryAnchor,
+) -> _ABC6RevealMarkerClaim:
+    marker_path = cases._absolute_lexical_path(marker_path)
+    parent_anchor = _prepare_marker_parent(marker_path, root_anchor)
+    parent_fd = parent_anchor.descriptor
     payload = _canonical_json(dict(marker_payload))
+    transferred = False
     try:
         try:
             descriptor = os.open(
@@ -1145,22 +1317,13 @@ def _claim_reveal_marker(
                 "reveal marker directory durability is uncertain"
             ) from error
         try:
-            read_descriptor = os.open(
+            recorded_bytes = cases._read_regular_file_at(
+                parent_fd,
                 marker_path.name,
-                os.O_RDONLY | os.O_NOFOLLOW,
-                dir_fd=parent_fd,
+                maximum_bytes=cases._MAX_REVEAL_MARKER_BYTES,
+                label="fixed scoring reveal marker",
             )
-            try:
-                chunks: list[bytes] = []
-                while True:
-                    chunk = os.read(read_descriptor, 65536)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-                recorded_bytes = b"".join(chunks)
-            finally:
-                os.close(read_descriptor)
-        except OSError as error:
+        except cases.ABC6StatusReceiptError as error:
             raise ABC6ScoringError(
                 "could not read back the durable reveal marker"
             ) from error
@@ -1168,9 +1331,30 @@ def _claim_reveal_marker(
             raise ABC6ScoringError(
                 "durable reveal marker bytes differ from the claim payload"
             )
-        return _sha256(recorded_bytes)
+        marker_anchor: cases._DirectoryAnchor | None = None
+        try:
+            marker_anchor = parent_anchor
+            cases._verify_directory_anchor_path(
+                marker_anchor, label="reveal marker parent"
+            )
+            cases._verify_directory_anchor_path(
+                root_anchor, label="campaign checkout root"
+            )
+        except Exception as error:
+            if marker_anchor is not None:
+                marker_anchor.close()
+            raise ABC6ScoringError(
+                "durable reveal marker path identity changed; retry forbidden"
+            ) from error
+        claim = _ABC6RevealMarkerClaim(
+            _sha256(recorded_bytes),
+            marker_anchor,
+        )
+        transferred = True
+        return claim
     finally:
-        os.close(parent_fd)
+        if not transferred:
+            parent_anchor.close()
 
 
 def _rmse(prediction: Sequence[float], target: Sequence[float]) -> float:
@@ -1567,7 +1751,9 @@ def score_deferred_abc6_synthetic(
     # The campaign manifest must freeze all three integrated sources before a
     # reveal attempt. The current campaign allowlist omits them, so production
     # scoring remains closed until its independent manifest review is updated.
-    source_hashes = _verified_integrated_source_hashes()
+    source_hashes = _verified_integrated_source_hashes(
+        execution.receipt_root_identity
+    )
     try:
         verified = execution.load_verified_training_evidence()
     except Exception as error:
@@ -1583,15 +1769,17 @@ def score_deferred_abc6_synthetic(
             "verified training results must contain exactly 24 cases"
         )
     data = _validate_training_bundle(training)
-    receipt_directory, expected_receipt_names = _validate_campaign_execution_identity(
-        execution
+    receipt_root_identity, receipt_directory, expected_receipt_names = (
+        _validate_campaign_execution_identity(execution)
     )
 
     # The case gate is opened only after every status receipt is durable and
     # verified.  No prospective simulator is called by this preflight.
     gate, receipt_statuses, receipt_hashes, summary_sha256 = _read_verified_statuses(
-        receipt_directory
+        receipt_root_identity
     )
+    if gate is None:
+        raise ABC6ScoringError("typed scoring call did not open its target gate")
     campaign_result = execution.campaign_result
     expected_receipt_hashes: list[tuple[str, str]] = []
     for status in campaign_result.case_statuses:
@@ -1660,7 +1848,7 @@ def score_deferred_abc6_synthetic(
     _verify_frozen_forecast_artifact(
         forecast_artifact_path,
         forecast_artifact_sha256,
-        receipt_directory=receipt_directory,
+        receipt_anchor=gate._receipt_anchor,
         campaign_result=campaign_result,
         evidence_manifest_sha256=execution.evidence_manifest_sha256,
         source_hashes=source_hashes,
@@ -1695,15 +1883,26 @@ def score_deferred_abc6_synthetic(
         "training_summary_sha256": summary_sha256,
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    marker_sha256 = _claim_reveal_marker(
+    reveal_claim = _claim_reveal_marker(
         _REVEAL_MARKER_PATH,
         marker_payload,
-        project_root=_PROJECT_ROOT,
+        root_anchor=gate._root_anchor,
     )
+    marker_sha256 = reveal_claim.marker_sha256
 
     try:
-        # The fixed marker is durable before this first prospective-target call.
-        targets = gate.generate_targets(training, simulator=simulator)
+        # Only the scoring owner can issue the gate capability, and it does so
+        # after the fixed marker is durably claimed and read back.
+        scoring_handoff = cases._issue_scoring_target_handoff(
+            gate,
+            marker_sha256,
+            marker_anchor=reveal_claim.take_parent_anchor(),
+        )
+        targets = gate.generate_targets(
+            training,
+            simulator=simulator,
+            _scoring_handoff=scoring_handoff,
+        )
         target_vectors, target_hashes = _target_vectors_and_hashes(targets)
         # Target hashes are fixed above before any metric is evaluated.
         scores = tuple(
@@ -1744,6 +1943,8 @@ def score_deferred_abc6_synthetic(
             f"deferred synthetic scoring failed after target reveal: {type(error).__name__}",
             marker_sha256=marker_sha256,
         ) from error
+    finally:
+        reveal_claim.close()
 
 
 __all__ = (
