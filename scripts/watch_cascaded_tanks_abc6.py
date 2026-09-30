@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import psutil
+from core.real_data import cascaded_tanks_abc6_authority as launch_authority
 
 PROTOCOL_ID = "cascaded_tanks_abc6_synthetic_v1_20260928"
 RUN_ID = "ct-abc6-20260928-v1"
@@ -45,6 +46,8 @@ SAMPLE_INTERVAL_SECONDS = 0.25
 TERMINATE_GRACE_SECONDS = 2.0
 KILL_REAP_GRACE_SECONDS = 3.0
 DIRECT_CHILD_REAP_GRACE_SECONDS = 0.05
+GRANT_RUNTIME_STABILITY_SAMPLES = 2
+GRANT_RUNTIME_ATTESTATION_TIMEOUT_SECONDS = 2.0
 
 # Keep the declared executable alias distinct from the process image observed
 # through psutil.  macOS may report the Python.app image for the watchdog even
@@ -103,6 +106,20 @@ _INTEGRATED_SOURCE_PATHS = (
     "scripts/run_cascaded_tanks_abc6_synthetic.py",
     "core/real_data/cascaded_tanks_abc6_forecast.py",
     "core/real_data/cascaded_tanks_abc6_scoring.py",
+)
+_GRANT_FD_ENV = "ABC6_GRANT_FD"
+_GRANT_BOOTSTRAP_SOURCE_PATHS = frozenset(
+    {
+        "scripts/watch_cascaded_tanks_abc6.py",
+        "scripts/run_cascaded_tanks_abc6_synthetic.py",
+        "core/real_data/cascaded_tanks_abc6_authority.py",
+        "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
+        "core/real_data/cascaded_tanks_abc6_cases.py",
+        "core/real_data/cascaded_tanks_abc6_forecast.py",
+        "core/real_data/cascaded_tanks_abc6_scoring.py",
+        "core/real_data/cascaded_tanks_abc6_replay.py",
+        "core/abc_smc_reference.py",
+    }
 )
 _EXPECTED_UNUSED_LEAVES = {
     _CAMPAIGN_CLAIM_PARENT_RELATIVE: (
@@ -1893,6 +1910,70 @@ def _observed_argv_matches(
     )
 
 
+def _validated_grant_source_hashes(
+    run_identity: Mapping[str, object],
+) -> tuple[tuple[str, str], ...]:
+    """Require the reviewed source set before the durable watchdog claim."""
+
+    raw = run_identity.get("source_hashes")
+    if not isinstance(raw, Mapping) or not raw:
+        raise WatchdogError("launch grant source map is absent before claim")
+    if not _GRANT_BOOTSTRAP_SOURCE_PATHS <= set(raw):
+        missing = sorted(_GRANT_BOOTSTRAP_SOURCE_PATHS - set(raw))
+        raise WatchdogError(
+            "launch grant source pins remain closed before claim; missing reviewed "
+            "bootstrap sources: " + ", ".join(missing)
+        )
+    checked: list[tuple[str, str]] = []
+    for path, digest in raw.items():
+        if (
+            type(path) is not str
+            or not path
+            or path.startswith("/")
+            or "\\" in path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+            or not _is_sha256(digest)
+        ):
+            raise WatchdogError("launch grant source map contains an invalid pin")
+        checked.append((path, digest))
+    checked.sort()
+    return tuple(checked)
+
+
+def _validate_launch_grant_identity(
+    run_identity: Mapping[str, object],
+) -> tuple[tuple[str, str], ...]:
+    source_hashes = _validated_grant_source_hashes(run_identity)
+    for field_name in (
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "approval_record_sha256",
+        "review_sha256",
+        "reviewed_git_head",
+        "repository_root_realpath",
+        "receipt_root_relative",
+    ):
+        value = run_identity.get(field_name)
+        if type(value) is not str or not value:
+            raise WatchdogError(
+                f"launch grant identity field is absent before claim: {field_name}"
+            )
+    for field_name in (
+        "manifest_sha256",
+        "approval_record_sha256",
+        "review_sha256",
+    ):
+        if not _is_sha256(run_identity.get(field_name)):
+            raise WatchdogError(
+                f"launch grant identity digest is invalid before claim: {field_name}"
+            )
+    head = run_identity.get("reviewed_git_head")
+    if type(head) is not str or len(head) != 40 or any(c not in "0123456789abcdef" for c in head):
+        raise WatchdogError("launch grant reviewed HEAD is invalid before claim")
+    return source_hashes
+
+
 def _supervise_command(
     *,
     launch_vector: Sequence[str],
@@ -1903,6 +1984,7 @@ def _supervise_command(
     run_identity: dict[str, object],
     claim_project_root: Path | None = None,
     preflight_anchors: _PreflightAnchors | None = None,
+    require_launch_grant: bool = False,
     wall_limit_seconds: float = WALL_LIMIT_SECONDS,
     rss_limit_bytes: int = RSS_LIMIT_BYTES,
     sample_interval_seconds: float = SAMPLE_INTERVAL_SECONDS,
@@ -1915,6 +1997,11 @@ def _supervise_command(
         raise WatchdogError("child launch vector must begin with an absolute executable")
     if wall_limit_seconds <= 0 or rss_limit_bytes <= 0 or sample_interval_seconds <= 0:
         raise WatchdogError("watchdog budgets must be positive")
+    grant_source_hashes = (
+        _validate_launch_grant_identity(run_identity)
+        if require_launch_grant
+        else None
+    )
     if claim_project_root is not None:
         run_id = run_identity.get("run_id")
         if type(run_id) is not str:
@@ -2009,22 +2096,41 @@ def _supervise_command(
         "watchdog_attestation": run_identity.get("watchdog_attestation"),
         "claim_semantics": "consumed_once_no_resume",
     }
-    if preflight_anchors is not None:
-        # Revalidate the independent report and every other preflight pin as
-        # the final check before consuming the one-use watchdog claim.
-        preflight_anchors.verify(require_unused=True)
-    claim_sha256 = _claim_once(
-        claim_path,
-        claim,
-        project_root=claim_project_root,
-        claim_directory_fd=claim_directory_fd,
-    )
-
     child_env = os.environ.copy()
     child_env.pop("PYTHONPATH", None)
     child_env.pop("PYTHONHOME", None)
     child_env.pop("PYTHONSTARTUP", None)
+    child_env.pop(_GRANT_FD_ENV, None)
     child_env["PYTHONNOUSERSITE"] = "0"
+    grant_channel = None
+    grant_fd = None
+    if require_launch_grant:
+        try:
+            grant_channel = launch_authority._new_watchdog_grant_channel()
+            grant_fd = grant_channel.child_fd
+            child_env[_GRANT_FD_ENV] = str(grant_fd)
+        except Exception as error:
+            if grant_channel is not None:
+                grant_channel.close()
+            raise WatchdogError(
+                "could not prepare anonymous grant channel before claim"
+            ) from error
+    try:
+        if preflight_anchors is not None:
+            # Revalidate the independent report and every other preflight pin
+            # as the final check before consuming the one-use watchdog claim.
+            preflight_anchors.verify(require_unused=True)
+        claim_sha256 = _claim_once(
+            claim_path,
+            claim,
+            project_root=claim_project_root,
+            claim_directory_fd=claim_directory_fd,
+        )
+    except BaseException:
+        if grant_channel is not None:
+            grant_channel.close()
+        raise
+    grant_sha256: str | None = None
 
     timer_started_utc = _utc_now()
     timer_started = time.monotonic()
@@ -2047,24 +2153,35 @@ def _supervise_command(
     kill_reap: dict[str, object] | None = None
     observed_child_attestation: dict[str, object] | None = None
     child_image_observations: list[dict[str, object]] = []
+    grant_runtime_key: tuple[object, ...] | None = None
+    grant_runtime_stable_samples = 0
+    grant_attestation_timeout = False
     max_gap = 0.0
     membership_uncertain = False
     monitor_error: str | None = None
     try:
-        child = subprocess.Popen(
-            list(launch_vector),
-            cwd=_REPO_ROOT,
-            env=child_env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        try:
+            child = subprocess.Popen(
+                list(launch_vector),
+                cwd=_REPO_ROOT,
+                env=child_env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                pass_fds=() if grant_fd is None else (grant_fd,),
+            )
+        finally:
+            if grant_channel is not None:
+                grant_channel.close_child_copy()
         # start_new_session=True makes the direct child the leader of a fresh
         # process group.  Group membership remains discoverable after the
         # leader exits, unlike a parent/child walk.
         process_group_id = child.pid
         root = psutil.Process(child.pid)
+        grant_attestation_deadline = time.monotonic() + min(
+            GRANT_RUNTIME_ATTESTATION_TIMEOUT_SECONDS, wall_limit_seconds
+        )
         while True:
             sampled_at = time.monotonic()
             elapsed = sampled_at - timer_started
@@ -2116,6 +2233,112 @@ def _supervise_command(
                         "verified_image_role": image_phase,
                         "observed_at_utc": timestamp,
                     }
+                if grant_channel is not None and grant_sha256 is None:
+                    child_identity = launch_authority._capture(child.pid)
+                    if (
+                        child_identity.pid != child.pid
+                        or tuple(live_argv) != child_identity.vector
+                        or child_identity.vector[1:] != tuple(launch_vector[1:])
+                        or not _observed_argv_matches(
+                            child_identity.vector, launch_vector, observed
+                        )
+                    ):
+                        raise WatchdogError(
+                            "child authority vector differs from the approved launch vector"
+                        )
+                    runtime_path = launch_authority._vector_image_path(
+                        child_identity.vector
+                    )
+                    runtime_ready = (
+                        image_phase == "observed_python_app_image"
+                        and child_identity.image_path == str(observed)
+                        and child_identity.image_sha256 == observed_executable_sha256
+                        and runtime_path == child_identity.image_path
+                    )
+                    if not runtime_ready:
+                        grant_runtime_key = None
+                        grant_runtime_stable_samples = 0
+                        if time.monotonic() >= grant_attestation_deadline:
+                            grant_attestation_timeout = True
+                            raise WatchdogError(
+                                "child did not reach the stable Python.app runtime identity before the grant deadline"
+                            )
+                    else:
+                        identity_key = (
+                            child_identity.pid,
+                            child_identity.start,
+                            child_identity.vector,
+                            child_identity.image_path,
+                            child_identity.image_sha256,
+                            child_identity.image_id,
+                        )
+                        if identity_key == grant_runtime_key:
+                            grant_runtime_stable_samples += 1
+                        else:
+                            grant_runtime_key = identity_key
+                            grant_runtime_stable_samples = 1
+                        if grant_runtime_stable_samples >= GRANT_RUNTIME_STABILITY_SAMPLES:
+                            child_launch_path = str(resolved)
+                            child_launch_sha256 = _sha256_file(executable)
+                            runtime_hashes = tuple(
+                                sorted(
+                                    (
+                                        ("child_image_sha256", child_identity.image_sha256),
+                                        ("child_launch_image_sha256", child_launch_sha256),
+                                        (
+                                            "python_version_sha256",
+                                            hashlib.sha256(sys.version.encode()).hexdigest(),
+                                        ),
+                                    )
+                                )
+                            )
+                            run_id = str(run_identity["run_id"])
+                            bindings = launch_authority.ABC6AuthorityBindings(
+                                protocol_id=str(run_identity["protocol_id"]),
+                                run_id=run_id,
+                                manifest_sha256=str(run_identity["manifest_sha256"]),
+                                approval_sha256=str(run_identity["approval_record_sha256"]),
+                                review_sha256=str(run_identity["review_sha256"]),
+                                physical_root=str(run_identity["repository_root_realpath"]),
+                                receipt_root_relative=str(run_identity["receipt_root_relative"]),
+                                root_device=int(run_identity["repository_root_device"]),
+                                root_inode=int(run_identity["repository_root_inode"]),
+                                receipt_device=int(run_identity["receipt_root_device"]),
+                                receipt_inode=int(run_identity["receipt_root_inode"]),
+                                reviewed_git_head=str(run_identity["reviewed_git_head"]),
+                                watchdog_claim_sha256=claim_sha256,
+                                watchdog_pid=os.getpid(),
+                                watchdog_start=launch_authority._process_start(os.getpid()),
+                                child_pid=child_identity.pid,
+                                child_start=child_identity.start,
+                                child_vector=child_identity.vector,
+                                child_launch_image_path=child_launch_path,
+                                child_launch_image_sha256=child_launch_sha256,
+                                child_image_path=child_identity.image_path,
+                                child_image_sha256=child_identity.image_sha256,
+                                source_hashes=grant_source_hashes or (),
+                                runtime_hashes=runtime_hashes,
+                                campaign_claim_relative=(
+                                    "artifacts/evaluations/cascaded_tanks_abc6_campaign_fit/"
+                                    f"claims/{run_id}.claim"
+                                ),
+                                runner_source_path="scripts/run_cascaded_tanks_abc6_synthetic.py",
+                                runner_function="run_cascaded_tanks_abc6_synthetic",
+                                campaign_source_path=(
+                                    "core/real_data/cascaded_tanks_abc6_campaign_fit.py"
+                                ),
+                                campaign_function="run_abc6_training_campaign_with_evidence",
+                                case_source_path="core/real_data/cascaded_tanks_abc6_cases.py",
+                                case_function="get_training_case_data",
+                                scorer_source_path="core/real_data/cascaded_tanks_abc6_scoring.py",
+                                scorer_function="score_deferred_abc6_synthetic",
+                            )
+                            grant_sha256 = grant_channel.publish(bindings)
+                        elif time.monotonic() >= grant_attestation_deadline:
+                            grant_attestation_timeout = True
+                            raise WatchdogError(
+                                "child runtime identity did not stabilize before the grant deadline"
+                            )
             except psutil.NoSuchProcess:
                 # The direct child completed between loop iterations.
                 pass
@@ -2188,7 +2411,9 @@ def _supervise_command(
                 monitor_error = f"{type(clock_error).__name__}: {clock_error}"
         monitor_error = f"{type(error).__name__}: {error}"
     except Exception as error:  # noqa: BLE001 - persist terminal state after any monitor error.
-        if isinstance(error, WatchdogError):
+        if grant_attestation_timeout:
+            stop_reason = "child_runtime_attestation_timeout"
+        elif isinstance(error, WatchdogError):
             stop_reason = "watchdog_identity_or_monitoring_error"
         else:
             stop_reason = "watchdog_monitoring_error"
@@ -2307,6 +2532,17 @@ def _supervise_command(
         "scorer_claim_parent_inode": run_identity.get("scorer_claim_parent_inode"),
         "watchdog_claim_path": str(claim_path),
         "watchdog_claim_sha256": claim_sha256,
+        "bootstrap_grant": (
+            None
+            if grant_channel is None
+            else {
+                "transport": "inherited-anonymous-unix-stream-socket",
+                "environment_locator": _GRANT_FD_ENV,
+                "descriptor_fd": grant_fd,
+                "grant_sha256": grant_sha256,
+                "digest_receipt_leaf": launch_authority.GRANT_RECORD,
+            }
+        ),
         "status": terminal_status,
         "stop_reason": stop_reason,
         "monitor_error": locals().get("monitor_error"),
@@ -2496,6 +2732,8 @@ def _supervise_command(
     finally:
         if fit_gate_snapshot is not None:
             fit_gate_snapshot.close()
+        if grant_channel is not None:
+            grant_channel.close()
         if temporary_terminal_fd is not None:
             os.close(temporary_terminal_fd)
 
@@ -3798,7 +4036,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
             "run_id": manifest["run_id"],
             "manifest_sha256": manifest_sha256,
             "approval_record_sha256": args.approval_record_sha256,
+            "review_sha256": approval["review_report_sha256"],
             "reviewed_git_head": approval["reviewed_git_head"],
+            "source_hashes": manifest.get("source_hashes"),
             "repository_root_realpath": str(anchors.root_path),
             "receipt_root_relative": _RECEIPT_ROOT_RELATIVE,
             "repository_root_device": runtime_identity[0],
@@ -3822,6 +4062,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             run_identity=identity,
             claim_project_root=_REPO_ROOT,
             preflight_anchors=anchors,
+            require_launch_grant=True,
         )
         print(
             json.dumps(

@@ -69,6 +69,16 @@ def _install_fake_source_pins(
 
 def _private_runner_fixture(tmp_path: Path, monkeypatch):
     _private_identity(monkeypatch)
+    # These legacy orchestration tests exercise downstream fake campaign
+    # behavior. The launch bootstrap is covered separately with a real sealed
+    # anonymous-FD grant. The injected object is paired with a no-op startup
+    # consumer only inside these downstream-only fake tests.
+    test_authority = object.__new__(runner.authority_module.ABC6LaunchAuthority)
+    monkeypatch.setattr(
+        runner.authority_module.ABC6LaunchAuthority,
+        "consume_runner_startup",
+        lambda self: None,
+    )
     source_hashes = _install_fake_source_pins(tmp_path, monkeypatch)
     root = runner._REPO_ROOT
     receipts = root / campaign_fit.RECEIPT_ROOT_RELATIVE
@@ -100,6 +110,7 @@ def _private_runner_fixture(tmp_path: Path, monkeypatch):
         claim_registry,
         marker,
         source_hashes,
+        test_authority,
     )
 
 
@@ -160,7 +171,7 @@ def test_current_campaign_source_pins_block_before_training_claim(
     receipts = (
         tmp_path.resolve() / campaign_fit.RECEIPT_ROOT_RELATIVE
     )
-    with pytest.raises(runner.ABC6SyntheticRunnerPreflightError, match="source pin"):
+    with pytest.raises(runner.ABC6SyntheticRunnerPreflightError, match="direct runner/API"):
         runner.run_cascaded_tanks_abc6_synthetic(
             tmp_path / "private-manifest.json",
             "d" * 64,
@@ -183,6 +194,7 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
         claim_registry,
         marker,
         source_hashes,
+        test_authority,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     events = []
     campaign_calls = []
@@ -313,6 +325,7 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
             manifest,
             manifest_sha256,
             receipts,
+            launch_authority=test_authority,
         )
 
     assert raised.value.condition_consumed is True
@@ -369,6 +382,7 @@ def test_preopen_artifacts_symlink_fails_before_claim_marker_or_materializer(
         claim_registry,
         marker,
         _source_hashes,
+        test_authority,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     copied_artifacts = tmp_path.resolve() / "copied-artifacts"
     copied_artifacts.mkdir()
@@ -399,7 +413,10 @@ def test_preopen_artifacts_symlink_fails_before_claim_marker_or_materializer(
         campaign_fit.ABC6CampaignPreflightError, match="symlinked path component"
     ):
         runner.run_cascaded_tanks_abc6_synthetic(
-            manifest, manifest_sha256, receipts
+            manifest,
+            manifest_sha256,
+            receipts,
+            launch_authority=test_authority,
         )
 
     assert len(campaign_calls) == 1
@@ -421,6 +438,7 @@ def test_postopen_artifacts_swap_cannot_redirect_forecast_readback_or_reveal(
         claim_registry,
         marker,
         _source_hashes,
+        test_authority,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     campaign_calls = []
 
@@ -471,7 +489,10 @@ def test_postopen_artifacts_swap_cannot_redirect_forecast_readback_or_reveal(
         match="pinned receipt root",
     ):
         runner.run_cascaded_tanks_abc6_synthetic(
-            manifest, manifest_sha256, receipts
+            manifest,
+            manifest_sha256,
+            receipts,
+            launch_authority=test_authority,
         )
 
     saved_receipt_root = saved_artifacts / Path(
@@ -503,6 +524,7 @@ def test_missing_incomplete_case_receipt_fails_before_scorer_or_materializer(
         claim_registry,
         marker,
         _source_hashes,
+        test_authority,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     campaign_calls = []
 
@@ -534,7 +556,10 @@ def test_missing_incomplete_case_receipt_fails_before_scorer_or_materializer(
 
     with pytest.raises(ValueError, match="receipt|training evidence"):
         runner.run_cascaded_tanks_abc6_synthetic(
-            manifest, manifest_sha256, receipts
+            manifest,
+            manifest_sha256,
+            receipts,
+            launch_authority=test_authority,
         )
 
     assert len(campaign_calls) == 1

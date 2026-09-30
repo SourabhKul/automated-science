@@ -273,13 +273,20 @@ def _capture_stable_child(pid: int, timeout: float = 3.0) -> authority.ProcessId
     raise authority.ABC6AuthorityError("child process identity did not stabilize before fake grant")
 
 
-def _wire(bindings: authority.ABC6AuthorityBindings, *, secret: str = "b" * 64) -> bytes:
-    now = time.monotonic_ns()
+def _wire(
+    bindings: authority.ABC6AuthorityBindings,
+    *,
+    grant_fd: int,
+    secret: str = "b" * 64,
+    age_ns: int = 0,
+) -> bytes:
+    issued = time.monotonic_ns() - age_ns
     value = {
         "schema_version": 1,
-        "issued_monotonic_ns": now,
-        "expires_monotonic_ns": now + authority.GRANT_TTL_NS,
+        "issued_monotonic_ns": issued,
+        "expires_monotonic_ns": issued + authority.GRANT_TTL_NS,
         "secret_hex": secret,
+        "grant_fd": grant_fd,
         "bindings": bindings.payload(),
     }
     raw = authority._json(value)
@@ -370,7 +377,7 @@ def test_launch_and_runtime_image_bindings_are_checked_independently(tmp_path):
     def reject_frame(candidate, message):
         left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            right.sendall(_wire(candidate))
+            right.sendall(_wire(candidate, grant_fd=left.fileno()))
             right.shutdown(socket.SHUT_WR)
             with pytest.raises(authority.ABC6AuthorityError, match=message):
                 authority.receive_child_grant(left.fileno())
@@ -419,7 +426,7 @@ def test_distinct_fake_launcher_alias_and_child_runtime_images_are_not_collapsed
     )
     left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        right.sendall(_wire(split))
+        right.sendall(_wire(split, grant_fd=left.fileno()))
         right.shutdown(socket.SHUT_WR)
         # The distinct fake launch alias and child-observed runtime image both
         # pass their own checks; this fake root has no one-use grant receipt
@@ -477,7 +484,7 @@ def test_truncated_delayed_and_wrong_child_frames_fail_closed(tmp_path, monkeypa
 
     monkeypatch.setattr(authority, "GRANT_WAIT_NS", 5_000_000_000)
     left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-    right.sendall(_wire(wrong_child))
+    right.sendall(_wire(wrong_child, grant_fd=left.fileno()))
     right.shutdown(socket.SHUT_WR)
     with pytest.raises(authority.ABC6AuthorityError, match="another child PID"):
         authority.receive_child_grant(left.fileno())
@@ -520,7 +527,7 @@ def test_root_identity_mismatch_and_extra_frame_bytes_are_rejected(tmp_path):
     identity = authority._capture(os.getpid())
     binding = _bindings(root, receipt_relative, identity, root_device=root.stat().st_dev + 1)
     left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-    wire = _wire(binding)
+    wire = _wire(binding, grant_fd=left.fileno())
     right.sendall(wire)
     right.shutdown(socket.SHUT_WR)
     with pytest.raises(authority.ABC6AuthorityError, match="physical root"):
@@ -528,9 +535,61 @@ def test_root_identity_mismatch_and_extra_frame_bytes_are_rejected(tmp_path):
     left.close(); right.close()
 
     left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-    wire = _wire(_bindings(root, receipt_relative, identity))
+    wire = _wire(_bindings(root, receipt_relative, identity), grant_fd=left.fileno())
     right.sendall(wire + wire)
     right.shutdown(socket.SHUT_WR)
     with pytest.raises(authority.ABC6AuthorityError, match="trailing data"):
         authority.receive_child_grant(left.fileno())
     left.close(); right.close()
+
+
+def test_grant_frame_is_bound_to_the_selected_descriptor(tmp_path):
+    root, receipt_relative, _ = _make_fake_root(tmp_path, b"fake only")
+    identity = authority._capture(os.getpid())
+    binding = _bindings(root, receipt_relative, identity)
+    left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        wrong_fd = left.fileno() + 1
+        right.sendall(_wire(binding, grant_fd=wrong_fd))
+        right.shutdown(socket.SHUT_WR)
+        with pytest.raises(authority.ABC6AuthorityError, match="different inherited FD"):
+            authority.receive_child_grant(left.fileno())
+    finally:
+        left.close(); right.close()
+
+
+def test_wrong_peer_vector_and_expired_grants_fail_before_authority(tmp_path):
+    root, receipt_relative, _ = _make_fake_root(tmp_path, b"fake only")
+    identity = authority._capture(os.getpid())
+
+    probes = (
+        (
+            replace(_bindings(root, receipt_relative, identity), watchdog_pid=os.getpid() + 1),
+            0,
+            "peer does not match watchdog PID",
+        ),
+        (
+            _bindings(
+                root,
+                receipt_relative,
+                identity,
+                vector=identity.vector + ("private-spoof",),
+            ),
+            0,
+            "live child process differs",
+        ),
+        (
+            _bindings(root, receipt_relative, identity),
+            authority.GRANT_TTL_NS + 1,
+            "expired or has an invalid issue time",
+        ),
+    )
+    for candidate, age_ns, message in probes:
+        left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            right.sendall(_wire(candidate, grant_fd=left.fileno(), age_ns=age_ns))
+            right.shutdown(socket.SHUT_WR)
+            with pytest.raises(authority.ABC6AuthorityError, match=message):
+                authority.receive_child_grant(left.fileno())
+        finally:
+            left.close(); right.close()

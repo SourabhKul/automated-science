@@ -469,17 +469,23 @@ def _peer_pid(sock: socket.socket) -> int:
 def _watchdog_callsite() -> None:
     frame = inspect.currentframe()
     caller = None if frame is None else frame.f_back
+    if caller is not None and caller.f_code.co_name in {
+        "_new_watchdog_grant_channel",
+        "publish",
+    }:
+        caller = caller.f_back
     if caller is None or caller.f_code.co_name != "_supervise_command" or not caller.f_code.co_filename.endswith(os.path.join("scripts", "watch_cascaded_tanks_abc6.py")):
         raise ABC6AuthorityError("only the watchdog's supervised-child seam may issue grants")
 
 
 class _PendingGrant:
-    __slots__ = ("_seal", "_writer", "_child", "_parent", "_used", "_lock")
+    __slots__ = ("_seal", "_writer", "_child", "_child_fd", "_parent", "_used", "_lock")
 
     def __init__(self, seal: object, writer: socket.socket, child: socket.socket, parent: ProcessIdentity):
         if seal is not _PENDING_SEAL:
             raise TypeError("grant channels are issued only by the watchdog")
         self._seal, self._writer, self._child, self._parent = seal, writer, child, parent
+        self._child_fd = child.fileno()
         self._used = False
         self._lock = threading.Lock()
 
@@ -507,10 +513,17 @@ class _PendingGrant:
             child.pid == self._parent.pid
             or child.start != bindings.child_start
             or child.vector != bindings.child_vector
-            or child.image_path != bindings.child_launch_image_path
-            or child.image_sha256 != bindings.child_launch_image_sha256
+            or child.image_path != bindings.child_image_path
+            or child.image_sha256 != bindings.child_image_sha256
         ):
-            raise ABC6AuthorityError("started child differs from the parent-observed launch identity")
+            raise ABC6AuthorityError("started child differs from the frozen runtime identity")
+        launch_digest, _launch_id = _hash_path(
+            bindings.child_launch_image_path,
+            MAX_IMAGE_BYTES,
+            "frozen child launch image",
+        )
+        if launch_digest != bindings.child_launch_image_sha256:
+            raise ABC6AuthorityError("frozen child launch image digest changed")
         runtime_path = _vector_image_path(child.vector)
         if runtime_path != bindings.child_image_path:
             raise ABC6AuthorityError("child vector resolves to a different runtime image")
@@ -519,13 +532,15 @@ class _PendingGrant:
             raise ABC6AuthorityError("child runtime image digest differs from its frozen identity")
         secret = secrets.token_bytes(32)
         digest = _sha(secret)
-        _write_grant_record(bindings, digest)
+        grant_fd = self._child_fd
+        _write_grant_record(bindings, digest, grant_fd)
         now = time.monotonic_ns()
         frame = _json({
             "schema_version": 1,
             "issued_monotonic_ns": now,
             "expires_monotonic_ns": now + GRANT_TTL_NS,
             "secret_hex": secret.hex(),
+            "grant_fd": grant_fd,
             "bindings": bindings.payload(),
         })
         if not frame or len(frame) > MAX_FRAME_BYTES:
@@ -579,7 +594,9 @@ def _write_all(fd: int, data: bytes) -> None:
         view = view[count:]
 
 
-def _write_grant_record(bindings: ABC6AuthorityBindings, digest: str) -> None:
+def _write_grant_record(
+    bindings: ABC6AuthorityBindings, digest: str, grant_fd: int
+) -> None:
     root_fd = _open_root(bindings.physical_root)
     receipt_fd = -1
     try:
@@ -593,6 +610,7 @@ def _write_grant_record(bindings: ABC6AuthorityBindings, digest: str) -> None:
         metadata = _json({
             "schema_version": 1,
             "grant_sha256": digest,
+            "grant_fd": grant_fd,
             "bindings_sha256": _sha(_json(bindings.payload())),
             "bindings": bindings.payload(),
         })
@@ -656,7 +674,7 @@ def _read_frame(fd: int) -> tuple[dict[str, object], socket.socket, int]:
             frame = json.loads(raw.decode("ascii"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise ABC6AuthorityError("grant frame is malformed") from error
-        if type(frame) is not dict or _json(frame) != raw or set(frame) != {"schema_version", "issued_monotonic_ns", "expires_monotonic_ns", "secret_hex", "bindings"}:
+        if type(frame) is not dict or _json(frame) != raw or set(frame) != {"schema_version", "issued_monotonic_ns", "expires_monotonic_ns", "secret_hex", "grant_fd", "bindings"}:
             raise ABC6AuthorityError("grant frame schema or canonical encoding is invalid")
         if type(frame["schema_version"]) is not int or frame["schema_version"] != 1:
             raise ABC6AuthorityError("unsupported grant frame version")
@@ -666,6 +684,8 @@ def _read_frame(fd: int) -> tuple[dict[str, object], socket.socket, int]:
         if type(frame["secret_hex"]) is not str or re.fullmatch(r"[0-9a-f]{64}", frame["secret_hex"]) is None:
             raise ABC6AuthorityError("grant secret is malformed")
         bindings = ABC6AuthorityBindings.from_payload(frame["bindings"])
+        if type(frame["grant_fd"]) is not int or frame["grant_fd"] != fd:
+            raise ABC6AuthorityError("grant frame names a different inherited FD")
         if bindings.watchdog_pid != peer:
             raise ABC6AuthorityError("anonymous grant peer does not match watchdog PID")
         frame["bindings"] = bindings
@@ -678,6 +698,7 @@ def _read_frame(fd: int) -> tuple[dict[str, object], socket.socket, int]:
 class _State:
     def __init__(self) -> None:
         self.lock = threading.RLock()
+        self.runner_entry_consumed = False
         self.training_started = False
         self.issued: set[int] = set()
         self.consumed: set[int] = set()
@@ -690,15 +711,16 @@ class _State:
 class ABC6LaunchAuthority:
     """Opaque in-memory capability tied to one live child process."""
 
-    __slots__ = ("_seal", "_bindings", "_grant_digest", "_root_fd", "_receipt_fd", "_identity", "_state")
+    __slots__ = ("_seal", "_bindings", "_grant_digest", "_grant_fd", "_root_fd", "_receipt_fd", "_identity", "_state")
 
     def __new__(cls, seal: object = None, *_args: object, **_kwargs: object):
         if cls is not ABC6LaunchAuthority or seal is not _AUTHORITY_SEAL:
             raise TypeError("launch authority is minted only by a verified inherited grant")
         return super().__new__(cls)
 
-    def __init__(self, seal: object, bindings: ABC6AuthorityBindings, grant_digest: str, root_fd: int, receipt_fd: int, identity: ProcessIdentity):
+    def __init__(self, seal: object, bindings: ABC6AuthorityBindings, grant_digest: str, grant_fd: int, root_fd: int, receipt_fd: int, identity: ProcessIdentity):
         self._seal, self._bindings, self._grant_digest = seal, bindings, grant_digest
+        self._grant_fd = grant_fd
         self._root_fd, self._receipt_fd, self._identity = root_fd, receipt_fd, identity
         self._state = _State()
 
@@ -744,6 +766,16 @@ class ABC6LaunchAuthority:
                 raise ABC6AuthorityError("training phase is one-use")
             self._state.training_started = True
         return ABC6TrainingSession(_SESSION_SEAL, self)
+
+    def consume_runner_startup(self) -> None:
+        """Consume the one-use authenticated runner entry before preflight."""
+
+        self._assert_live()
+        _require_role(self, "runner")
+        with self._state.lock:
+            if self._state.runner_entry_consumed:
+                raise ABC6AuthorityError("runner startup grant is one-use")
+            self._state.runner_entry_consumed = True
 
     def create_runner_handoff(
         self,
@@ -803,6 +835,7 @@ class ABC6LaunchAuthority:
             "protocol_id": self._bindings.protocol_id,
             "run_id": self._bindings.run_id,
             "grant_sha256": self._grant_digest,
+            "grant_fd": self._grant_fd,
             "manifest_sha256": self._bindings.manifest_sha256,
             "approval_sha256": self._bindings.approval_sha256,
             "review_sha256": self._bindings.review_sha256,
@@ -844,7 +877,9 @@ class ABC6LaunchAuthority:
         self._receipt_fd = self._root_fd = -1
 
 
-def _read_grant_record(receipt_fd: int, bindings: ABC6AuthorityBindings, digest: str) -> None:
+def _read_grant_record(
+    receipt_fd: int, bindings: ABC6AuthorityBindings, digest: str, grant_fd: int
+) -> None:
     try:
         fd = os.open(GRANT_RECORD, _flags(), dir_fd=receipt_fd)
     except OSError as error:
@@ -862,6 +897,7 @@ def _read_grant_record(receipt_fd: int, bindings: ABC6AuthorityBindings, digest:
     expected = {
         "schema_version": 1,
         "grant_sha256": digest,
+        "grant_fd": grant_fd,
         "bindings_sha256": _sha(_json(bindings.payload())),
         "bindings": bindings.payload(),
     }
@@ -907,8 +943,16 @@ def receive_child_grant(fd: int) -> ABC6LaunchAuthority:
                 raise ABC6AuthorityError("pinned source identity differs from the grant")
         if _sha(sys.version.encode()) != dict(bindings.runtime_hashes)["python_version_sha256"]:
             raise ABC6AuthorityError("Python runtime differs from the grant")
-        _read_grant_record(receipt_fd, bindings, _sha(bytes(secret)))
-        authority = ABC6LaunchAuthority(_AUTHORITY_SEAL, bindings, _sha(bytes(secret)), root_fd, receipt_fd, identity)
+        _read_grant_record(receipt_fd, bindings, _sha(bytes(secret)), fd)
+        authority = ABC6LaunchAuthority(
+            _AUTHORITY_SEAL,
+            bindings,
+            _sha(bytes(secret)),
+            fd,
+            root_fd,
+            receipt_fd,
+            identity,
+        )
         root_fd = receipt_fd = -1
         return authority
     except BaseException:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Sequence
@@ -20,6 +21,7 @@ from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign_fit
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data import cascaded_tanks_abc6_forecast as forecast_module
 from core.real_data import cascaded_tanks_abc6_scoring as scoring
+from core.real_data import cascaded_tanks_abc6_authority as authority_module
 
 _REPO_ROOT: Final = campaign_fit._REPO_ROOT
 _RUNNER_SOURCE_PATH: Final = "scripts/run_cascaded_tanks_abc6_synthetic.py"
@@ -31,6 +33,7 @@ _INTEGRATED_SOURCE_PATHS: Final = (
     _SCORER_SOURCE_PATH,
 )
 FORECAST_ARTIFACT_FILENAME: Final = "campaign.target-free-forecasts.json"
+GRANT_FD_ENV: Final = "ABC6_GRANT_FD"
 
 
 class ABC6SyntheticRunnerPreflightError(RuntimeError):
@@ -112,6 +115,35 @@ def _source_pin_check() -> tuple[tuple[str, str], ...]:
             )
         checked.append((path, digest))
     return tuple(checked)
+
+
+def _receive_launch_authority(
+    environ: dict[str, str] | os._Environ[str] | None = None,
+) -> authority_module.ABC6LaunchAuthority:
+    """Read one canonical inherited-FD locator and consume its sealed grant."""
+
+    values = os.environ if environ is None else environ
+    raw = values.get(GRANT_FD_ENV)
+    if type(raw) is not str or re.fullmatch(r"[1-9][0-9]*", raw) is None:
+        raise ABC6SyntheticRunnerPreflightError(
+            "runner requires one canonical decimal ABC6_GRANT_FD locator"
+        )
+    fd = int(raw)
+    if fd < 3:
+        raise ABC6SyntheticRunnerPreflightError(
+            "runner grant descriptor must be an inherited non-stdio FD"
+        )
+    try:
+        return authority_module.receive_child_grant(fd)
+    except authority_module.ABC6AuthorityError as error:
+        raise ABC6SyntheticRunnerPreflightError(
+            f"supervised launch grant failed verification: {error}"
+        ) from error
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
 
 
 def _expected_status_receipts(
@@ -423,6 +455,8 @@ def run_cascaded_tanks_abc6_synthetic(
     manifest_path: str | os.PathLike[str],
     manifest_sha256: str,
     receipt_directory: str | os.PathLike[str],
+    *,
+    launch_authority: authority_module.ABC6LaunchAuthority | None = None,
 ) -> ABC6SyntheticRunResult:
     """Run the source-pinned training/forecast/frozen-score integration once.
 
@@ -432,6 +466,16 @@ def run_cascaded_tanks_abc6_synthetic(
     campaign claim until a separately reviewed manifest expansion lands.
     """
 
+    if not isinstance(launch_authority, authority_module.ABC6LaunchAuthority):
+        raise ABC6SyntheticRunnerPreflightError(
+            "direct runner/API invocation requires a watchdog-issued launch grant"
+        )
+    try:
+        launch_authority.consume_runner_startup()
+    except authority_module.ABC6AuthorityError as error:
+        raise ABC6SyntheticRunnerPreflightError(
+            f"runner startup grant is invalid, expired, or already consumed: {error}"
+        ) from error
     integrated_source_hashes = _source_pin_check()
     try:
         receipt_text = os.fspath(receipt_directory)
@@ -545,9 +589,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--receipts", required=True, type=Path)
     args = parser.parse_args(argv)
-    result = run_cascaded_tanks_abc6_synthetic(
-        args.manifest, args.manifest_sha256, args.receipts
-    )
+    launch_authority = _receive_launch_authority()
+    try:
+        result = run_cascaded_tanks_abc6_synthetic(
+            args.manifest,
+            args.manifest_sha256,
+            args.receipts,
+            launch_authority=launch_authority,
+        )
+    finally:
+        launch_authority.close()
     summary = {
         "protocol_id": result.deferred_score.protocol_id,
         "run_id": result.deferred_score.run_id,
