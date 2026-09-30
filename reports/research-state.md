@@ -1,6 +1,32 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T10:34Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T13:44Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: terminal readback needs durable acknowledgement
+
+The Luna author completed a local watchdog terminal-publication/readback
+patch with first cap/stop event times and final fit-gate revalidation.
+Its fake-only suite passed **50/50** locally and on a clean overlay; an
+independent Luna reproduced 50/50 locally and on a clean overlay rerun.
+The reviewer gave **HOLD** for syncing its exact two files: a fake error
+after terminal hard-link but before readback completion leaves a readable
+terminal receipt marked `completed`, with no persisted proof that the
+writer successfully read it back. The one-use claim blocks retry, yet a
+later replay cannot distinguish this receipt from an acknowledged one
+under the frozen failed-readback => unreplayable rule. A bounded Luna
+repair is underway to publish an immutable post-readback acknowledgement
+bound to terminal digest and file identity. The initial failed bytes and
+test evidence are retained in
+`reports/research-ledger/2026-09-30T1344Z.md`.
+
+Fresh Luna monitoring at 13:21Z found the exact fixed Qwen available,
+no research process and no reserved-run manifest, approval, claim, marker,
+receipt or checkpoint. Local `HEAD == origin/main ==
+9a5e8b21f4aded38b7e917dea0fe17d8872dc062`; only the two watchdog
+files were dirty. The synthetic run remains **UNUSED/HOLD**. Full
+post-score chain replay and direct supervised-child authorization remain
+separate launch gates. No protocol prospective target, real tank Qwen/ABC,
+held-out tank target access or scientific breakthrough occurred.
 
 ## Latest checkpoint: bounded watchdog fit gate synced
 
