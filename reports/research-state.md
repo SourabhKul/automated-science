@@ -1,6 +1,30 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T14:26Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T15:12Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: replay classification HOLD; grant lifecycle frozen
+
+A Luna author produced a separate read-only ABC6 replay draft; **8/8**
+fake-only tests passed locally and in a clean overlay. Independent Luna
+reproduced them but gave **HOLD** for terminal-replay approval. After consumed
+claims, a retained terminal and acknowledgement with no marker/score/targets
+returned `premarker_absent` without terminal validation. A complete score
+chain with a validly acknowledged terminal marked `failed` returned
+`score_complete`. Neither result satisfies the frozen operational
+classification rule. The two untracked files remain unsynced; a bounded
+classification repair is underway. See
+`reports/research-ledger/2026-09-30T1512Z.md`.
+
+The independently reviewed one-use supervised-child lifecycle was clarified:
+only the attested runner with a sealed process-bound capability can activate
+scoring once, after durable 48-status, summary and target-free forecast
+rechecks. The single design document was pushed as
+`d75448b51fdbe59fb593af6bbf14ff6d2cfbd4ef`. This is design only;
+the direct-entrypoint grant remains unimplemented. Fresh Luna monitoring at
+14:36Z found exact Qwen HTTP 200, no research job or reserved-run artifacts,
+and local/live remote at `8e65a3232bcd3dddf871c524fc1312231e2f6e22`
+before that design commit. The synthetic run remains UNUSED/HOLD, with no
+prospective target, real tank Qwen/ABC, held-out target access or breakthrough.
 
 ## Latest checkpoint: terminal acknowledgement reviewed and synced
 
