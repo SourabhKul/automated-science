@@ -1,6 +1,29 @@
 # Automated science: current research state
 
-Updated: 2026-09-29T23:30Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T03:32Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: scorer/gate author tests pass; FIFO review HOLD
+
+The Luna author completed a local schema-v2 cases/scorer receipt-root and
+one-use-marker integration. Its five changed files passed 71 fake-only tests
+in the working tree and a clean `origin/main` archive overlay. Independent
+Luna review reproduced the tests but gave **HOLD** for sync: a FIFO planted
+as a status leaf blocks in a no-follow read before `fstat`, and the direct
+marker readback has the same blocking-open risk and lacks a size bound. A
+bounded Luna repair with fake FIFO/no-materializer controls is underway.
+See `reports/research-ledger/2026-09-30T0332Z.md`.
+
+A separate runner fake fixture is 2/3 because it uses a private temporary
+receipt path inconsistent with the fixed manifest root/path join; its failed
+preflight occurred before claim or target generation. At 03:20Z a read-only
+Luna check found no ABC6 process, claim, marker, receipt directory, or
+checkpoint; `/v1/models` advertised the exact required Qwen. Local
+`HEAD == origin/main == c033786d922c098d523dac85ffd20bc14e41ca4d`
+using the local remote ref, without a fresh fetch on this wake. The five
+cases/scorer/test changes remain unsynced. The reserved
+`ct-abc6-20260928-v1` campaign remains **UNUSED/HOLD**; no protocol
+prospective target, real tank Qwen/ABC, held-out tank access, or scientific
+breakthrough occurred.
 
 ## Latest checkpoint: campaign claim/write identity reviewed and synced
 
