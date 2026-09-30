@@ -36,6 +36,9 @@ MAX_TRAINING_EVIDENCE_MANIFEST_BYTES = 4 * 1024 * 1024
 MAX_TRAINING_EVIDENCE_FILE_BYTES = 32 * 1024 * 1024
 MAX_TRAINING_EVIDENCE_TOTAL_BYTES = 1024 * 1024 * 1024
 MAX_TARGET_FREE_FORECAST_BYTES = 128 * 1024 * 1024
+MAX_TERMINAL_RECEIPT_BYTES = 128 * 1024 * 1024
+MAX_TERMINAL_READBACK_ACK_BYTES = 64 * 1024
+_TERMINAL_READBACK_ACK_FILENAME = "terminal-readback.ok"
 WALL_LIMIT_SECONDS = 900.0
 RSS_LIMIT_BYTES = 2 * 1024**3
 SAMPLE_INTERVAL_SECONDS = 0.25
@@ -640,6 +643,29 @@ def _utc_now() -> str:
     )
 
 
+def _watchdog_intervention_snapshot(
+    intervention_type: str,
+    stage: str,
+) -> dict[str, object]:
+    """Capture a same-host monotonic ordering point matching scorer events."""
+
+    monotonic_ns = time.monotonic_ns()
+    occurred_at_utc = _utc_now()
+    if (
+        type(monotonic_ns) is not int
+        or not 0 <= monotonic_ns <= (2**63 - 1)
+        or len(occurred_at_utc) > 32
+    ):
+        raise WatchdogError("watchdog intervention clock snapshot is invalid")
+    return {
+        "type": intervention_type,
+        "stage": stage,
+        "monotonic_ns": monotonic_ns,
+        "occurred_at_utc": occurred_at_utc,
+        "clock": "host-local-monotonic-ns",
+    }
+
+
 def _write_all(fd: int, payload: bytes) -> None:
     view = memoryview(payload)
     while view:
@@ -727,6 +753,336 @@ def _write_exclusive_durable_at(
         except FileNotFoundError:
             pass
     return hashlib.sha256(payload).hexdigest()
+
+
+def _publish_and_verify_terminal_receipt_at(
+    directory_fd: int,
+    leaf_name: str,
+    value: dict[str, object],
+    *,
+    encoded_payload: bytes | None = None,
+) -> tuple[str, os.stat_result]:
+    """Durably publish and read back the terminal receipt through one pinned FD."""
+
+    if leaf_name in {"", ".", ".."} or Path(leaf_name).name != leaf_name:
+        raise WatchdogError("terminal receipt name must be a single path component")
+    payload = _canonical_json(value) if encoded_payload is None else encoded_payload
+    if len(payload) > MAX_TERMINAL_RECEIPT_BYTES:
+        raise WatchdogError("terminal receipt exceeds its byte limit")
+    temporary = f".{leaf_name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    descriptor: int | None = None
+    temporary_exists = False
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        temporary_exists = True
+        _write_all(descriptor, payload)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+
+        os.link(
+            temporary,
+            leaf_name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        os.fsync(directory_fd)
+        temporary_info = os.stat(
+            temporary,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if not stat.S_ISREG(temporary_info.st_mode):
+            raise WatchdogError("published terminal receipt is not a regular file")
+
+        readback, decoded, readback_info = _read_canonical_object_at(
+            directory_fd,
+            leaf_name,
+            maximum_bytes=MAX_TERMINAL_RECEIPT_BYTES,
+            label="watchdog terminal receipt readback",
+        )
+        named_info = os.stat(leaf_name, dir_fd=directory_fd, follow_symlinks=False)
+        expected_identity = (
+            temporary_info.st_dev,
+            temporary_info.st_ino,
+            temporary_info.st_size,
+            temporary_info.st_mtime_ns,
+            temporary_info.st_ctime_ns,
+        )
+        observed_identity = (
+            readback_info.st_dev,
+            readback_info.st_ino,
+            readback_info.st_size,
+            readback_info.st_mtime_ns,
+            readback_info.st_ctime_ns,
+        )
+        named_identity = (
+            named_info.st_dev,
+            named_info.st_ino,
+            named_info.st_size,
+            named_info.st_mtime_ns,
+            named_info.st_ctime_ns,
+        )
+        if (
+            not stat.S_ISREG(named_info.st_mode)
+            or readback != payload
+            or decoded != value
+            or observed_identity != expected_identity
+            or named_identity != expected_identity
+            or hashlib.sha256(readback).hexdigest()
+            != hashlib.sha256(payload).hexdigest()
+        ):
+            raise WatchdogError(
+                "terminal receipt readback bytes, digest, or file identity differ"
+            )
+
+        os.unlink(temporary, dir_fd=directory_fd)
+        temporary_exists = False
+        os.fsync(directory_fd)
+
+        # Removing the temporary hard link changes the terminal inode ctime.
+        # Take the identity that the finalization sidecar will bind only after
+        # that namespace change has been synced and read back once more.
+        final_readback, final_decoded, final_info = _read_canonical_object_at(
+            directory_fd,
+            leaf_name,
+            maximum_bytes=MAX_TERMINAL_RECEIPT_BYTES,
+            label="watchdog terminal receipt final readback",
+        )
+        named_final_info = os.stat(
+            leaf_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            final_readback != payload
+            or final_decoded != value
+            or hashlib.sha256(final_readback).hexdigest()
+            != hashlib.sha256(payload).hexdigest()
+            or (
+                final_info.st_dev,
+                final_info.st_ino,
+                final_info.st_size,
+                final_info.st_mtime_ns,
+            )
+            != (
+                temporary_info.st_dev,
+                temporary_info.st_ino,
+                temporary_info.st_size,
+                temporary_info.st_mtime_ns,
+            )
+            or (
+                named_final_info.st_dev,
+                named_final_info.st_ino,
+                named_final_info.st_size,
+                named_final_info.st_mtime_ns,
+                named_final_info.st_ctime_ns,
+            )
+            != (
+                final_info.st_dev,
+                final_info.st_ino,
+                final_info.st_size,
+                final_info.st_mtime_ns,
+                final_info.st_ctime_ns,
+            )
+        ):
+            raise WatchdogError(
+                "terminal receipt final readback bytes, digest, or file identity differ"
+            )
+        return hashlib.sha256(payload).hexdigest(), final_info
+    except FileExistsError as error:
+        raise WatchdogError("terminal receipt path already exists") from error
+    except WatchdogError:
+        raise
+    except OSError as error:
+        raise WatchdogError(
+            "terminal receipt could not be durably published and read back"
+        ) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary_exists:
+            try:
+                os.unlink(temporary, dir_fd=directory_fd)
+                os.fsync(directory_fd)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # The consumed claim remains authoritative if cleanup is uncertain.
+                pass
+
+
+def _publish_terminal_readback_ack_at(
+    directory_fd: int,
+    terminal_leaf_name: str,
+    terminal_value: dict[str, object],
+    terminal_sha256: str,
+    terminal_info: os.stat_result,
+) -> str:
+    """Durably record that the terminal receipt passed its live readback."""
+
+    if not _is_sha256(terminal_sha256):
+        raise WatchdogError("terminal readback acknowledgment has an invalid digest")
+    run_id = _validate_claim_run_id(terminal_value.get("run_id"))
+    claim_sha256 = terminal_value.get("watchdog_claim_sha256")
+    manifest_sha256 = terminal_value.get("manifest_sha256")
+    if not _is_sha256(claim_sha256) or not _is_sha256(manifest_sha256):
+        raise WatchdogError(
+            "terminal readback acknowledgment lacks the bound claim or manifest digest"
+        )
+    if terminal_leaf_name in {"", ".", ".."} or Path(terminal_leaf_name).name != terminal_leaf_name:
+        raise WatchdogError("terminal receipt name must be a single path component")
+
+    receipt_root_info = os.fstat(directory_fd)
+    expected_receipt_root = (
+        terminal_value.get("receipt_root_device"),
+        terminal_value.get("receipt_root_inode"),
+    )
+    if expected_receipt_root != (receipt_root_info.st_dev, receipt_root_info.st_ino):
+        raise WatchdogError("terminal readback acknowledgment receipt-root identity differs")
+
+    terminal_raw, terminal_decoded, bound_terminal_info = _read_canonical_object_at(
+        directory_fd,
+        terminal_leaf_name,
+        maximum_bytes=MAX_TERMINAL_RECEIPT_BYTES,
+        label="terminal receipt readback acknowledgment binding",
+    )
+    if (
+        terminal_decoded != terminal_value
+        or hashlib.sha256(terminal_raw).hexdigest() != terminal_sha256
+        or (
+            bound_terminal_info.st_dev,
+            bound_terminal_info.st_ino,
+            bound_terminal_info.st_size,
+            bound_terminal_info.st_mtime_ns,
+            bound_terminal_info.st_ctime_ns,
+        )
+        != (
+            terminal_info.st_dev,
+            terminal_info.st_ino,
+            terminal_info.st_size,
+            terminal_info.st_mtime_ns,
+            terminal_info.st_ctime_ns,
+        )
+    ):
+        raise WatchdogError(
+            "terminal receipt changed before readback acknowledgment publication"
+        )
+
+    root_fields = {
+        key: terminal_value.get(key)
+        for key in (
+            "repository_root_realpath",
+            "repository_root_device",
+            "repository_root_inode",
+            "receipt_root_relative",
+            "receipt_root_device",
+            "receipt_root_inode",
+        )
+    }
+    if (
+        type(root_fields["repository_root_realpath"]) is not str
+        or not Path(str(root_fields["repository_root_realpath"])).is_absolute()
+        or type(root_fields["repository_root_device"]) is not int
+        or type(root_fields["repository_root_inode"]) is not int
+        or type(root_fields["receipt_root_relative"]) is not str
+    ):
+        raise WatchdogError("terminal readback acknowledgment lacks its frozen root binding")
+
+    acknowledgement: dict[str, object] = {
+        "schema_version": 1,
+        "kind": "abc6-watchdog-terminal-readback-acknowledgment",
+        "protocol_id": terminal_value.get("protocol_id"),
+        "run_id": run_id,
+        "manifest_sha256": manifest_sha256,
+        "watchdog_claim_path": terminal_value.get("watchdog_claim_path"),
+        "watchdog_claim_sha256": claim_sha256,
+        "root_binding": root_fields,
+        "terminal_receipt": {
+            "leaf_name": terminal_leaf_name,
+            "sha256": terminal_sha256,
+            "file_identity": {
+                "device": bound_terminal_info.st_dev,
+                "inode": bound_terminal_info.st_ino,
+                "size": bound_terminal_info.st_size,
+                "mtime_ns": bound_terminal_info.st_mtime_ns,
+                "ctime_ns": bound_terminal_info.st_ctime_ns,
+            },
+        },
+    }
+    payload = _canonical_json(acknowledgement)
+    if len(payload) > MAX_TERMINAL_READBACK_ACK_BYTES:
+        raise WatchdogError("terminal readback acknowledgment exceeds its byte limit")
+
+    leaf_name = _TERMINAL_READBACK_ACK_FILENAME
+    temporary = f".{leaf_name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    descriptor: int | None = None
+    temporary_exists = False
+    acknowledgement_linked = False
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        temporary_exists = True
+        _write_all(descriptor, payload)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        os.link(
+            temporary,
+            leaf_name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        acknowledgement_linked = True
+        os.unlink(temporary, dir_fd=directory_fd)
+        temporary_exists = False
+        os.fsync(directory_fd)
+        final_root_info = os.fstat(directory_fd)
+        if (final_root_info.st_dev, final_root_info.st_ino) != expected_receipt_root:
+            raise WatchdogError("receipt root changed while publishing readback acknowledgment")
+        acknowledgement_linked = False
+        return hashlib.sha256(payload).hexdigest()
+    except FileExistsError as error:
+        raise WatchdogError("terminal readback acknowledgment already exists") from error
+    except WatchdogError:
+        raise
+    except OSError as error:
+        raise WatchdogError(
+            "terminal readback acknowledgment could not be durably published"
+        ) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        # If publication or its directory sync fails, remove a possibly visible
+        # acknowledgment so it cannot certify a failed finalization attempt.
+        # The watchdog claim remains consumed even if cleanup itself is uncertain.
+        if acknowledgement_linked:
+            try:
+                os.unlink(leaf_name, dir_fd=directory_fd)
+                os.fsync(directory_fd)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+        if temporary_exists:
+            try:
+                os.unlink(temporary, dir_fd=directory_fd)
+                os.fsync(directory_fd)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def _expected_project_claim_path(project_root: Path, run_id: str) -> Path:
@@ -1640,6 +1996,15 @@ def _supervise_command(
     samples: list[dict[str, object]] = []
     peak_rss = 0
     stop_reason = "watchdog_error"
+    watchdog_intervention: dict[str, object] | None = None
+
+    def record_watchdog_intervention(intervention_type: str, stage: str) -> None:
+        nonlocal watchdog_intervention
+        if watchdog_intervention is None:
+            watchdog_intervention = _watchdog_intervention_snapshot(
+                intervention_type, stage
+            )
+
     process_return_code: int | None = None
     kill_reap: dict[str, object] | None = None
     observed_child_attestation: dict[str, object] | None = None
@@ -1747,35 +2112,42 @@ def _supervise_command(
             process_return_code = child.poll()
             if process_return_code is not None and members:
                 stop_reason = "child_exited_with_live_process_group_members"
+                record_watchdog_intervention("watchdog_stop", stop_reason)
                 break
 
             if enumeration_errors:
                 membership_uncertain = True
                 stop_reason = "process_group_membership_unknown"
                 monitor_error = "; ".join(enumeration_errors)
+                record_watchdog_intervention("watchdog_stop", stop_reason)
                 break
 
             if len(members) > 1:
                 stop_reason = "unexpected_descendant_process"
+                record_watchdog_intervention("watchdog_stop", stop_reason)
+                break
+
+            if process_return_code is not None:
+                stop_reason = "child_exited"
                 break
 
             if rss_total > rss_limit_bytes:
                 stop_reason = "sampled_rss_limit_exceeded"
+                record_watchdog_intervention("budget_cap", stop_reason)
                 break
             if elapsed >= wall_limit_seconds:
                 stop_reason = "wall_clock_limit_exceeded"
-                break
-            if process_return_code is not None:
-                stop_reason = (
-                    "child_exited"
-                    if not members
-                    else "child_exited_with_live_process_group_members"
-                )
+                record_watchdog_intervention("budget_cap", stop_reason)
                 break
             time.sleep(min(sample_interval_seconds, max(0.0, wall_limit_seconds - elapsed)))
 
     except KeyboardInterrupt as error:
         stop_reason = "watchdog_interrupted"
+        if watchdog_intervention is None:
+            try:
+                record_watchdog_intervention("operator_stop", stop_reason)
+            except WatchdogError as clock_error:
+                monitor_error = f"{type(clock_error).__name__}: {clock_error}"
         monitor_error = f"{type(error).__name__}: {error}"
     except Exception as error:  # noqa: BLE001 - persist terminal state after any monitor error.
         if isinstance(error, WatchdogError):
@@ -1783,6 +2155,11 @@ def _supervise_command(
         else:
             stop_reason = "watchdog_monitoring_error"
         monitor_error = f"{type(error).__name__}: {error}"
+        if watchdog_intervention is None:
+            try:
+                record_watchdog_intervention("watchdog_stop", stop_reason)
+            except WatchdogError as clock_error:
+                monitor_error += f"; {type(clock_error).__name__}: {clock_error}"
 
     if child is not None and root is not None and process_group_id is not None:
         process_return_code = child.poll()
@@ -1797,6 +2174,7 @@ def _supervise_command(
         process_return_code = child.poll()
         if stop_reason == "child_exited" and not kill_reap["tracked_process_group_reaped"]:
             stop_reason = "child_exited_process_group_reap_unverified"
+            record_watchdog_intervention("watchdog_stop", stop_reason)
         if stop_reason == "child_exited_with_live_process_group_members":
             stop_reason = "child_exited_with_live_process_group_members"
 
@@ -1817,6 +2195,7 @@ def _supervise_command(
 
     fit_gate_descriptor = receipt_directory_fd
     temporary_fit_gate_descriptor: int | None = None
+    fit_gate_snapshot: _GateSnapshot | None = None
     try:
         if fit_gate_descriptor is None:
             temporary_fit_gate_descriptor = _open_absolute_directory_nofollow(
@@ -1834,7 +2213,11 @@ def _supervise_command(
             expected_manifest_sha256=str(run_identity.get("manifest_sha256", "")),
             sync_directory=runner_exit_complete,
             preflight_anchors=preflight_anchors,
+            retain_snapshot=True,
         )
+        private_snapshot = fit_gate.pop("_private_fit_gate_snapshot", None)
+        if isinstance(private_snapshot, _GateSnapshot):
+            fit_gate_snapshot = private_snapshot
     except Exception as error:
         fit_gate = {
             "status_receipt_count": 0,
@@ -1843,6 +2226,7 @@ def _supervise_command(
             "summary_sha256": None,
             "summary_status": None,
             "receipt_root_identity_valid": False,
+            "file_identity_revalidation_valid": False,
             "all_48_status_receipts_present_and_linked": False,
             "all_48_fit_and_baseline_statuses_complete": False,
             "evidence_manifest_sha256": None,
@@ -1902,6 +2286,7 @@ def _supervise_command(
             "rule": "immediately before the single child Popen, after the durable watchdog claim",
         },
         "ended_at_utc": _utc_now(),
+        "watchdog_intervention": watchdog_intervention,
         "elapsed_wall_seconds": elapsed_total,
         "process_return_code": process_return_code,
         "watchdog_process_excluded_from_runner_tree": {
@@ -1941,22 +2326,140 @@ def _supervise_command(
         },
         "fit_phase_gate": fit_gate,
         "terminal_receipt_publication": {
-            "method": "same-directory temporary file, file fsync, hard-link publication, directory fsync",
+            "method": (
+                "pinned receipt-root FD, same-directory temporary file, file fsync, "
+                "hard-link publication, directory fsync, canonical no-follow readback"
+            ),
+            "readback_required_for_successful_return": True,
+            "readback_ack_leaf": _TERMINAL_READBACK_ACK_FILENAME,
+            "readback_ack_required_for_replay": True,
+            "fit_gate_revalidated_before_completed": False,
             "performed_by_this_writer": True,
         },
         "campaign_targets_generated_by_watchdog": False,
         "campaign_forecasts_run_by_watchdog": False,
     }
-    if receipt_directory_fd is None:
-        receipt_sha256 = _write_exclusive_durable(receipt_path, body)
-    else:
-        receipt_sha256 = _write_exclusive_durable_at(
-            receipt_directory_fd, receipt_path.name, body
+    terminal_receipt_fd = receipt_directory_fd
+    temporary_terminal_fd: int | None = None
+    try:
+        if terminal_receipt_fd is None:
+            temporary_terminal_fd = _open_absolute_directory_nofollow(
+                receipt_path.parent,
+                label="private terminal receipt root",
+            )
+            terminal_receipt_fd = temporary_terminal_fd
+        _check_gate_receipt_root(
+            terminal_receipt_fd,
+            (
+                preflight_anchors.receipt_root_path
+                if preflight_anchors is not None
+                else receipt_path.parent
+            ),
+            preflight_anchors=preflight_anchors,
         )
-    body["terminal_receipt_sha256"] = receipt_sha256
-    # The receipt hash is returned out-of-band: adding it to the already
-    # published receipt would make the recorded digest self-referential.
-    return {"receipt": body, "receipt_sha256": receipt_sha256, "receipt_path": receipt_path}
+
+        body["terminal_receipt_publication"][
+            "fit_gate_revalidated_before_completed"
+        ] = terminal_status == "completed"
+        terminal_payload = _canonical_json(body)
+        if terminal_status == "completed":
+            try:
+                if fit_gate_snapshot is None:
+                    raise WatchdogError("completed fit gate has no retained file snapshot")
+                fit_gate_snapshot.verify()
+                _check_gate_receipt_root(
+                    terminal_receipt_fd,
+                    (
+                        preflight_anchors.receipt_root_path
+                        if preflight_anchors is not None
+                        else receipt_path.parent
+                    ),
+                    preflight_anchors=preflight_anchors,
+                )
+            except Exception as error:
+                terminal_status = "failed"
+                stop_reason = "fit_gate_changed_before_terminal_receipt"
+                fit_gate["file_identity_revalidation_valid"] = False
+                fit_gate["pre_score_artifact_chain_valid"] = False
+                (
+                    status_changed,
+                    evidence_changed,
+                    forecast_changed,
+                ) = _gate_identity_change_categories(error)
+                if status_changed:
+                    fit_gate["status_chain_file_identity_valid"] = False
+                    fit_gate["all_48_status_receipts_present_and_linked"] = False
+                    fit_gate["all_48_fit_and_baseline_statuses_complete"] = False
+                if evidence_changed:
+                    fit_gate["training_evidence_chain_valid"] = False
+                if forecast_changed:
+                    fit_gate["target_free_forecast_chain_valid"] = False
+                gate_problems = fit_gate.setdefault("problems", [])
+                if isinstance(gate_problems, list):
+                    gate_problems.append(
+                        "terminal pre-publication revalidation failed: "
+                        f"{type(error).__name__}: {str(error)[:1024]}"
+                    )
+                body["status"] = terminal_status
+                body["stop_reason"] = stop_reason
+                body["fit_phase_gate"] = fit_gate
+                body["terminal_receipt_publication"][
+                    "fit_gate_revalidated_before_completed"
+                ] = False
+                terminal_payload = _canonical_json(body)
+
+        if fit_gate_snapshot is not None:
+            fit_gate_snapshot.close()
+            fit_gate_snapshot = None
+        _check_gate_receipt_root(
+            terminal_receipt_fd,
+            (
+                preflight_anchors.receipt_root_path
+                if preflight_anchors is not None
+                else receipt_path.parent
+            ),
+            preflight_anchors=preflight_anchors,
+        )
+        receipt_sha256, terminal_file_info = _publish_and_verify_terminal_receipt_at(
+            terminal_receipt_fd,
+            receipt_path.name,
+            body,
+            encoded_payload=terminal_payload,
+        )
+        _check_gate_receipt_root(
+            terminal_receipt_fd,
+            (
+                preflight_anchors.receipt_root_path
+                if preflight_anchors is not None
+                else receipt_path.parent
+            ),
+            preflight_anchors=preflight_anchors,
+        )
+        terminal_readback_ack_sha256 = _publish_terminal_readback_ack_at(
+            terminal_receipt_fd,
+            receipt_path.name,
+            body,
+            receipt_sha256,
+            terminal_file_info,
+        )
+        body["terminal_receipt_sha256"] = receipt_sha256
+        # The receipt hash is returned out-of-band to avoid self-reference.
+        return {
+            "receipt": body,
+            "receipt_sha256": receipt_sha256,
+            "receipt_path": receipt_path,
+            "terminal_readback_ack_path": (
+                receipt_path.parent / _TERMINAL_READBACK_ACK_FILENAME
+            ),
+            "terminal_readback_ack_sha256": terminal_readback_ack_sha256,
+            "terminal_readback_ack_published": True,
+            "terminal_receipt_readback_verified": True,
+        }
+    finally:
+        if fit_gate_snapshot is not None:
+            fit_gate_snapshot.close()
+        if temporary_terminal_fd is not None:
+            os.close(temporary_terminal_fd)
 
 
 def _payload_sha256_matches(payload: dict[str, object]) -> bool:
@@ -2229,6 +2732,23 @@ class _GateSnapshot:
                 pass
         self._parent_fds.clear()
         self._directory_fds.clear()
+
+
+def _gate_identity_change_categories(error: BaseException) -> tuple[bool, bool, bool]:
+    """Return whether a changed leaf affects status, evidence, or forecast links."""
+
+    message = str(error).lower()
+    root_changed = "receipt-root" in message or "receipt root" in message
+    status_changed = root_changed or any(
+        label in message
+        for label in ("status receipt", "campaign claim receipt", "training summary")
+    )
+    evidence_changed = status_changed or any(
+        label in message
+        for label in ("training evidence", "training bundle evidence")
+    )
+    forecast_changed = evidence_changed or "target-free forecast" in message
+    return status_changed, evidence_changed, forecast_changed
 
 
 def _read_canonical_object_at(
@@ -2748,10 +3268,12 @@ def _inspect_fit_phase_gate(
     sync_directory: bool,
     preflight_anchors: _PreflightAnchors | None = None,
     expected_integrated_source_hashes: Mapping[str, str] | None = None,
+    retain_snapshot: bool = False,
 ) -> dict[str, object]:
     snapshot = _GateSnapshot()
+    snapshot_to_close: _GateSnapshot | None = snapshot
     try:
-        return _inspect_fit_phase_gate_with_snapshot(
+        result = _inspect_fit_phase_gate_with_snapshot(
             receipt_directory_fd,
             expected_receipt_directory=expected_receipt_directory,
             expected_manifest_sha256=expected_manifest_sha256,
@@ -2760,8 +3282,13 @@ def _inspect_fit_phase_gate(
             expected_integrated_source_hashes=expected_integrated_source_hashes,
             snapshot=snapshot,
         )
+        if retain_snapshot:
+            result["_private_fit_gate_snapshot"] = snapshot
+            snapshot_to_close = None
+        return result
     finally:
-        snapshot.close()
+        if snapshot_to_close is not None:
+            snapshot_to_close.close()
 
 
 def _inspect_fit_phase_gate_with_snapshot(
@@ -2778,6 +3305,9 @@ def _inspect_fit_phase_gate_with_snapshot(
     problems: list[str] = []
     receipt_root_identity_valid = True
     file_identity_revalidation_valid = True
+    status_chain_file_identity_valid = True
+    evidence_file_identity_valid = True
+    forecast_file_identity_valid = True
     try:
         _check_gate_receipt_root(
             receipt_directory_fd,
@@ -3098,8 +3628,17 @@ def _inspect_fit_phase_gate_with_snapshot(
         snapshot.verify()
     except WatchdogError as error:
         file_identity_revalidation_valid = False
+        (
+            status_changed,
+            evidence_changed,
+            forecast_changed,
+        ) = _gate_identity_change_categories(error)
+        status_chain_file_identity_valid = not status_changed
+        evidence_file_identity_valid = not evidence_changed
+        forecast_file_identity_valid = not forecast_changed
         problems.append(
-            f"fit-gate file identity changed before return: {type(error).__name__}"
+            "fit-gate file identity changed before return: "
+            f"{type(error).__name__}: {str(error)[:1024]}"
         )
 
     try:
@@ -3119,10 +3658,12 @@ def _inspect_fit_phase_gate_with_snapshot(
     )
     status_chain_valid = (
         receipt_root_identity_valid
-        and file_identity_revalidation_valid
+        and status_chain_file_identity_valid
         and len(statuses) == 48
         and summary_links_valid
     )
+    evidence_chain_valid = evidence_chain_valid and evidence_file_identity_valid
+    target_free_forecast_valid = target_free_forecast_valid and forecast_file_identity_valid
     pre_score_artifact_chain_valid = (
         status_chain_valid and evidence_chain_valid and target_free_forecast_valid
     )
@@ -3134,6 +3675,7 @@ def _inspect_fit_phase_gate_with_snapshot(
         "summary_status": None if summary is None else summary.get("status"),
         "receipt_root_identity_valid": receipt_root_identity_valid,
         "file_identity_revalidation_valid": file_identity_revalidation_valid,
+        "status_chain_file_identity_valid": status_chain_file_identity_valid,
         "all_48_status_receipts_present_and_linked": bool(
             status_chain_valid
         ),
@@ -3249,6 +3791,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
                     "status": result["receipt"]["status"],
                     "receipt_path": str(result["receipt_path"]),
                     "receipt_sha256": result["receipt_sha256"],
+                    "terminal_readback_ack_path": str(
+                        result["terminal_readback_ack_path"]
+                    ),
+                    "terminal_readback_ack_sha256": result[
+                        "terminal_readback_ack_sha256"
+                    ],
                 },
                 sort_keys=True,
             )

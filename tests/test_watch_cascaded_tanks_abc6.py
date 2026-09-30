@@ -32,6 +32,8 @@ def _run_fake_child(
 ) -> dict[str, object]:
     receipt_directory = tmp_path / "receipts"
     receipt_directory.mkdir()
+    root_info = tmp_path.stat()
+    receipt_info = receipt_directory.stat()
     executable = Path(watchdog.PINNED_PYTHON_BIN)
     observed_image = Path(watchdog.PINNED_PYTHON_APP)
     vector = [str(executable), "-c", code]
@@ -46,6 +48,12 @@ def _run_fake_child(
             "protocol_id": "fake-protocol",
             "run_id": "fake-run",
             "manifest_sha256": "a" * 64,
+            "repository_root_realpath": str(tmp_path),
+            "repository_root_device": root_info.st_dev,
+            "repository_root_inode": root_info.st_ino,
+            "receipt_root_relative": "receipts",
+            "receipt_root_device": receipt_info.st_dev,
+            "receipt_root_inode": receipt_info.st_ino,
             "watchdog_image_path": str(observed_image),
             "watchdog_image_sha256": _sha256(observed_image),
             "watchdog_attestation": {"fixture": True},
@@ -183,7 +191,8 @@ def test_fake_child_samples_pid_rss_hashes_receipt_and_excludes_watchdog(
     result = _run_fake_child(tmp_path, "import time; time.sleep(0.12)")
 
     receipt_path = Path(result["receipt_path"])
-    receipt = json.loads(receipt_path.read_text(encoding="ascii"))
+    receipt_bytes = receipt_path.read_bytes()
+    receipt = json.loads(receipt_bytes.decode("ascii"))
     assert result["receipt"]["status"] == "failed"
     assert result["receipt"]["process_return_code"] == 0
     assert result["receipt"]["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
@@ -206,6 +215,31 @@ def test_fake_child_samples_pid_rss_hashes_receipt_and_excludes_watchdog(
     assert receipt["rss_sampling"]["raw_samples_sha256"] == expected_samples_hash
     assert receipt["rss_sampling"]["peak_sampled_runner_tree_rss_bytes"] > 0
     assert receipt["terminal_receipt_publication"]["performed_by_this_writer"] is True
+    assert receipt["terminal_receipt_publication"]["readback_required_for_successful_return"] is True
+    assert receipt["terminal_receipt_publication"]["readback_ack_leaf"] == watchdog._TERMINAL_READBACK_ACK_FILENAME
+    assert receipt["terminal_receipt_publication"]["readback_ack_required_for_replay"] is True
+    assert result["terminal_receipt_readback_verified"] is True
+    assert result["terminal_readback_ack_published"] is True
+    assert result["receipt_sha256"] == hashlib.sha256(receipt_bytes).hexdigest()
+    ack_path = Path(result["terminal_readback_ack_path"])
+    assert ack_path.name == watchdog._TERMINAL_READBACK_ACK_FILENAME
+    ack = json.loads(ack_path.read_text(encoding="ascii"))
+    assert ack["kind"] == "abc6-watchdog-terminal-readback-acknowledgment"
+    assert ack["run_id"] == receipt["run_id"]
+    assert ack["watchdog_claim_sha256"] == receipt["watchdog_claim_sha256"]
+    assert ack["manifest_sha256"] == receipt["manifest_sha256"]
+    assert ack["terminal_receipt"]["sha256"] == result["receipt_sha256"]
+    terminal_info = receipt_path.stat()
+    assert ack["terminal_receipt"]["file_identity"] == {
+        "device": terminal_info.st_dev,
+        "inode": terminal_info.st_ino,
+        "size": terminal_info.st_size,
+        "mtime_ns": terminal_info.st_mtime_ns,
+        "ctime_ns": terminal_info.st_ctime_ns,
+    }
+    returned_receipt = dict(result["receipt"])
+    returned_receipt.pop("terminal_receipt_sha256")
+    assert receipt == returned_receipt
     assert not tuple(receipt_path.parent.glob("*.tmp"))
     assert Path(result["receipt_path"]).is_file()
 
@@ -213,9 +247,12 @@ def test_fake_child_samples_pid_rss_hashes_receipt_and_excludes_watchdog(
 def test_wall_budget_terminates_and_reaps_fake_sleeper_with_bounded_grace(
     tmp_path: Path,
 ) -> None:
+    fake_score_event_path = tmp_path / "fake-score-event-monotonic-ns.txt"
     result = _run_fake_child(
         tmp_path,
-        "import time; time.sleep(10)",
+        "import time; "
+        f"open({str(fake_score_event_path)!r}, 'w').write(str(time.monotonic_ns())); "
+        "time.sleep(10)",
         wall_seconds=0.12,
         sample_seconds=0.01,
     )
@@ -231,6 +268,571 @@ def test_wall_budget_terminates_and_reaps_fake_sleeper_with_bounded_grace(
     assert kill_reap["bounded_grace_seconds"] == pytest.approx(0.45)
     assert kill_reap["elapsed_seconds"] < 1.0
     assert receipt["elapsed_wall_seconds"] < 1.0
+    intervention = receipt["watchdog_intervention"]
+    assert intervention["type"] == "budget_cap"
+    assert intervention["stage"] == "wall_clock_limit_exceeded"
+    assert intervention["clock"] == "host-local-monotonic-ns"
+    assert type(intervention["monotonic_ns"]) is int
+    assert intervention["occurred_at_utc"].endswith("Z")
+    fake_score_event_monotonic_ns = int(
+        fake_score_event_path.read_text(encoding="ascii")
+    )
+    assert fake_score_event_monotonic_ns < intervention["monotonic_ns"]
+
+
+def test_child_error_before_budget_cap_has_no_watchdog_intervention(
+    tmp_path: Path,
+) -> None:
+    result = _run_fake_child(
+        tmp_path,
+        "import time,sys; time.sleep(0.04); sys.exit(7)",
+        wall_seconds=0.8,
+        sample_seconds=0.01,
+    )
+
+    receipt = result["receipt"]
+    assert receipt["status"] == "failed"
+    assert receipt["stop_reason"] == "child_exited"
+    assert receipt["process_return_code"] == 7
+    assert receipt["watchdog_intervention"] is None
+
+
+def test_operator_stop_records_first_comparable_intervention_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_snapshot = watchdog._snapshot_process_group
+    interrupted = False
+
+    def interrupt_first_sample(process_group_id: int):
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+        return original_snapshot(process_group_id)
+
+    monkeypatch.setattr(watchdog, "_snapshot_process_group", interrupt_first_sample)
+    result = _run_fake_child(
+        tmp_path,
+        "import time; time.sleep(10)",
+        wall_seconds=1.0,
+        sample_seconds=0.01,
+    )
+
+    receipt = result["receipt"]
+    intervention = receipt["watchdog_intervention"]
+    assert receipt["status"] == "failed"
+    assert receipt["stop_reason"] == "watchdog_interrupted"
+    assert intervention["type"] == "operator_stop"
+    assert intervention["stage"] == "watchdog_interrupted"
+    assert intervention["clock"] == "host-local-monotonic-ns"
+    assert type(intervention["monotonic_ns"]) is int
+    assert intervention["occurred_at_utc"].endswith("Z")
+
+
+@pytest.mark.parametrize(
+    ("fault", "leaf_is_published"),
+    [
+        ("temporary_write", False),
+        ("file_fsync", False),
+        ("directory_fsync", True),
+        ("hard_link", False),
+        ("readback", True),
+    ],
+)
+def test_terminal_receipt_publication_faults_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+    leaf_is_published: bool,
+) -> None:
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    receipt_fd = watchdog._open_absolute_directory_nofollow(
+        receipt_directory, label="private terminal-receipt test root"
+    )
+    root_info = tmp_path.stat()
+    receipt_info = os.fstat(receipt_fd)
+    original_fsync = watchdog.os.fsync
+    original_link = watchdog.os.link
+    original_readback = watchdog._read_canonical_object_at
+    fsync_calls = 0
+
+    if fault == "temporary_write":
+        def fail_write(_fd: int, _payload: bytes) -> None:
+            raise OSError("private injected terminal write failure")
+
+        monkeypatch.setattr(watchdog, "_write_all", fail_write)
+    elif fault in {"file_fsync", "directory_fsync"}:
+        def fail_selected_fsync(fd: int) -> None:
+            nonlocal fsync_calls
+            fsync_calls += 1
+            expected_call = 1 if fault == "file_fsync" else 2
+            if fsync_calls == expected_call:
+                raise OSError("private injected terminal fsync failure")
+            original_fsync(fd)
+
+        monkeypatch.setattr(watchdog.os, "fsync", fail_selected_fsync)
+    elif fault == "hard_link":
+        def fail_link(*_args: object, **_kwargs: object) -> None:
+            raise OSError("private injected terminal hard-link failure")
+
+        monkeypatch.setattr(watchdog.os, "link", fail_link)
+    elif fault == "readback":
+        def fail_readback(
+            directory_fd: int,
+            leaf_name: str,
+            *,
+            maximum_bytes: int,
+            label: str,
+            snapshot: watchdog._GateSnapshot | None = None,
+        ):
+            if label == "watchdog terminal receipt readback":
+                raise watchdog.WatchdogError("private injected terminal readback failure")
+            return original_readback(
+                directory_fd,
+                leaf_name,
+                maximum_bytes=maximum_bytes,
+                label=label,
+                snapshot=snapshot,
+            )
+
+        monkeypatch.setattr(watchdog, "_read_canonical_object_at", fail_readback)
+    else:  # pragma: no cover - parameter list is exhaustive.
+        raise AssertionError(f"unexpected terminal publication fault {fault}")
+
+    terminal_path = receipt_directory / "watchdog-terminal-receipt.json"
+    try:
+        with pytest.raises(watchdog.WatchdogError):
+            watchdog._publish_and_verify_terminal_receipt_at(
+                receipt_fd,
+                terminal_path.name,
+                {
+                    "schema_version": 1,
+                    "status": "failed",
+                    "fake_only": True,
+                    "protocol_id": "fake-protocol",
+                    "run_id": "fake-run",
+                    "manifest_sha256": "a" * 64,
+                    "watchdog_claim_path": str(
+                        tmp_path / "claims" / "fake-run.watchdog.claim"
+                    ),
+                    "watchdog_claim_sha256": "b" * 64,
+                    "repository_root_realpath": str(tmp_path),
+                    "repository_root_device": root_info.st_dev,
+                    "repository_root_inode": root_info.st_ino,
+                    "receipt_root_relative": "receipts",
+                    "receipt_root_device": receipt_info.st_dev,
+                    "receipt_root_inode": receipt_info.st_ino,
+                },
+            )
+    finally:
+        os.close(receipt_fd)
+
+    assert terminal_path.exists() is leaf_is_published
+    assert not (receipt_directory / watchdog._TERMINAL_READBACK_ACK_FILENAME).exists()
+    assert not tuple(receipt_directory.glob(".*.tmp"))
+
+
+@pytest.mark.parametrize("fault", ["file_fsync", "directory_fsync", "hard_link"])
+def test_terminal_readback_ack_publication_fault_is_not_authoritative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    receipt_fd = watchdog._open_absolute_directory_nofollow(
+        receipt_directory, label="private terminal-ack test root"
+    )
+    root_info = tmp_path.stat()
+    receipt_info = os.fstat(receipt_fd)
+    original_fsync = watchdog.os.fsync
+    original_link = watchdog.os.link
+    fsync_calls = 0
+
+    def fail_ack_fsync(fd: int) -> None:
+        nonlocal fsync_calls
+        fsync_calls += 1
+        expected_call = 4 if fault == "file_fsync" else 5
+        if fault in {"file_fsync", "directory_fsync"} and fsync_calls == expected_call:
+            raise OSError("private injected acknowledgment fsync failure")
+        original_fsync(fd)
+
+    def fail_ack_link(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        if destination == watchdog._TERMINAL_READBACK_ACK_FILENAME:
+            raise OSError("private injected acknowledgment hard-link failure")
+        original_link(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    if fault in {"file_fsync", "directory_fsync"}:
+        monkeypatch.setattr(watchdog.os, "fsync", fail_ack_fsync)
+    else:
+        monkeypatch.setattr(watchdog.os, "link", fail_ack_link)
+
+    terminal_path = receipt_directory / "watchdog-terminal-receipt.json"
+    terminal_value = {
+        "schema_version": 1,
+        "status": "completed",
+        "protocol_id": "fake-protocol",
+        "run_id": "fake-run",
+        "manifest_sha256": "a" * 64,
+        "watchdog_claim_path": str(tmp_path / "claims" / "fake-run.watchdog.claim"),
+        "watchdog_claim_sha256": "b" * 64,
+        "repository_root_realpath": str(tmp_path),
+        "repository_root_device": root_info.st_dev,
+        "repository_root_inode": root_info.st_ino,
+        "receipt_root_relative": "receipts",
+        "receipt_root_device": receipt_info.st_dev,
+        "receipt_root_inode": receipt_info.st_ino,
+    }
+    try:
+        with pytest.raises(watchdog.WatchdogError, match="acknowledgment"):
+            terminal_sha256, terminal_info = watchdog._publish_and_verify_terminal_receipt_at(
+                receipt_fd,
+                terminal_path.name,
+                terminal_value,
+            )
+            watchdog._publish_terminal_readback_ack_at(
+                receipt_fd,
+                terminal_path.name,
+                terminal_value,
+                terminal_sha256,
+                terminal_info,
+            )
+    finally:
+        os.close(receipt_fd)
+
+    assert terminal_path.is_file()
+    assert not (receipt_directory / watchdog._TERMINAL_READBACK_ACK_FILENAME).exists()
+    assert json.loads(terminal_path.read_text(encoding="ascii"))["status"] == "completed"
+    assert not tuple(receipt_directory.glob(".*.tmp"))
+
+
+def test_terminal_publication_failure_keeps_claim_and_prevents_second_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    claim_path = tmp_path / "claims" / "fake-run.watchdog.claim"
+    receipt_path = receipt_directory / "watchdog-terminal-receipt.json"
+    executable = Path(watchdog.PINNED_PYTHON_BIN)
+    observed_image = Path(watchdog.PINNED_PYTHON_APP)
+    launch_vector = [str(executable), "-c", "import time; time.sleep(0.05)"]
+    original_popen = watchdog.subprocess.Popen
+    child_start_count = 0
+
+    def counted_popen(*args: object, **kwargs: object):
+        nonlocal child_start_count
+        child_start_count += 1
+        return original_popen(*args, **kwargs)
+
+    def fail_terminal_publication(*_args: object, **_kwargs: object) -> str:
+        raise watchdog.WatchdogError("private injected terminal temp-write failure")
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", counted_popen)
+    monkeypatch.setattr(
+        watchdog,
+        "_publish_and_verify_terminal_receipt_at",
+        fail_terminal_publication,
+    )
+
+    def supervise_once() -> dict[str, object]:
+        return watchdog._supervise_command(
+            launch_vector=launch_vector,
+            observed_executable_path=observed_image,
+            observed_executable_sha256=_sha256(observed_image),
+            claim_path=claim_path,
+            receipt_path=receipt_path,
+            run_identity={
+                "protocol_id": "fake-protocol",
+                "run_id": "fake-run",
+                "manifest_sha256": "a" * 64,
+                "watchdog_attestation": {"private_fake": True},
+            },
+            wall_limit_seconds=1.0,
+            rss_limit_bytes=32 * 1024**2,
+            sample_interval_seconds=0.01,
+        )
+
+    with pytest.raises(watchdog.WatchdogError, match="terminal temp-write"):
+        supervise_once()
+    assert child_start_count == 1
+    assert claim_path.is_file()
+    assert tuple(receipt_directory.iterdir()) == ()
+
+    with pytest.raises(watchdog.AlreadyClaimedError):
+        supervise_once()
+    assert child_start_count == 1
+
+
+def test_post_link_terminal_readback_failure_leaves_completed_receipt_unacknowledged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(watchdog, "RUN_ID", "fake-run")
+    monkeypatch.setattr(watchdog, "PROTOCOL_ID", "fake-protocol")
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    root_info = tmp_path.stat()
+    receipt_info = receipt_directory.stat()
+    claim_path = tmp_path / "claims" / "fake-run.watchdog.claim"
+    receipt_path = receipt_directory / "watchdog-terminal-receipt.json"
+    executable = Path(watchdog.PINNED_PYTHON_BIN)
+    observed_image = Path(watchdog.PINNED_PYTHON_APP)
+    original_inspect = watchdog._inspect_fit_phase_gate
+    original_readback = watchdog._read_canonical_object_at
+    original_popen = watchdog.subprocess.Popen
+    child_start_count = 0
+
+    def inspect_with_private_hashes(
+        receipt_directory_fd: int,
+        *,
+        expected_receipt_directory: Path,
+        expected_manifest_sha256: str,
+        sync_directory: bool,
+        preflight_anchors: watchdog._PreflightAnchors | None = None,
+        expected_integrated_source_hashes: dict[str, str] | None = None,
+        retain_snapshot: bool = False,
+    ) -> dict[str, object]:
+        source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+        return original_inspect(
+            receipt_directory_fd,
+            expected_receipt_directory=expected_receipt_directory,
+            expected_manifest_sha256=expected_manifest_sha256,
+            sync_directory=sync_directory,
+            preflight_anchors=preflight_anchors,
+            expected_integrated_source_hashes=source_hashes,
+            retain_snapshot=retain_snapshot,
+        )
+
+    def fail_after_terminal_link(
+        directory_fd: int,
+        leaf_name: str,
+        *,
+        maximum_bytes: int,
+        label: str,
+        snapshot: watchdog._GateSnapshot | None = None,
+    ):
+        if label == "watchdog terminal receipt readback":
+            raise watchdog.WatchdogError("private injected post-link readback failure")
+        return original_readback(
+            directory_fd,
+            leaf_name,
+            maximum_bytes=maximum_bytes,
+            label=label,
+            snapshot=snapshot,
+        )
+
+    def counted_popen(*args: object, **kwargs: object):
+        nonlocal child_start_count
+        child_start_count += 1
+        return original_popen(*args, **kwargs)
+
+    monkeypatch.setattr(watchdog, "_inspect_fit_phase_gate", inspect_with_private_hashes)
+    monkeypatch.setattr(watchdog, "_read_canonical_object_at", fail_after_terminal_link)
+    monkeypatch.setattr(watchdog.subprocess, "Popen", counted_popen)
+
+    def supervise_once(
+        target_receipt_path: Path = receipt_path,
+    ) -> dict[str, object]:
+        target_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        target_receipt_info = target_receipt_path.parent.stat()
+        return watchdog._supervise_command(
+            launch_vector=[str(executable), "-c", "import time; time.sleep(0.05)"],
+            observed_executable_path=observed_image,
+            observed_executable_sha256=_sha256(observed_image),
+            claim_path=claim_path,
+            receipt_path=target_receipt_path,
+            run_identity={
+                "protocol_id": "fake-protocol",
+                "run_id": "fake-run",
+                "manifest_sha256": "c" * 64,
+                "repository_root_realpath": str(tmp_path),
+                "repository_root_device": root_info.st_dev,
+                "repository_root_inode": root_info.st_ino,
+                "receipt_root_relative": target_receipt_path.parent.name,
+                "receipt_root_device": target_receipt_info.st_dev,
+                "receipt_root_inode": target_receipt_info.st_ino,
+                "watchdog_attestation": {"private_fake": True},
+            },
+            wall_limit_seconds=1.0,
+            rss_limit_bytes=32 * 1024**2,
+            sample_interval_seconds=0.01,
+        )
+
+    with pytest.raises(watchdog.WatchdogError, match="post-link readback"):
+        supervise_once()
+    assert child_start_count == 1
+    assert claim_path.is_file()
+    assert receipt_path.is_file()
+    terminal = json.loads(receipt_path.read_text(encoding="ascii"))
+    assert terminal["status"] == "completed"
+    assert terminal["terminal_receipt_publication"][
+        "readback_ack_required_for_replay"
+    ] is True
+    assert not (receipt_directory / watchdog._TERMINAL_READBACK_ACK_FILENAME).exists()
+    assert not tuple(receipt_directory.glob(".*.tmp"))
+
+    retry_directory = tmp_path / "retry-receipts"
+    with pytest.raises(watchdog.AlreadyClaimedError):
+        supervise_once(retry_directory / "watchdog-terminal-receipt.json")
+    assert child_start_count == 1
+
+
+def test_post_effect_ack_link_error_preserves_canonical_readback_linearization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A surviving canonical ack records the on-disk readback linearization point."""
+
+    monkeypatch.setattr(watchdog, "RUN_ID", "fake-run")
+    monkeypatch.setattr(watchdog, "PROTOCOL_ID", "fake-protocol")
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    root_info = tmp_path.stat()
+    receipt_info = receipt_directory.stat()
+    claim_path = tmp_path / "claims" / "fake-run.watchdog.claim"
+    receipt_path = receipt_directory / "watchdog-terminal-receipt.json"
+    executable = Path(watchdog.PINNED_PYTHON_BIN)
+    observed_image = Path(watchdog.PINNED_PYTHON_APP)
+    original_inspect = watchdog._inspect_fit_phase_gate
+    original_link = watchdog.os.link
+    original_popen = watchdog.subprocess.Popen
+    child_start_count = 0
+    post_effect_link_error = False
+
+    def inspect_with_private_hashes(
+        receipt_directory_fd: int,
+        *,
+        expected_receipt_directory: Path,
+        expected_manifest_sha256: str,
+        sync_directory: bool,
+        preflight_anchors: watchdog._PreflightAnchors | None = None,
+        expected_integrated_source_hashes: dict[str, str] | None = None,
+        retain_snapshot: bool = False,
+    ) -> dict[str, object]:
+        source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+        return original_inspect(
+            receipt_directory_fd,
+            expected_receipt_directory=expected_receipt_directory,
+            expected_manifest_sha256=expected_manifest_sha256,
+            sync_directory=sync_directory,
+            preflight_anchors=preflight_anchors,
+            expected_integrated_source_hashes=source_hashes,
+            retain_snapshot=retain_snapshot,
+        )
+
+    def link_then_raise_after_ack(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal post_effect_link_error
+        original_link(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+        if destination == watchdog._TERMINAL_READBACK_ACK_FILENAME:
+            post_effect_link_error = True
+            raise OSError("private injected link error after acknowledgment creation")
+
+    def counted_popen(*args: object, **kwargs: object):
+        nonlocal child_start_count
+        child_start_count += 1
+        return original_popen(*args, **kwargs)
+
+    monkeypatch.setattr(watchdog, "_inspect_fit_phase_gate", inspect_with_private_hashes)
+    monkeypatch.setattr(watchdog.os, "link", link_then_raise_after_ack)
+    monkeypatch.setattr(watchdog.subprocess, "Popen", counted_popen)
+
+    def supervise_once(target_receipt_path: Path = receipt_path) -> dict[str, object]:
+        target_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        target_receipt_info = target_receipt_path.parent.stat()
+        return watchdog._supervise_command(
+            launch_vector=[str(executable), "-c", "import time; time.sleep(0.05)"],
+            observed_executable_path=observed_image,
+            observed_executable_sha256=_sha256(observed_image),
+            claim_path=claim_path,
+            receipt_path=target_receipt_path,
+            run_identity={
+                "protocol_id": "fake-protocol",
+                "run_id": "fake-run",
+                "manifest_sha256": "c" * 64,
+                "repository_root_realpath": str(tmp_path),
+                "repository_root_device": root_info.st_dev,
+                "repository_root_inode": root_info.st_ino,
+                "receipt_root_relative": target_receipt_path.parent.name,
+                "receipt_root_device": target_receipt_info.st_dev,
+                "receipt_root_inode": target_receipt_info.st_ino,
+                "watchdog_attestation": {"private_fake": True},
+            },
+            wall_limit_seconds=1.0,
+            rss_limit_bytes=32 * 1024**2,
+            sample_interval_seconds=0.01,
+        )
+
+    with pytest.raises(watchdog.WatchdogError, match="acknowledgment.*durably published"):
+        supervise_once()
+
+    assert post_effect_link_error is True
+    assert child_start_count == 1
+    assert claim_path.is_file()
+    terminal_bytes = receipt_path.read_bytes()
+    terminal = json.loads(terminal_bytes.decode("ascii"))
+    assert terminal["status"] == "completed"
+    assert terminal["terminal_receipt_publication"][
+        "readback_ack_required_for_replay"
+    ] is True
+    ack_path = receipt_directory / watchdog._TERMINAL_READBACK_ACK_FILENAME
+    assert ack_path.is_file()
+    ack_bytes = ack_path.read_bytes()
+    ack = json.loads(ack_bytes.decode("ascii"))
+    assert watchdog._canonical_json(ack) == ack_bytes
+    assert ack["kind"] == "abc6-watchdog-terminal-readback-acknowledgment"
+    assert ack["run_id"] == terminal["run_id"]
+    assert ack["manifest_sha256"] == terminal["manifest_sha256"]
+    assert ack["watchdog_claim_path"] == terminal["watchdog_claim_path"]
+    assert ack["watchdog_claim_sha256"] == terminal["watchdog_claim_sha256"]
+    assert ack["root_binding"]["repository_root_realpath"] == str(tmp_path)
+    assert ack["root_binding"]["receipt_root_device"] == receipt_info.st_dev
+    assert ack["root_binding"]["receipt_root_inode"] == receipt_info.st_ino
+    assert ack["terminal_receipt"]["sha256"] == hashlib.sha256(
+        terminal_bytes
+    ).hexdigest()
+    terminal_info = receipt_path.stat()
+    assert ack["terminal_receipt"]["file_identity"] == {
+        "device": terminal_info.st_dev,
+        "inode": terminal_info.st_ino,
+        "size": terminal_info.st_size,
+        "mtime_ns": terminal_info.st_mtime_ns,
+        "ctime_ns": terminal_info.st_ctime_ns,
+    }
+    assert not tuple(receipt_directory.glob(".*.tmp"))
+
+    retry_directory = tmp_path / "retry-receipts"
+    with pytest.raises(watchdog.AlreadyClaimedError):
+        supervise_once(retry_directory / "watchdog-terminal-receipt.json")
+    assert child_start_count == 1
 
 
 def test_sampled_rss_budget_terminates_fake_allocator(tmp_path: Path) -> None:
@@ -1387,6 +1989,105 @@ def test_postfit_gate_validates_all_48_durable_status_links(tmp_path: Path) -> N
         os.close(receipt_fd)
 
 
+@pytest.mark.parametrize("swap_after_gate", [False, True])
+def test_terminal_completion_rechecks_retained_fit_gate_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    swap_after_gate: bool,
+) -> None:
+    monkeypatch.setattr(watchdog, "RUN_ID", "fake-run")
+    monkeypatch.setattr(watchdog, "PROTOCOL_ID", "fake-protocol")
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    root_info = tmp_path.stat()
+    receipt_info = receipt_directory.stat()
+    claim_path = tmp_path / "claims" / "fake-run.watchdog.claim"
+    receipt_path = receipt_directory / "watchdog-terminal-receipt.json"
+    executable = Path(watchdog.PINNED_PYTHON_BIN)
+    observed_image = Path(watchdog.PINNED_PYTHON_APP)
+    original_inspect = watchdog._inspect_fit_phase_gate
+    swapped_leaf = receipt_directory / "case-00.fit-status.json"
+    copied_leaf = tmp_path / "copied-fit-status.json"
+
+    def inspect_then_swap(
+        receipt_directory_fd: int,
+        *,
+        expected_receipt_directory: Path,
+        expected_manifest_sha256: str,
+        sync_directory: bool,
+        preflight_anchors: watchdog._PreflightAnchors | None = None,
+        expected_integrated_source_hashes: dict[str, str] | None = None,
+        retain_snapshot: bool = False,
+    ) -> dict[str, object]:
+        source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+        gate = original_inspect(
+            receipt_directory_fd,
+            expected_receipt_directory=expected_receipt_directory,
+            expected_manifest_sha256=expected_manifest_sha256,
+            sync_directory=sync_directory,
+            preflight_anchors=preflight_anchors,
+            expected_integrated_source_hashes=source_hashes,
+            retain_snapshot=retain_snapshot,
+        )
+        assert gate["pre_score_artifact_chain_valid"] is True
+        if swap_after_gate:
+            shutil.copyfile(swapped_leaf, copied_leaf)
+            swapped_leaf.unlink()
+            swapped_leaf.symlink_to(copied_leaf)
+        return gate
+
+    monkeypatch.setattr(watchdog, "_inspect_fit_phase_gate", inspect_then_swap)
+    result = watchdog._supervise_command(
+        launch_vector=[str(executable), "-c", "import time; time.sleep(0.05)"],
+        observed_executable_path=observed_image,
+        observed_executable_sha256=_sha256(observed_image),
+        claim_path=claim_path,
+        receipt_path=receipt_path,
+        run_identity={
+            "protocol_id": "fake-protocol",
+            "run_id": "fake-run",
+            "manifest_sha256": "c" * 64,
+            "repository_root_realpath": str(tmp_path),
+            "repository_root_device": root_info.st_dev,
+            "repository_root_inode": root_info.st_ino,
+            "receipt_root_relative": "receipts",
+            "receipt_root_device": receipt_info.st_dev,
+            "receipt_root_inode": receipt_info.st_ino,
+            "watchdog_attestation": {"private_fake": True},
+        },
+        wall_limit_seconds=1.0,
+        rss_limit_bytes=32 * 1024**2,
+        sample_interval_seconds=0.01,
+    )
+
+    assert result["terminal_receipt_readback_verified"] is True
+    assert result["terminal_readback_ack_published"] is True
+    persisted = json.loads(receipt_path.read_text(encoding="ascii"))
+    if swap_after_gate:
+        assert result["receipt"]["status"] == "failed"
+        assert result["receipt"]["stop_reason"] == "fit_gate_changed_before_terminal_receipt"
+        assert result["receipt"]["fit_phase_gate"]["pre_score_artifact_chain_valid"] is False
+        assert persisted["status"] == "failed"
+        assert persisted["terminal_receipt_publication"][
+            "fit_gate_revalidated_before_completed"
+        ] is False
+    else:
+        assert result["receipt"]["status"] == "completed"
+        assert result["receipt"]["fit_phase_gate"]["pre_score_artifact_chain_valid"] is True
+        assert persisted["status"] == "completed"
+        assert persisted["terminal_receipt_publication"][
+            "fit_gate_revalidated_before_completed"
+        ] is True
+    ack_path = Path(result["terminal_readback_ack_path"])
+    assert ack_path.is_file()
+    ack = json.loads(ack_path.read_text(encoding="ascii"))
+    assert ack["run_id"] == "fake-run"
+    assert ack["watchdog_claim_sha256"] == persisted["watchdog_claim_sha256"]
+    assert ack["terminal_receipt"]["sha256"] == result["receipt_sha256"]
+    assert ack["root_binding"]["receipt_root_device"] == receipt_info.st_dev
+    assert ack["root_binding"]["receipt_root_inode"] == receipt_info.st_ino
+
+
 @pytest.mark.parametrize(
     "relative_leaf",
     [
@@ -1460,7 +2161,22 @@ def test_postfit_gate_rejects_leaf_symlink_swap_after_validated_read(
 
     assert swapped is True
     assert gate["file_identity_revalidation_valid"] is False
-    assert gate["all_48_status_receipts_present_and_linked"] is False
+    status_chain_leaf = relative_leaf in {
+        "case-00.fit-status.json",
+        "campaign.claim",
+        campaign.SUMMARY_FILENAME,
+    }
+    assert gate["all_48_status_receipts_present_and_linked"] is (
+        not status_chain_leaf
+    )
+    evidence_chain_leaf = status_chain_leaf or relative_leaf in {
+        campaign.EVIDENCE_MANIFEST_FILENAME,
+        "training-evidence/training-bundle.evidence.json",
+        "training-evidence/case-07.training-evidence.json",
+    }
+    assert gate["training_evidence_chain_valid"] is (
+        not evidence_chain_leaf
+    )
     assert gate["pre_score_artifact_chain_valid"] is False
     assert any(
         "fit-gate file identity changed before return" in problem
