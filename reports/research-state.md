@@ -1,6 +1,50 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T20:19Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T20:54Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: clock-order amendment design GO; implementation still HOLD
+
+Independent Luna max approved the revised operational design in
+`reports/cascaded-tanks-abc6-clock-order-amendment-2026-09-30.md` after
+several concrete HOLD corrections. It specifies terminal v2 capture status,
+nullable UTC only with valid monotonic ordering, fail-closed unavailable
+classification, staged partial-chain replay and verified cleanup. UTC-only
+campaign failure receipts cannot establish prior-error order. This is
+**design GO only**: the local watchdog/test patch remains unsynced, and a
+Luna max author is implementing only terminal-v2/event/replay Stage 1 plus
+fake fixtures; partial-chain paths remain fail-closed. The reserved synthetic
+run remains UNUSED/HOLD. See `reports/research-ledger/2026-09-30T2054Z.md`.
+
+## Latest checkpoint: clock cleanup works in fake child; replay-order contract HOLD
+
+Independent Luna max matched the local watchdog/test hashes and passed
+**70/70** fake-only tests in the checkout and clean overlay. A private child
+that ignored SIGTERM was escalated to SIGKILL, reaped with an empty process
+group, and given a failed terminal/readback ACK with unknown timing. The
+reviewer nevertheless gave **HOLD**: a persistent UTC failure after grant can
+leave `watchdog_intervention` absent, and current replay can classify a
+complete score chain as failed without proving whether intervention preceded
+the score. Its 14 focused replay tests currently fail at fixture setup due
+to an eight-versus-nine-value helper mismatch. The primary proposed a
+versioned terminal/event capture and fail-closed replay amendment for
+independent design review; no code is approved for sync or launch. A fresh
+20:34:55Z Luna snapshot saw exact Qwen HTTP 200, no ABC6 job or reserved
+claims, and HEAD==origin/main==`dc3a9c8a4b252becea723d23a4f7b4baca9e7bca`.
+See `reports/research-ledger/2026-09-30T2036Z.md` and
+`reports/cascaded-tanks-abc6-clock-order-amendment-2026-09-30.md`.
+
+## Latest checkpoint: actual-child clock fallback passes author controls; review pending
+
+A Luna max author changed only watchdog and Stage 2A fake tests. The new
+regression starts a private child, waits for its PID marker, then arms a
+persistent monotonic-clock fault. The author reports a clock-independent
+TERM/KILL and bounded reap fallback, verified empty process group, unknown
+timing recorded as `null`, and a durable failed terminal/readback ACK with
+no grant record or campaign claim. Unverified cleanup remains explicitly
+unknown. Pinned Python 3.14 compilation and **70 focused tests** passed.
+The two local files remain **unreviewed and unsynced** pending an independent
+Luna max replay of exact hashes and a clean baseline overlay; this is not
+campaign launch approval. See `reports/research-ledger/2026-09-30T2027Z.md`.
 
 ## Latest checkpoint: actual-child persistent-clock cleanup remains HOLD
 
