@@ -19,8 +19,8 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +30,12 @@ import psutil
 PROTOCOL_ID = "cascaded_tanks_abc6_synthetic_v1_20260928"
 RUN_ID = "ct-abc6-20260928-v1"
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_STATUS_RECEIPT_BYTES = 64 * 1024
+MAX_CAMPAIGN_SUMMARY_BYTES = 4 * 1024 * 1024
+MAX_TRAINING_EVIDENCE_MANIFEST_BYTES = 4 * 1024 * 1024
+MAX_TRAINING_EVIDENCE_FILE_BYTES = 32 * 1024 * 1024
+MAX_TRAINING_EVIDENCE_TOTAL_BYTES = 1024 * 1024 * 1024
+MAX_TARGET_FREE_FORECAST_BYTES = 128 * 1024 * 1024
 WALL_LIMIT_SECONDS = 900.0
 RSS_LIMIT_BYTES = 2 * 1024**3
 SAMPLE_INTERVAL_SECONDS = 0.25
@@ -84,6 +90,14 @@ _CAMPAIGN_CLAIM_PARENT_RELATIVE = (
 )
 _SCORER_CLAIM_PARENT_RELATIVE = (
     "artifacts/evaluations/cascaded_tanks_abc6_scoring/claims"
+)
+_TRAINING_EVIDENCE_DIRECTORY = "training-evidence"
+_TRAINING_EVIDENCE_MANIFEST = "campaign.training-evidence-manifest.json"
+_TARGET_FREE_FORECAST = "campaign.target-free-forecasts.json"
+_INTEGRATED_SOURCE_PATHS = (
+    "scripts/run_cascaded_tanks_abc6_synthetic.py",
+    "core/real_data/cascaded_tanks_abc6_forecast.py",
+    "core/real_data/cascaded_tanks_abc6_scoring.py",
 )
 _EXPECTED_UNUSED_LEAVES = {
     _CAMPAIGN_CLAIM_PARENT_RELATIVE: (
@@ -1801,11 +1815,52 @@ def _supervise_command(
     else:
         terminal_status = "failed"
 
-    fit_gate = _inspect_fit_phase_gate(
-        receipt_path.parent,
-        expected_manifest_sha256=str(run_identity.get("manifest_sha256", "")),
-        sync_directory=runner_exit_complete,
-    )
+    fit_gate_descriptor = receipt_directory_fd
+    temporary_fit_gate_descriptor: int | None = None
+    try:
+        if fit_gate_descriptor is None:
+            temporary_fit_gate_descriptor = _open_absolute_directory_nofollow(
+                receipt_path.parent,
+                label="private fit-gate receipt root",
+            )
+            fit_gate_descriptor = temporary_fit_gate_descriptor
+        fit_gate = _inspect_fit_phase_gate(
+            fit_gate_descriptor,
+            expected_receipt_directory=(
+                preflight_anchors.receipt_root_path
+                if preflight_anchors is not None
+                else receipt_path.parent
+            ),
+            expected_manifest_sha256=str(run_identity.get("manifest_sha256", "")),
+            sync_directory=runner_exit_complete,
+            preflight_anchors=preflight_anchors,
+        )
+    except Exception as error:
+        fit_gate = {
+            "status_receipt_count": 0,
+            "status_receipts": [],
+            "summary_path": str(receipt_path.parent / "campaign.training-summary.json"),
+            "summary_sha256": None,
+            "summary_status": None,
+            "receipt_root_identity_valid": False,
+            "all_48_status_receipts_present_and_linked": False,
+            "all_48_fit_and_baseline_statuses_complete": False,
+            "evidence_manifest_sha256": None,
+            "training_evidence_chain_valid": False,
+            "target_free_forecast_sha256": None,
+            "target_free_forecast_chain_valid": False,
+            "pre_score_artifact_chain_valid": False,
+            "postfit_target_gate_opened": False,
+            "problems": [
+                f"cannot open descriptor-bound fit gate: {type(error).__name__}"
+            ],
+        }
+    finally:
+        if temporary_fit_gate_descriptor is not None:
+            os.close(temporary_fit_gate_descriptor)
+    if runner_exit_complete and not fit_gate["pre_score_artifact_chain_valid"]:
+        terminal_status = "failed"
+        stop_reason = "child_exited_with_invalid_pre_score_gate"
     samples_bytes = _canonical_json(samples)
     body: dict[str, object] = {
         "schema_version": 1,
@@ -1970,14 +2025,770 @@ def _summary_status_counts_match(observed: object, expected: dict[str, int]) -> 
     )
 
 
-def _inspect_fit_phase_gate(
-    receipt_directory: Path,
+@dataclass(frozen=True, slots=True)
+class _GateLeafPin:
+    directory_fd: int
+    leaf_name: str
+    maximum_bytes: int
+    label: str
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class _GateDirectoryPin:
+    parent_fd: int
+    leaf_name: str
+    directory_fd: int
+    label: str
+    parent_device: int
+    parent_inode: int
+    device: int
+    inode: int
+
+
+@dataclass(slots=True)
+class _GateSnapshot:
+    """Retain descriptor anchors for a final on-disk fit-gate recheck."""
+
+    leaf_pins: list[_GateLeafPin] = field(default_factory=list)
+    directory_pins: list[_GateDirectoryPin] = field(default_factory=list)
+    _parent_fds: dict[tuple[int, int], int] = field(default_factory=dict)
+    _directory_fds: list[int] = field(default_factory=list)
+
+    def _anchor_parent(self, directory_fd: int, *, label: str) -> tuple[int, tuple[int, int]]:
+        try:
+            info = os.fstat(directory_fd)
+        except OSError as error:
+            raise WatchdogError(f"{label} parent directory is unavailable") from error
+        if not stat.S_ISDIR(info.st_mode):
+            raise WatchdogError(f"{label} parent is not a directory")
+        identity = (info.st_dev, info.st_ino)
+        anchored = self._parent_fds.get(identity)
+        if anchored is None:
+            try:
+                anchored = os.dup(directory_fd)
+            except OSError as error:
+                raise WatchdogError(f"cannot retain {label} parent descriptor") from error
+            self._parent_fds[identity] = anchored
+        return anchored, identity
+
+    def pin_leaf(
+        self,
+        directory_fd: int,
+        leaf_name: str,
+        *,
+        raw: bytes,
+        info: os.stat_result,
+        maximum_bytes: int,
+        label: str,
+    ) -> None:
+        anchored_parent, _identity = self._anchor_parent(directory_fd, label=label)
+        self.leaf_pins.append(
+            _GateLeafPin(
+                directory_fd=anchored_parent,
+                leaf_name=leaf_name,
+                maximum_bytes=maximum_bytes,
+                label=label,
+                device=info.st_dev,
+                inode=info.st_ino,
+                size=info.st_size,
+                mtime_ns=info.st_mtime_ns,
+                ctime_ns=info.st_ctime_ns,
+                sha256=hashlib.sha256(raw).hexdigest(),
+            )
+        )
+
+    def pin_directory(
+        self,
+        parent_fd: int,
+        leaf_name: str,
+        directory_fd: int,
+        *,
+        label: str,
+    ) -> None:
+        anchored_parent, parent_identity = self._anchor_parent(parent_fd, label=label)
+        try:
+            child_fd = os.dup(directory_fd)
+            child_info = os.fstat(child_fd)
+        except OSError as error:
+            raise WatchdogError(f"cannot retain {label} descriptor") from error
+        if not stat.S_ISDIR(child_info.st_mode):
+            os.close(child_fd)
+            raise WatchdogError(f"{label} is not a directory")
+        self._directory_fds.append(child_fd)
+        self.directory_pins.append(
+            _GateDirectoryPin(
+                parent_fd=anchored_parent,
+                leaf_name=leaf_name,
+                directory_fd=child_fd,
+                label=label,
+                parent_device=parent_identity[0],
+                parent_inode=parent_identity[1],
+                device=child_info.st_dev,
+                inode=child_info.st_ino,
+            )
+        )
+
+    def verify(self) -> None:
+        problems: list[str] = []
+        for pin in self.leaf_pins:
+            try:
+                raw, info = _read_regular_file_at(
+                    pin.directory_fd,
+                    pin.leaf_name,
+                    maximum_bytes=pin.maximum_bytes,
+                    label=pin.label,
+                )
+                named = os.stat(
+                    pin.leaf_name,
+                    dir_fd=pin.directory_fd,
+                    follow_symlinks=False,
+                )
+                observed = (
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_size,
+                    info.st_mtime_ns,
+                    info.st_ctime_ns,
+                )
+                named_identity = (
+                    named.st_dev,
+                    named.st_ino,
+                    named.st_size,
+                    named.st_mtime_ns,
+                    named.st_ctime_ns,
+                )
+                expected = (
+                    pin.device,
+                    pin.inode,
+                    pin.size,
+                    pin.mtime_ns,
+                    pin.ctime_ns,
+                )
+                if (
+                    observed != expected
+                    or named_identity != expected
+                    or hashlib.sha256(raw).hexdigest() != pin.sha256
+                ):
+                    problems.append(f"{pin.label} identity or bytes changed")
+            except (OSError, WatchdogError) as error:
+                problems.append(
+                    f"{pin.label} final no-follow read failed: {type(error).__name__}"
+                )
+
+        directory_flags = _directory_flags()
+        for pin in self.directory_pins:
+            try:
+                parent_info = os.fstat(pin.parent_fd)
+                retained_info = os.fstat(pin.directory_fd)
+                reopened_fd = os.open(
+                    pin.leaf_name,
+                    directory_flags,
+                    dir_fd=pin.parent_fd,
+                )
+                try:
+                    reopened_info = os.fstat(reopened_fd)
+                    named_info = os.stat(
+                        pin.leaf_name,
+                        dir_fd=pin.parent_fd,
+                        follow_symlinks=False,
+                    )
+                finally:
+                    os.close(reopened_fd)
+                if (
+                    (parent_info.st_dev, parent_info.st_ino)
+                    != (pin.parent_device, pin.parent_inode)
+                    or not stat.S_ISDIR(retained_info.st_mode)
+                    or (retained_info.st_dev, retained_info.st_ino)
+                    != (pin.device, pin.inode)
+                    or not stat.S_ISDIR(reopened_info.st_mode)
+                    or (reopened_info.st_dev, reopened_info.st_ino)
+                    != (pin.device, pin.inode)
+                    or not stat.S_ISDIR(named_info.st_mode)
+                    or (named_info.st_dev, named_info.st_ino)
+                    != (pin.device, pin.inode)
+                ):
+                    problems.append(f"{pin.label} directory identity changed")
+            except OSError as error:
+                problems.append(
+                    f"{pin.label} directory re-open failed: {type(error).__name__}"
+                )
+        if problems:
+            raise WatchdogError("; ".join(problems))
+
+    def close(self) -> None:
+        for descriptor in (*self._parent_fds.values(), *self._directory_fds):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        self._parent_fds.clear()
+        self._directory_fds.clear()
+
+
+def _read_canonical_object_at(
+    directory_fd: int,
+    leaf_name: str,
+    *,
+    maximum_bytes: int,
+    label: str,
+    snapshot: _GateSnapshot | None = None,
+) -> tuple[bytes, dict[str, object], os.stat_result]:
+    raw, info = _read_regular_file_at(
+        directory_fd,
+        leaf_name,
+        maximum_bytes=maximum_bytes,
+        label=label,
+    )
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON value: {value}")
+
+    try:
+        decoded = json.loads(
+            raw.decode("ascii"),
+            parse_constant=reject_constant,
+        )
+        if type(decoded) is not dict or _canonical_json(decoded) != raw:
+            raise ValueError("JSON is not a canonical object")
+        named = os.stat(leaf_name, dir_fd=directory_fd, follow_symlinks=False)
+    except (
+        UnicodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        TypeError,
+        ValueError,
+        OSError,
+    ) as error:
+        raise WatchdogError(f"{label} is not a stable canonical JSON object") from error
+    if (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    ) != (
+        named.st_dev,
+        named.st_ino,
+        named.st_size,
+        named.st_mtime_ns,
+        named.st_ctime_ns,
+    ):
+        raise WatchdogError(f"{label} directory entry changed while being read")
+    if snapshot is not None:
+        snapshot.pin_leaf(
+            directory_fd,
+            leaf_name,
+            raw=raw,
+            info=info,
+            maximum_bytes=maximum_bytes,
+            label=label,
+        )
+    return raw, decoded, info
+
+
+def _expected_forecast_case_identities() -> list[dict[str, object]]:
+    from core.real_data.cascaded_tanks_abc6_cases import CASE_ROSTER
+
+    if len(CASE_ROSTER) != 24:
+        raise WatchdogError("reviewed campaign roster does not contain 24 cases")
+    return [
+        {
+            "case_index": case.case_index,
+            "case_id": case.case_id,
+            "truth_id": case.truth_id,
+            "input_window": case.input_window,
+            "replicate": case.replicate,
+            "fit_model": case.fit_model.value,
+        }
+        for case in CASE_ROSTER
+    ]
+
+
+def _expected_integrated_source_hashes(
+    *,
+    preflight_anchors: _PreflightAnchors | None,
+    supplied: Mapping[str, str] | None,
+) -> dict[str, str] | None:
+    if supplied is not None:
+        source_hashes: object = supplied
+    elif preflight_anchors is not None:
+        try:
+            manifest = json.loads(preflight_anchors.manifest_file.raw.decode("ascii"))
+            source_hashes = (
+                manifest.get("source_hashes") if type(manifest) is dict else None
+            )
+        except (UnicodeError, json.JSONDecodeError, RecursionError):
+            return None
+    else:
+        return None
+    if not isinstance(source_hashes, Mapping):
+        return None
+    selected = {path: source_hashes.get(path) for path in _INTEGRATED_SOURCE_PATHS}
+    if any(not _is_sha256(digest) for digest in selected.values()):
+        return None
+    return {path: str(digest) for path, digest in selected.items()}
+
+
+def _same_directory_identity(fd: int, expected_fd: int) -> bool:
+    try:
+        actual_info = os.fstat(fd)
+        expected_info = os.fstat(expected_fd)
+    except OSError:
+        return False
+    return (
+        stat.S_ISDIR(actual_info.st_mode)
+        and stat.S_ISDIR(expected_info.st_mode)
+        and (actual_info.st_dev, actual_info.st_ino)
+        == (expected_info.st_dev, expected_info.st_ino)
+    )
+
+
+def _check_gate_receipt_root(
+    receipt_directory_fd: int,
+    expected_receipt_directory: Path,
+    *,
+    preflight_anchors: _PreflightAnchors | None,
+) -> None:
+    if (
+        not expected_receipt_directory.is_absolute()
+        or str(expected_receipt_directory)
+        != str(expected_receipt_directory.absolute())
+    ):
+        raise WatchdogError("expected receipt root path is not canonical")
+    if preflight_anchors is not None:
+        if (
+            receipt_directory_fd != preflight_anchors.receipt_root_fd
+            or expected_receipt_directory != preflight_anchors.receipt_root_path
+        ):
+            raise WatchdogError("fit gate did not receive the pinned receipt-root FD")
+        preflight_anchors.verify(require_unused=False)
+        expected_identity = preflight_anchors.directory_identities[
+            _RECEIPT_ROOT_RELATIVE
+        ]
+        info = os.fstat(receipt_directory_fd)
+        if (info.st_dev, info.st_ino) != expected_identity:
+            raise WatchdogError("pinned receipt-root FD identity changed")
+        return
+
+    expected_fd = _open_absolute_directory_nofollow(
+        expected_receipt_directory,
+        label="fit-gate receipt root",
+    )
+    try:
+        if not _same_directory_identity(receipt_directory_fd, expected_fd):
+            raise WatchdogError("fit-gate receipt root path identity changed")
+    finally:
+        os.close(expected_fd)
+
+
+def _verify_training_evidence_chain_at(
+    receipt_directory_fd: int,
     *,
     expected_manifest_sha256: str,
+    claim_sha256: str,
+    summary_sha256: str,
+    status_receipts: Sequence[dict[str, object]],
+    snapshot: _GateSnapshot,
+) -> tuple[str, bool, str | None]:
+    from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign_fit
+
+    raw, manifest, _info = _read_canonical_object_at(
+        receipt_directory_fd,
+        campaign_fit.EVIDENCE_MANIFEST_FILENAME,
+        maximum_bytes=MAX_TRAINING_EVIDENCE_MANIFEST_BYTES,
+        label="training evidence manifest",
+        snapshot=snapshot,
+    )
+    expected_keys = {
+        "schema_version",
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "claim_sha256",
+        "training_summary_filename",
+        "training_summary_sha256",
+        "roster_sha256",
+        "ordered_case_identities",
+        "status_receipts",
+        "bundle_artifact",
+        "case_artifacts",
+        "payload_sha256",
+    }
+    expected_status_receipts = [
+        {
+            "filename": row["filename"],
+            "sha256": row["sha256"],
+            "case_index": row["case_index"],
+            "case_id": row["case_id"],
+            "component": row["component"],
+            "status": row["status"],
+        }
+        for row in status_receipts
+    ]
+    roster_identities = campaign_fit._roster_identities()
+    manifest_valid = (
+        set(manifest) == expected_keys
+        and type(manifest.get("schema_version")) is int
+        and manifest.get("schema_version") == 1
+        and manifest.get("protocol_id") == PROTOCOL_ID
+        and manifest.get("run_id") == RUN_ID
+        and manifest.get("manifest_sha256") == expected_manifest_sha256
+        and manifest.get("claim_sha256") == claim_sha256
+        and manifest.get("training_summary_filename")
+        == campaign_fit.SUMMARY_FILENAME
+        and manifest.get("training_summary_sha256") == summary_sha256
+        and manifest.get("roster_sha256") == campaign_fit._roster_sha256()
+        and manifest.get("ordered_case_identities") == roster_identities
+        and manifest.get("status_receipts") == expected_status_receipts
+        and _payload_sha256_matches(manifest)
+    )
+    if not manifest_valid:
+        raise WatchdogError("training evidence manifest links are invalid")
+
+    bundle_entry = manifest.get("bundle_artifact")
+    case_entries = manifest.get("case_artifacts")
+    if (
+        type(bundle_entry) is not dict
+        or set(bundle_entry) != {"filename", "sha256"}
+        or bundle_entry.get("filename") != "training-bundle.evidence.json"
+        or not _is_sha256(bundle_entry.get("sha256"))
+        or type(case_entries) is not list
+        or len(case_entries) != 24
+    ):
+        raise WatchdogError("training evidence artifact roster is invalid")
+
+    from core.real_data.cascaded_tanks_abc6_cases import CASE_ROSTER
+
+    status_by_case = {
+        int(row["case_index"]): row for row in status_receipts if row["component"] == "fit"
+    }
+    baseline_by_case = {
+        int(row["case_index"]): row
+        for row in status_receipts
+        if row["component"] == "baseline"
+    }
+    evidence_fd = _open_relative_directory_nofollow(
+        receipt_directory_fd,
+        _TRAINING_EVIDENCE_DIRECTORY,
+        label="training evidence directory",
+    )
+    total_bytes = 0
+    try:
+        snapshot.pin_directory(
+            receipt_directory_fd,
+            _TRAINING_EVIDENCE_DIRECTORY,
+            evidence_fd,
+            label="training evidence directory",
+        )
+        bundle_raw, bundle, bundle_info = _read_canonical_object_at(
+            evidence_fd,
+            str(bundle_entry["filename"]),
+            maximum_bytes=MAX_TRAINING_EVIDENCE_FILE_BYTES,
+            label="training bundle evidence",
+            snapshot=snapshot,
+        )
+        total_bytes += bundle_info.st_size
+        if (
+            hashlib.sha256(bundle_raw).hexdigest() != bundle_entry["sha256"]
+            or bundle.get("schema_version") != 1
+            or bundle.get("protocol_id") != PROTOCOL_ID
+            or bundle.get("run_id") != RUN_ID
+            or bundle.get("kind") != "abc6_training_bundle"
+            or bundle.get("ordered_case_identities") != roster_identities
+        ):
+            raise WatchdogError("training bundle evidence is invalid")
+
+        for index, (case, entry) in enumerate(
+            zip(CASE_ROSTER, case_entries, strict=True)
+        ):
+            expected_filename = f"case-{index:02d}.training-evidence.json"
+            fit_row = status_by_case[index]
+            baseline_row = baseline_by_case[index]
+            case_identity = campaign_fit._case_identity(case)
+            if (
+                type(entry) is not dict
+                or set(entry)
+                != {
+                    "filename",
+                    "sha256",
+                    "roster_index",
+                    "case_identity",
+                    "fit_status",
+                    "baseline_status",
+                }
+                or entry.get("filename") != expected_filename
+                or entry.get("sha256") is None
+                or not _is_sha256(entry.get("sha256"))
+                or type(entry.get("roster_index")) is not int
+                or entry.get("roster_index") != index
+                or entry.get("case_identity") != case_identity
+                or entry.get("fit_status") != fit_row["status"]
+                or entry.get("baseline_status") != baseline_row["status"]
+            ):
+                raise WatchdogError(f"training evidence link is invalid at case {index}")
+            case_raw, case_payload, case_info = _read_canonical_object_at(
+                evidence_fd,
+                expected_filename,
+                maximum_bytes=MAX_TRAINING_EVIDENCE_FILE_BYTES,
+                label=f"training evidence case {index}",
+                snapshot=snapshot,
+            )
+            total_bytes += case_info.st_size
+            if total_bytes > MAX_TRAINING_EVIDENCE_TOTAL_BYTES:
+                raise WatchdogError("training evidence exceeds its total byte limit")
+            if (
+                hashlib.sha256(case_raw).hexdigest() != entry["sha256"]
+                or set(case_payload)
+                != {
+                    "schema_version",
+                    "protocol_id",
+                    "run_id",
+                    "kind",
+                    "roster_index",
+                    "case_identity",
+                    "fit_status",
+                    "baseline_status",
+                    "result",
+                }
+                or case_payload.get("schema_version") != 1
+                or case_payload.get("protocol_id") != PROTOCOL_ID
+                or case_payload.get("run_id") != RUN_ID
+                or case_payload.get("kind") != "abc6_training_case_result"
+                or case_payload.get("roster_index") != index
+                or case_payload.get("case_identity") != case_identity
+                or case_payload.get("fit_status") != fit_row["status"]
+                or case_payload.get("baseline_status") != baseline_row["status"]
+            ):
+                raise WatchdogError(f"training evidence content is invalid at case {index}")
+        named = os.stat(
+            _TRAINING_EVIDENCE_DIRECTORY,
+            dir_fd=receipt_directory_fd,
+            follow_symlinks=False,
+        )
+        evidence_info = os.fstat(evidence_fd)
+        if (
+            not stat.S_ISDIR(named.st_mode)
+            or (named.st_dev, named.st_ino)
+            != (evidence_info.st_dev, evidence_info.st_ino)
+        ):
+            raise WatchdogError("training evidence directory entry changed")
+    finally:
+        os.close(evidence_fd)
+    return hashlib.sha256(raw).hexdigest(), True, None
+
+
+def _verify_target_free_forecast_at(
+    receipt_directory_fd: int,
+    *,
+    expected_manifest_sha256: str,
+    claim_sha256: str,
+    summary_sha256: str,
+    evidence_manifest_sha256: str,
+    status_receipts: Sequence[dict[str, object]],
+    expected_integrated_source_hashes: Mapping[str, str] | None,
+    snapshot: _GateSnapshot,
+) -> tuple[str, bool, str | None]:
+    raw, forecast, _info = _read_canonical_object_at(
+        receipt_directory_fd,
+        _TARGET_FREE_FORECAST,
+        maximum_bytes=MAX_TARGET_FREE_FORECAST_BYTES,
+        label="target-free forecast artifact",
+        snapshot=snapshot,
+    )
+    expected_keys = {
+        "schema_version",
+        "protocol_id",
+        "run_id",
+        "training_manifest_sha256",
+        "training_claim_sha256",
+        "training_summary_filename",
+        "training_summary_sha256",
+        "training_evidence_manifest_sha256",
+        "integrated_source_hashes",
+        "ordered_case_identities",
+        "status_receipts",
+        "forecast_case_sha256",
+        "forecast_roster_sha256",
+        "forecasts",
+        "target_free",
+        "prospective_targets_generated_by_runner",
+        "retry_allowed",
+        "payload_sha256",
+    }
+    from core.real_data.cascaded_tanks_abc6_campaign_fit import SUMMARY_FILENAME
+    from core.real_data.cascaded_tanks_abc6_cases import CASE_ROSTER
+
+    expected_identities = _expected_forecast_case_identities()
+    expected_statuses = [
+        {"filename": row["filename"], "sha256": row["sha256"]}
+        for row in status_receipts
+    ]
+    expected_sources = (
+        None
+        if expected_integrated_source_hashes is None
+        else [
+            {"path": path, "sha256": expected_integrated_source_hashes[path]}
+            for path in _INTEGRATED_SOURCE_PATHS
+        ]
+    )
+    forecast_list = forecast.get("forecasts")
+    case_digests = forecast.get("forecast_case_sha256")
+    forecast_fields = {
+        "status",
+        "case_index",
+        "case_id",
+        "fit_window",
+        "prospective_inputs",
+        "common_state_index",
+        "parameter_order",
+        "particles",
+        "weights",
+        "particle_trajectories",
+        "aggregate_status",
+        "pointwise_weighted_mean",
+        "pointwise_weighted_median",
+        "pointwise_q05",
+        "pointwise_q95",
+        "effective_sample_size",
+        "quantile_convention",
+        "pointwise_summaries_are_coherent_trajectories",
+        "baseline_parameter_values",
+        "baseline_common_time_state",
+        "baseline_trajectory",
+        "baseline_failure",
+    }
+    forecast_valid = (
+        set(forecast) == expected_keys
+        and type(forecast.get("schema_version")) is int
+        and forecast.get("schema_version") == 1
+        and forecast.get("protocol_id") == PROTOCOL_ID
+        and forecast.get("run_id") == RUN_ID
+        and forecast.get("training_manifest_sha256") == expected_manifest_sha256
+        and forecast.get("training_claim_sha256") == claim_sha256
+        and forecast.get("training_summary_filename") == SUMMARY_FILENAME
+        and forecast.get("training_summary_sha256") == summary_sha256
+        and forecast.get("training_evidence_manifest_sha256")
+        == evidence_manifest_sha256
+        and expected_sources is not None
+        and forecast.get("integrated_source_hashes") == expected_sources
+        and forecast.get("ordered_case_identities") == expected_identities
+        and forecast.get("status_receipts") == expected_statuses
+        and type(forecast_list) is list
+        and len(forecast_list) == 24
+        and type(case_digests) is list
+        and len(case_digests) == 24
+        and all(_is_sha256(digest) for digest in case_digests)
+        and forecast.get("target_free") is True
+        and forecast.get("prospective_targets_generated_by_runner") is False
+        and forecast.get("retry_allowed") is False
+        and _payload_sha256_matches(forecast)
+    )
+    if not forecast_valid:
+        raise WatchdogError(
+            "target-free forecast identity/source/status/hash links are invalid"
+        )
+
+    computed_case_digests: list[str] = []
+    for index, (case, identity, row) in enumerate(
+        zip(CASE_ROSTER, expected_identities, forecast_list, strict=True)
+    ):
+        if (
+            type(row) is not dict
+            or set(row) != forecast_fields
+            or type(row.get("case_index")) is not int
+            or row.get("case_index") != index
+            or row.get("case_id") != identity["case_id"]
+            or row.get("fit_window") != case.input_window
+            or row.get("status") not in {"complete", "abstained_n", "incomplete_abc_fit"}
+            or (case.truth_id == "N" and row.get("status") != "abstained_n")
+            or (case.truth_id != "N" and row.get("status") == "abstained_n")
+        ):
+            raise WatchdogError(f"target-free forecast roster is invalid at case {index}")
+        case_payload = {
+            "protocol_id": PROTOCOL_ID,
+            "run_id": RUN_ID,
+            "case_index": index,
+            "case_id": case.case_id,
+            "truth_id": case.truth_id,
+            "input_window": case.input_window,
+            "replicate": case.replicate,
+            "fit_model": case.fit_model.value,
+            "forecast": row,
+        }
+        computed_case_digests.append(
+            hashlib.sha256(_canonical_json(case_payload)).hexdigest()
+        )
+    if list(case_digests) != computed_case_digests:
+        raise WatchdogError("target-free forecast case digest chain is invalid")
+    roster_hash = hashlib.sha256(
+        _canonical_json(
+            {
+                "protocol_id": PROTOCOL_ID,
+                "run_id": RUN_ID,
+                "case_sha256": computed_case_digests,
+            }
+        )
+    ).hexdigest()
+    if forecast.get("forecast_roster_sha256") != roster_hash:
+        raise WatchdogError("target-free forecast roster digest is invalid")
+    return hashlib.sha256(raw).hexdigest(), True, None
+
+
+def _inspect_fit_phase_gate(
+    receipt_directory_fd: int,
+    *,
+    expected_receipt_directory: Path,
+    expected_manifest_sha256: str,
     sync_directory: bool,
+    preflight_anchors: _PreflightAnchors | None = None,
+    expected_integrated_source_hashes: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    snapshot = _GateSnapshot()
+    try:
+        return _inspect_fit_phase_gate_with_snapshot(
+            receipt_directory_fd,
+            expected_receipt_directory=expected_receipt_directory,
+            expected_manifest_sha256=expected_manifest_sha256,
+            sync_directory=sync_directory,
+            preflight_anchors=preflight_anchors,
+            expected_integrated_source_hashes=expected_integrated_source_hashes,
+            snapshot=snapshot,
+        )
+    finally:
+        snapshot.close()
+
+
+def _inspect_fit_phase_gate_with_snapshot(
+    receipt_directory_fd: int,
+    *,
+    expected_receipt_directory: Path,
+    expected_manifest_sha256: str,
+    sync_directory: bool,
+    preflight_anchors: _PreflightAnchors | None = None,
+    expected_integrated_source_hashes: Mapping[str, str] | None = None,
+    snapshot: _GateSnapshot,
 ) -> dict[str, object]:
     statuses: list[dict[str, object]] = []
     problems: list[str] = []
+    receipt_root_identity_valid = True
+    file_identity_revalidation_valid = True
+    try:
+        _check_gate_receipt_root(
+            receipt_directory_fd,
+            expected_receipt_directory,
+            preflight_anchors=preflight_anchors,
+        )
+    except Exception as error:
+        receipt_root_identity_valid = False
+        problems.append(
+            f"pinned receipt-root identity is invalid: {type(error).__name__}"
+        )
     try:
         case_ids = _expected_case_ids()
     except (ImportError, WatchdogError) as error:
@@ -1985,13 +2796,15 @@ def _inspect_fit_phase_gate(
         problems.append(f"cannot load reviewed case roster: {type(error).__name__}")
     for case_index in range(24):
         for component in ("fit", "baseline"):
-            path = receipt_directory / f"case-{case_index:02d}.{component}-status.json"
+            filename = f"case-{case_index:02d}.{component}-status.json"
             try:
-                metadata = path.lstat()
-                if not stat.S_ISREG(metadata.st_mode):
-                    raise OSError("status path is not a regular file")
-                raw = path.read_bytes()
-                payload = json.loads(raw.decode("ascii"))
+                raw, payload, _info = _read_canonical_object_at(
+                    receipt_directory_fd,
+                    filename,
+                    maximum_bytes=MAX_STATUS_RECEIPT_BYTES,
+                    label=f"status receipt {filename}",
+                    snapshot=snapshot,
+                )
                 valid = (
                     type(payload) is dict
                     and set(payload)
@@ -2020,7 +2833,7 @@ def _inspect_fit_phase_gate(
                     and _payload_sha256_matches(payload)
                 )
                 if not valid:
-                    problems.append(f"invalid status receipt: {path.name}")
+                    problems.append(f"invalid status receipt: {filename}")
                     continue
                 statuses.append(
                     {
@@ -2028,33 +2841,36 @@ def _inspect_fit_phase_gate(
                         "case_id": payload["case_id"],
                         "component": component,
                         "status": payload["status"],
-                        "path": str(path),
+                        "filename": filename,
+                        "path": str(expected_receipt_directory / filename),
                         "sha256": hashlib.sha256(raw).hexdigest(),
                     }
                 )
-            except FileNotFoundError:
-                continue
             except (
                 OSError,
+                WatchdogError,
                 UnicodeError,
                 json.JSONDecodeError,
                 RecursionError,
                 TypeError,
                 ValueError,
             ) as error:
-                problems.append(f"cannot validate {path.name}: {type(error).__name__}")
+                problems.append(f"cannot validate {filename}: {type(error).__name__}")
 
-    summary_path = receipt_directory / "campaign.training-summary.json"
+    summary_filename = "campaign.training-summary.json"
+    summary_path = expected_receipt_directory / summary_filename
     summary: dict[str, object] | None = None
     summary_sha256: str | None = None
     campaign_claim_sha256: str | None = None
-    claim_path = receipt_directory / "campaign.claim"
+    claim_path = expected_receipt_directory / "campaign.claim"
     try:
-        claim_metadata = claim_path.lstat()
-        if not stat.S_ISREG(claim_metadata.st_mode):
-            raise OSError("campaign claim is not a regular file")
-        claim_raw = claim_path.read_bytes()
-        claim_payload = json.loads(claim_raw.decode("ascii"))
+        claim_raw, claim_payload, _claim_info = _read_canonical_object_at(
+            receipt_directory_fd,
+            "campaign.claim",
+            maximum_bytes=MAX_STATUS_RECEIPT_BYTES,
+            label="campaign claim receipt",
+            snapshot=snapshot,
+        )
         if (
             type(claim_payload) is not dict
             or set(claim_payload)
@@ -2073,17 +2889,19 @@ def _inspect_fit_phase_gate(
             or claim_payload.get("protocol_id") != PROTOCOL_ID
             or claim_payload.get("run_id") != RUN_ID
             or claim_payload.get("manifest_sha256") != expected_manifest_sha256
-            or claim_payload.get("receipt_directory") != str(receipt_directory.resolve())
+            or claim_payload.get("receipt_directory")
+            != str(expected_receipt_directory)
             or type(claim_payload.get("claimed_at_utc")) is not str
             or claim_payload.get("claim_semantics") != "consumed_once_no_resume"
         ):
-            problems.append("campaign claim is invalid or does not match the receipt directory")
+            problems.append(
+                "campaign claim is invalid or does not match the receipt directory"
+            )
         else:
             campaign_claim_sha256 = hashlib.sha256(claim_raw).hexdigest()
-    except FileNotFoundError:
-        problems.append("campaign claim receipt is missing")
     except (
         OSError,
+        WatchdogError,
         UnicodeError,
         json.JSONDecodeError,
         RecursionError,
@@ -2093,11 +2911,13 @@ def _inspect_fit_phase_gate(
         problems.append(f"cannot validate campaign claim: {type(error).__name__}")
 
     try:
-        metadata = summary_path.lstat()
-        if not stat.S_ISREG(metadata.st_mode):
-            raise OSError("summary path is not a regular file")
-        raw_summary = summary_path.read_bytes()
-        decoded = json.loads(raw_summary.decode("ascii"))
+        raw_summary, decoded, _summary_info = _read_canonical_object_at(
+            receipt_directory_fd,
+            summary_filename,
+            maximum_bytes=MAX_CAMPAIGN_SUMMARY_BYTES,
+            label="training summary",
+            snapshot=snapshot,
+        )
         if (
             type(decoded) is not dict
             or set(decoded)
@@ -2131,10 +2951,9 @@ def _inspect_fit_phase_gate(
         else:
             summary = decoded
             summary_sha256 = hashlib.sha256(raw_summary).hexdigest()
-    except FileNotFoundError:
-        pass
     except (
         OSError,
+        WatchdogError,
         UnicodeError,
         json.JSONDecodeError,
         RecursionError,
@@ -2202,14 +3021,110 @@ def _inspect_fit_phase_gate(
         if not summary_links_valid:
             problems.append("summary identity/status links do not match durable case receipts")
 
+    evidence_manifest_sha256: str | None = None
+    evidence_chain_valid = False
+    if (
+        len(statuses) == 48
+        and summary_links_valid
+        and campaign_claim_sha256 is not None
+        and summary_sha256 is not None
+    ):
+        try:
+            (
+                evidence_manifest_sha256,
+                evidence_chain_valid,
+                _evidence_detail,
+            ) = _verify_training_evidence_chain_at(
+                receipt_directory_fd,
+                expected_manifest_sha256=expected_manifest_sha256,
+                claim_sha256=campaign_claim_sha256,
+                summary_sha256=summary_sha256,
+                status_receipts=statuses,
+                snapshot=snapshot,
+            )
+        except Exception as error:
+            problems.append(
+                f"cannot validate training evidence chain: {type(error).__name__}"
+            )
+    else:
+        problems.append("training evidence chain lacks its complete status/summary links")
+
+    integrated_sources = _expected_integrated_source_hashes(
+        preflight_anchors=preflight_anchors,
+        supplied=expected_integrated_source_hashes,
+    )
+    target_free_forecast_sha256: str | None = None
+    target_free_forecast_valid = False
+    if (
+        evidence_chain_valid
+        and evidence_manifest_sha256 is not None
+        and campaign_claim_sha256 is not None
+        and summary_sha256 is not None
+    ):
+        try:
+            (
+                target_free_forecast_sha256,
+                target_free_forecast_valid,
+                _forecast_detail,
+            ) = _verify_target_free_forecast_at(
+                receipt_directory_fd,
+                expected_manifest_sha256=expected_manifest_sha256,
+                claim_sha256=campaign_claim_sha256,
+                summary_sha256=summary_sha256,
+                evidence_manifest_sha256=evidence_manifest_sha256,
+                status_receipts=statuses,
+                expected_integrated_source_hashes=integrated_sources,
+                snapshot=snapshot,
+            )
+        except Exception as error:
+            problems.append(
+                f"cannot validate target-free forecast chain: {type(error).__name__}"
+            )
+    else:
+        problems.append("target-free forecast chain lacks verified training evidence")
+
+    if integrated_sources is None:
+        problems.append(
+            "frozen manifest does not pin the integrated runner/forecast/scorer sources"
+        )
+
     if sync_directory and len(statuses) == 48 and summary_links_valid:
         try:
-            _fsync_directory(receipt_directory)
+            os.fsync(receipt_directory_fd)
         except OSError as error:
             problems.append(f"cannot sync campaign receipt directory: {type(error).__name__}")
 
+    try:
+        snapshot.verify()
+    except WatchdogError as error:
+        file_identity_revalidation_valid = False
+        problems.append(
+            f"fit-gate file identity changed before return: {type(error).__name__}"
+        )
+
+    try:
+        _check_gate_receipt_root(
+            receipt_directory_fd,
+            expected_receipt_directory,
+            preflight_anchors=preflight_anchors,
+        )
+    except Exception as error:
+        receipt_root_identity_valid = False
+        problems.append(
+            f"receipt-root path changed during gate verification: {type(error).__name__}"
+        )
+
     all_statuses_complete = len(statuses) == 48 and all(
         row["status"] == "complete" for row in statuses
+    )
+    status_chain_valid = (
+        receipt_root_identity_valid
+        and file_identity_revalidation_valid
+        and len(statuses) == 48
+        and summary_links_valid
+    )
+    pre_score_artifact_chain_valid = (
+        status_chain_valid and evidence_chain_valid and target_free_forecast_valid
     )
     return {
         "status_receipt_count": len(statuses),
@@ -2217,12 +3132,19 @@ def _inspect_fit_phase_gate(
         "summary_path": str(summary_path),
         "summary_sha256": summary_sha256,
         "summary_status": None if summary is None else summary.get("status"),
+        "receipt_root_identity_valid": receipt_root_identity_valid,
+        "file_identity_revalidation_valid": file_identity_revalidation_valid,
         "all_48_status_receipts_present_and_linked": bool(
-            len(statuses) == 48 and summary_links_valid
+            status_chain_valid
         ),
         "all_48_fit_and_baseline_statuses_complete": bool(
-            all_statuses_complete and summary_links_valid
+            all_statuses_complete and summary_links_valid and receipt_root_identity_valid
         ),
+        "evidence_manifest_sha256": evidence_manifest_sha256,
+        "training_evidence_chain_valid": evidence_chain_valid,
+        "target_free_forecast_sha256": target_free_forecast_sha256,
+        "target_free_forecast_chain_valid": target_free_forecast_valid,
+        "pre_score_artifact_chain_valid": pre_score_artifact_chain_valid,
         "postfit_target_gate_opened": (
             False if summary is None else summary.get("postfit_target_gate_opened") is True
         ),

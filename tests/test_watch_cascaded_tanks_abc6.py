@@ -184,8 +184,11 @@ def test_fake_child_samples_pid_rss_hashes_receipt_and_excludes_watchdog(
 
     receipt_path = Path(result["receipt_path"])
     receipt = json.loads(receipt_path.read_text(encoding="ascii"))
-    assert result["receipt"]["status"] == "completed"
-    assert receipt["stop_reason"] == "child_exited"
+    assert result["receipt"]["status"] == "failed"
+    assert result["receipt"]["process_return_code"] == 0
+    assert result["receipt"]["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
+    assert result["receipt"]["fit_phase_gate"]["pre_score_artifact_chain_valid"] is False
+    assert receipt["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
     assert receipt["watchdog_process_excluded_from_runner_tree"]["excluded"] is True
     watchdog_pid = receipt["watchdog_process_excluded_from_runner_tree"]["pid"]
     assert all(
@@ -386,7 +389,9 @@ def test_detached_child_receipt_only_claims_group_membership(
     detached_pid = int(marker.read_text(encoding="ascii"))
     try:
         assert psutil.pid_exists(detached_pid)
-        assert receipt["status"] == "completed"
+        assert receipt["status"] == "failed"
+        assert receipt["process_return_code"] == 0
+        assert receipt["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
         assert receipt["kill_and_reap"]["tracked_process_group_reaped"] is True
         assert receipt["kill_and_reap"]["membership_scope"] == "isolated_process_group_only"
         assert receipt["kill_and_reap"]["all_descendants_reaped_claimed"] is False
@@ -986,7 +991,9 @@ def test_private_fake_launch_claim_and_terminal_write_use_pinned_directories(
 
     receipt_body = json.loads(receipt_path.read_text(encoding="ascii"))
     claim_body = json.loads(claim_path.read_text(encoding="ascii"))
-    assert result["receipt"]["status"] == "completed"
+    assert result["receipt"]["status"] == "failed"
+    assert result["receipt"]["process_return_code"] == 0
+    assert result["receipt"]["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
     assert receipt_body["receipt_root_relative"] == watchdog._RECEIPT_ROOT_RELATIVE
     assert receipt_body["repository_root_realpath"] == str(root)
     assert receipt_body["watchdog_claim_parent_inode"] == watchdog_claim_info.st_ino
@@ -1024,7 +1031,9 @@ def test_existing_one_use_claim_rejects_before_second_child_start(tmp_path: Path
             sample_interval_seconds=0.01,
         )
 
-    assert first["receipt"]["status"] == "completed"
+    assert first["receipt"]["status"] == "failed"
+    assert first["receipt"]["process_return_code"] == 0
+    assert first["receipt"]["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
     assert claim_path.is_file()
     assert not marker.exists()
     assert tuple(second_directory.iterdir()) == ()
@@ -1042,46 +1051,64 @@ def test_exact_vector_comparison_rejects_changed_flags_or_runner() -> None:
         )
 
 
-def test_postfit_gate_validates_all_48_durable_status_links(tmp_path: Path) -> None:
-    receipt_directory = tmp_path / "receipts"
-    receipt_directory.mkdir()
-    from core.real_data.cascaded_tanks_abc6_cases import CASE_ROSTER
+def _write_private_fit_artifact_chain(receipt_directory: Path) -> dict[str, str]:
+    from core.real_data.cascaded_tanks_abc6_cases import (
+        CASE_ROSTER,
+        PARAMETER_ORDER,
+        PROSPECTIVE_INPUT,
+    )
+    from core.real_data.cascaded_tanks_abc6_forecast import QUANTILE_CONVENTION
 
-    campaign_claim: dict[str, object] = {
+    manifest_sha256 = "c" * 64
+    claim: dict[str, object] = {
         "schema_version": 1,
         "protocol_id": watchdog.PROTOCOL_ID,
         "run_id": watchdog.RUN_ID,
-        "manifest_sha256": "c" * 64,
-        "receipt_directory": str(receipt_directory.resolve()),
+        "manifest_sha256": manifest_sha256,
+        "receipt_directory": str(receipt_directory),
         "claimed_at_utc": "2026-09-28T00:00:00Z",
         "claim_semantics": "consumed_once_no_resume",
     }
-    claim_bytes = watchdog._canonical_json(campaign_claim)
-    (receipt_directory / "campaign.claim").write_bytes(claim_bytes)
-    claim_sha256 = hashlib.sha256(claim_bytes).hexdigest()
-    case_summaries = []
-    for case_index in range(24):
-        links = {}
+    claim_raw = watchdog._canonical_json(claim)
+    (receipt_directory / "campaign.claim").write_bytes(claim_raw)
+    claim_sha256 = hashlib.sha256(claim_raw).hexdigest()
+
+    case_summaries: list[dict[str, object]] = []
+    status_receipts: list[dict[str, object]] = []
+    for case in CASE_ROSTER:
+        links: dict[str, str] = {}
         for component in ("fit", "baseline"):
-            payload: dict[str, object] = {
+            filename = f"case-{case.case_index:02d}.{component}-status.json"
+            status: dict[str, object] = {
                 "schema_version": 1,
                 "protocol_id": watchdog.PROTOCOL_ID,
                 "run_id": watchdog.RUN_ID,
-                "case_index": case_index,
-                "case_id": CASE_ROSTER[case_index].case_id,
+                "case_index": case.case_index,
+                "case_id": case.case_id,
                 "component": component,
                 "status": "complete",
             }
-            payload["payload_sha256"] = hashlib.sha256(
-                watchdog._canonical_json(payload)
+            status["payload_sha256"] = hashlib.sha256(
+                watchdog._canonical_json(status)
             ).hexdigest()
-            raw = watchdog._canonical_json(payload)
-            (receipt_directory / f"case-{case_index:02d}.{component}-status.json").write_bytes(raw)
-            links[f"{component}_receipt_sha256"] = hashlib.sha256(raw).hexdigest()
+            raw = watchdog._canonical_json(status)
+            (receipt_directory / filename).write_bytes(raw)
+            digest = hashlib.sha256(raw).hexdigest()
+            links[f"{component}_receipt_sha256"] = digest
+            status_receipts.append(
+                {
+                    "filename": filename,
+                    "sha256": digest,
+                    "case_index": case.case_index,
+                    "case_id": case.case_id,
+                    "component": component,
+                    "status": "complete",
+                }
+            )
         case_summaries.append(
             {
-                "case_index": case_index,
-                "case_id": CASE_ROSTER[case_index].case_id,
+                "case_index": case.case_index,
+                "case_id": case.case_id,
                 "fit_status": "complete",
                 "baseline_status": "complete",
                 **links,
@@ -1092,7 +1119,7 @@ def test_postfit_gate_validates_all_48_durable_status_links(tmp_path: Path) -> N
         "schema_version": 1,
         "protocol_id": watchdog.PROTOCOL_ID,
         "run_id": watchdog.RUN_ID,
-        "manifest_sha256": "c" * 64,
+        "manifest_sha256": manifest_sha256,
         "claim_sha256": claim_sha256,
         "written_at_utc": "2026-09-28T00:01:00Z",
         "status": "complete",
@@ -1111,54 +1138,417 @@ def test_postfit_gate_validates_all_48_durable_status_links(tmp_path: Path) -> N
     summary["payload_sha256"] = hashlib.sha256(
         watchdog._canonical_json(summary)
     ).hexdigest()
-    (receipt_directory / "campaign.training-summary.json").write_bytes(
-        watchdog._canonical_json(summary)
+    summary_raw = watchdog._canonical_json(summary)
+    (receipt_directory / campaign.SUMMARY_FILENAME).write_bytes(summary_raw)
+    summary_sha256 = hashlib.sha256(summary_raw).hexdigest()
+
+    evidence_directory = receipt_directory / campaign.EVIDENCE_DIRECTORY_NAME
+    evidence_directory.mkdir()
+    roster_identities = campaign._roster_identities()
+    bundle = {
+        "schema_version": 1,
+        "protocol_id": watchdog.PROTOCOL_ID,
+        "run_id": watchdog.RUN_ID,
+        "kind": "abc6_training_bundle",
+        "ordered_case_identities": roster_identities,
+        "bundle": {"private_fake_fixture": True},
+    }
+    bundle_raw = watchdog._canonical_json(bundle)
+    (evidence_directory / "training-bundle.evidence.json").write_bytes(bundle_raw)
+    case_artifacts: list[dict[str, object]] = []
+    for case in CASE_ROSTER:
+        evidence_filename = f"case-{case.case_index:02d}.training-evidence.json"
+        evidence = {
+            "schema_version": 1,
+            "protocol_id": watchdog.PROTOCOL_ID,
+            "run_id": watchdog.RUN_ID,
+            "kind": "abc6_training_case_result",
+            "roster_index": case.case_index,
+            "case_identity": campaign._case_identity(case),
+            "fit_status": "complete",
+            "baseline_status": "complete",
+            "result": {"private_fake_fixture": True},
+        }
+        evidence_raw = watchdog._canonical_json(evidence)
+        (evidence_directory / evidence_filename).write_bytes(evidence_raw)
+        case_artifacts.append(
+            {
+                "filename": evidence_filename,
+                "sha256": hashlib.sha256(evidence_raw).hexdigest(),
+                "roster_index": case.case_index,
+                "case_identity": campaign._case_identity(case),
+                "fit_status": "complete",
+                "baseline_status": "complete",
+            }
+        )
+    evidence_manifest: dict[str, object] = {
+        "schema_version": 1,
+        "protocol_id": watchdog.PROTOCOL_ID,
+        "run_id": watchdog.RUN_ID,
+        "manifest_sha256": manifest_sha256,
+        "claim_sha256": claim_sha256,
+        "training_summary_filename": campaign.SUMMARY_FILENAME,
+        "training_summary_sha256": summary_sha256,
+        "roster_sha256": campaign._roster_sha256(),
+        "ordered_case_identities": roster_identities,
+        "status_receipts": [
+            {
+                key: entry[key]
+                for key in (
+                    "filename",
+                    "sha256",
+                    "case_index",
+                    "case_id",
+                    "component",
+                    "status",
+                )
+            }
+            for entry in status_receipts
+        ],
+        "bundle_artifact": {
+            "filename": "training-bundle.evidence.json",
+            "sha256": hashlib.sha256(bundle_raw).hexdigest(),
+        },
+        "case_artifacts": case_artifacts,
+    }
+    evidence_manifest["payload_sha256"] = hashlib.sha256(
+        watchdog._canonical_json(evidence_manifest)
+    ).hexdigest()
+    evidence_manifest_raw = watchdog._canonical_json(evidence_manifest)
+    (receipt_directory / campaign.EVIDENCE_MANIFEST_FILENAME).write_bytes(
+        evidence_manifest_raw
+    )
+    evidence_manifest_sha256 = hashlib.sha256(evidence_manifest_raw).hexdigest()
+
+    source_hashes = {
+        path: hashlib.sha256(path.encode("ascii")).hexdigest()
+        for path in watchdog._INTEGRATED_SOURCE_PATHS
+    }
+    short_identities = watchdog._expected_forecast_case_identities()
+    forecasts: list[dict[str, object]] = []
+    forecast_case_sha256: list[str] = []
+    for case in CASE_ROSTER:
+        is_n = case.truth_id == "N"
+        particles = [] if is_n else [
+            {
+                "particle_index": particle_index,
+                "parameter_values": [0.5, 0.4, 0.5, 0.5, 0.5, 3.0],
+                "weight": 1.0 / 48.0,
+                "common_time_state": {"x1": 0.5, "x2": 0.5},
+                "trajectory": [1.0] * len(PROSPECTIVE_INPUT),
+                "failure": None,
+            }
+            for particle_index in range(48)
+        ]
+        weights = [] if is_n else [1.0 / 48.0] * 48
+        trajectories = [] if is_n else [[1.0] * len(PROSPECTIVE_INPUT)] * 48
+        forecast = {
+            "status": "abstained_n" if is_n else "complete",
+            "case_index": case.case_index,
+            "case_id": case.case_id,
+            "fit_window": case.input_window,
+            "prospective_inputs": None if is_n else list(PROSPECTIVE_INPUT),
+            "common_state_index": None if is_n else case.input_length,
+            "parameter_order": list(PARAMETER_ORDER),
+            "particles": particles,
+            "weights": weights,
+            "particle_trajectories": trajectories,
+            "aggregate_status": "unavailable" if is_n else "complete",
+            "pointwise_weighted_mean": None if is_n else [1.0] * len(PROSPECTIVE_INPUT),
+            "pointwise_weighted_median": None if is_n else [1.0] * len(PROSPECTIVE_INPUT),
+            "pointwise_q05": None if is_n else [1.0] * len(PROSPECTIVE_INPUT),
+            "pointwise_q95": None if is_n else [1.0] * len(PROSPECTIVE_INPUT),
+            "effective_sample_size": None if is_n else 48.0,
+            "quantile_convention": QUANTILE_CONVENTION,
+            "pointwise_summaries_are_coherent_trajectories": False,
+            "baseline_parameter_values": None if is_n else [0.5, 0.4, 0.5, 0.5, 0.5, 3.0],
+            "baseline_common_time_state": None if is_n else {"x1": 0.5, "x2": 0.5},
+            "baseline_trajectory": None if is_n else [1.0] * len(PROSPECTIVE_INPUT),
+            "baseline_failure": None,
+        }
+        forecasts.append(forecast)
+        case_identity = short_identities[case.case_index]
+        case_payload = {
+            "protocol_id": watchdog.PROTOCOL_ID,
+            "run_id": watchdog.RUN_ID,
+            "case_index": case.case_index,
+            "case_id": case.case_id,
+            "truth_id": case.truth_id,
+            "input_window": case.input_window,
+            "replicate": case.replicate,
+            "fit_model": case.fit_model.value,
+            "forecast": forecast,
+        }
+        forecast_case_sha256.append(
+            hashlib.sha256(watchdog._canonical_json(case_payload)).hexdigest()
+        )
+    forecast_roster_sha256 = hashlib.sha256(
+        watchdog._canonical_json(
+            {
+                "protocol_id": watchdog.PROTOCOL_ID,
+                "run_id": watchdog.RUN_ID,
+                "case_sha256": forecast_case_sha256,
+            }
+        )
+    ).hexdigest()
+    forecast_artifact: dict[str, object] = {
+        "schema_version": 1,
+        "protocol_id": watchdog.PROTOCOL_ID,
+        "run_id": watchdog.RUN_ID,
+        "training_manifest_sha256": manifest_sha256,
+        "training_claim_sha256": claim_sha256,
+        "training_summary_filename": campaign.SUMMARY_FILENAME,
+        "training_summary_sha256": summary_sha256,
+        "training_evidence_manifest_sha256": evidence_manifest_sha256,
+        "integrated_source_hashes": [
+            {"path": path, "sha256": source_hashes[path]}
+            for path in watchdog._INTEGRATED_SOURCE_PATHS
+        ],
+        "ordered_case_identities": short_identities,
+        "status_receipts": [
+            {"filename": row["filename"], "sha256": row["sha256"]}
+            for row in status_receipts
+        ],
+        "forecast_case_sha256": forecast_case_sha256,
+        "forecast_roster_sha256": forecast_roster_sha256,
+        "forecasts": forecasts,
+        "target_free": True,
+        "prospective_targets_generated_by_runner": False,
+        "retry_allowed": False,
+    }
+    forecast_artifact["payload_sha256"] = hashlib.sha256(
+        watchdog._canonical_json(forecast_artifact)
+    ).hexdigest()
+    (receipt_directory / watchdog._TARGET_FREE_FORECAST).write_bytes(
+        watchdog._canonical_json(forecast_artifact)
+    )
+    return source_hashes
+
+
+def test_postfit_gate_validates_all_48_durable_status_links(tmp_path: Path) -> None:
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+    receipt_fd = watchdog._open_absolute_directory_nofollow(
+        receipt_directory, label="private test receipt root"
     )
 
-    gate = watchdog._inspect_fit_phase_gate(
-        receipt_directory,
-        expected_manifest_sha256="c" * 64,
-        sync_directory=True,
+    def inspect(*, sync: bool = False):
+        return watchdog._inspect_fit_phase_gate(
+            receipt_fd,
+            expected_receipt_directory=receipt_directory,
+            expected_manifest_sha256="c" * 64,
+            sync_directory=sync,
+            expected_integrated_source_hashes=source_hashes,
+        )
+
+    try:
+        gate = inspect(sync=True)
+        assert gate["status_receipt_count"] == 48
+        assert gate["all_48_status_receipts_present_and_linked"] is True
+        assert gate["all_48_fit_and_baseline_statuses_complete"] is True
+        assert gate["training_evidence_chain_valid"] is True
+        assert gate["target_free_forecast_chain_valid"] is True
+        assert gate["pre_score_artifact_chain_valid"] is True
+        assert gate["postfit_target_gate_opened"] is False
+        assert gate["problems"] == []
+
+        summary_path = receipt_directory / campaign.SUMMARY_FILENAME
+        original_summary = json.loads(summary_path.read_text(encoding="ascii"))
+
+        def write_tampered_summary(payload: dict[str, object]) -> None:
+            payload.pop("payload_sha256", None)
+            payload["payload_sha256"] = hashlib.sha256(
+                watchdog._canonical_json(payload)
+            ).hexdigest()
+            summary_path.write_bytes(watchdog._canonical_json(payload))
+
+        bool_schema = dict(original_summary)
+        bool_schema["schema_version"] = True
+        write_tampered_summary(bool_schema)
+        bool_gate = inspect()
+        assert bool_gate["status_receipt_count"] == 48
+        assert bool_gate["all_48_fit_and_baseline_statuses_complete"] is False
+        assert bool_gate["pre_score_artifact_chain_valid"] is False
+        assert "training summary is not a valid durable campaign receipt" in bool_gate["problems"]
+
+        wrong_case_id = dict(original_summary)
+        wrong_case_statuses = [dict(entry) for entry in original_summary["case_statuses"]]
+        wrong_case_statuses[12]["case_id"] = "wrong-case-id"
+        wrong_case_id["case_statuses"] = wrong_case_statuses
+        write_tampered_summary(wrong_case_id)
+        wrong_case_gate = inspect()
+        assert wrong_case_gate["status_receipt_count"] == 48
+        assert wrong_case_gate["all_48_status_receipts_present_and_linked"] is False
+        assert wrong_case_gate["all_48_fit_and_baseline_statuses_complete"] is False
+        assert wrong_case_gate["pre_score_artifact_chain_valid"] is False
+        assert "summary identity/status links do not match durable case receipts" in wrong_case_gate["problems"]
+    finally:
+        os.close(receipt_fd)
+
+
+@pytest.mark.parametrize(
+    "relative_leaf",
+    [
+        "case-00.fit-status.json",
+        "campaign.claim",
+        campaign.SUMMARY_FILENAME,
+        campaign.EVIDENCE_MANIFEST_FILENAME,
+        "training-evidence/training-bundle.evidence.json",
+        "training-evidence/case-07.training-evidence.json",
+        watchdog._TARGET_FREE_FORECAST,
+    ],
+)
+def test_postfit_gate_rejects_leaf_symlink_swap_after_validated_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative_leaf: str,
+) -> None:
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+    target = receipt_directory / relative_leaf
+    copied = tmp_path / "copied-leaf.json"
+    shutil.copyfile(target, copied)
+    receipt_fd = watchdog._open_absolute_directory_nofollow(
+        receipt_directory, label="private post-read-swap receipt root"
     )
+    original_read = watchdog._read_canonical_object_at
+    swapped = False
+
+    def read_then_swap(
+        directory_fd: int,
+        leaf_name: str,
+        *,
+        maximum_bytes: int,
+        label: str,
+        snapshot: watchdog._GateSnapshot | None = None,
+    ):
+        nonlocal swapped
+        result = original_read(
+            directory_fd,
+            leaf_name,
+            maximum_bytes=maximum_bytes,
+            label=label,
+            snapshot=snapshot,
+        )
+        if not swapped and leaf_name == target.name and label in {
+            "status receipt case-00.fit-status.json",
+            "campaign claim receipt",
+            "training summary",
+            "training evidence manifest",
+            "training bundle evidence",
+            "training evidence case 7",
+            "target-free forecast artifact",
+        }:
+            target.unlink()
+            target.symlink_to(copied)
+            swapped = True
+        return result
+
+    monkeypatch.setattr(watchdog, "_read_canonical_object_at", read_then_swap)
+    try:
+        gate = watchdog._inspect_fit_phase_gate(
+            receipt_fd,
+            expected_receipt_directory=receipt_directory,
+            expected_manifest_sha256="c" * 64,
+            sync_directory=False,
+            expected_integrated_source_hashes=source_hashes,
+        )
+    finally:
+        os.close(receipt_fd)
+
+    assert swapped is True
+    assert gate["file_identity_revalidation_valid"] is False
+    assert gate["all_48_status_receipts_present_and_linked"] is False
+    assert gate["pre_score_artifact_chain_valid"] is False
+    assert any(
+        "fit-gate file identity changed before return" in problem
+        for problem in gate["problems"]
+    )
+
+
+def test_postfit_gate_rejects_fifo_status_without_blocking(tmp_path: Path) -> None:
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+    status_path = receipt_directory / "case-00.fit-status.json"
+    status_path.unlink()
+    os.mkfifo(status_path)
+    receipt_fd = watchdog._open_absolute_directory_nofollow(
+        receipt_directory, label="private FIFO receipt root"
+    )
+    started = time.monotonic()
+    try:
+        gate = watchdog._inspect_fit_phase_gate(
+            receipt_fd,
+            expected_receipt_directory=receipt_directory,
+            expected_manifest_sha256="c" * 64,
+            sync_directory=False,
+            expected_integrated_source_hashes=source_hashes,
+        )
+    finally:
+        os.close(receipt_fd)
+    assert time.monotonic() - started < 1.0
+    assert gate["status_receipt_count"] == 47
+    assert gate["pre_score_artifact_chain_valid"] is False
+    assert any("cannot validate case-00.fit-status.json" in item for item in gate["problems"])
+
+
+def test_postfit_gate_rejects_status_symlink_without_following_it(tmp_path: Path) -> None:
+    receipt_directory = tmp_path / "receipts"
+    receipt_directory.mkdir()
+    source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+    victim = receipt_directory / "case-00.fit-status.json"
+    copied = tmp_path / "copied-status.json"
+    shutil.copyfile(victim, copied)
+    victim.unlink()
+    victim.symlink_to(copied)
+    receipt_fd = watchdog._open_absolute_directory_nofollow(
+        receipt_directory, label="private symlink receipt root"
+    )
+    try:
+        gate = watchdog._inspect_fit_phase_gate(
+            receipt_fd,
+            expected_receipt_directory=receipt_directory,
+            expected_manifest_sha256="c" * 64,
+            sync_directory=False,
+            expected_integrated_source_hashes=source_hashes,
+        )
+    finally:
+        os.close(receipt_fd)
+    assert gate["status_receipt_count"] == 47
+    assert gate["pre_score_artifact_chain_valid"] is False
+    assert any("cannot validate case-00.fit-status.json" in item for item in gate["problems"])
+
+
+def test_postfit_gate_rejects_copied_artifacts_ancestor_swap_after_open(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "private-checkout"
+    receipt_directory = root / "artifacts" / "run" / "receipts"
+    receipt_directory.mkdir(parents=True)
+    source_hashes = _write_private_fit_artifact_chain(receipt_directory)
+    receipt_fd = watchdog._open_absolute_directory_nofollow(
+        receipt_directory, label="private anchored receipt root"
+    )
+    saved_artifacts = root / "artifacts.original"
+    copied_artifacts = tmp_path / "copied-artifacts"
+    shutil.copytree(root / "artifacts", copied_artifacts)
+    (root / "artifacts").rename(saved_artifacts)
+    (root / "artifacts").symlink_to(copied_artifacts, target_is_directory=True)
+    try:
+        gate = watchdog._inspect_fit_phase_gate(
+            receipt_fd,
+            expected_receipt_directory=receipt_directory,
+            expected_manifest_sha256="c" * 64,
+            sync_directory=False,
+            expected_integrated_source_hashes=source_hashes,
+        )
+    finally:
+        os.close(receipt_fd)
     assert gate["status_receipt_count"] == 48
-    assert gate["all_48_status_receipts_present_and_linked"] is True
-    assert gate["all_48_fit_and_baseline_statuses_complete"] is True
-    assert gate["postfit_target_gate_opened"] is False
-    assert gate["problems"] == []
-
-    summary_path = receipt_directory / "campaign.training-summary.json"
-    original_summary = json.loads(summary_path.read_text(encoding="ascii"))
-
-    def write_tampered_summary(payload: dict[str, object]) -> None:
-        payload.pop("payload_sha256", None)
-        payload["payload_sha256"] = hashlib.sha256(
-            watchdog._canonical_json(payload)
-        ).hexdigest()
-        summary_path.write_bytes(watchdog._canonical_json(payload))
-
-    bool_schema = dict(original_summary)
-    bool_schema["schema_version"] = True
-    write_tampered_summary(bool_schema)
-    bool_gate = watchdog._inspect_fit_phase_gate(
-        receipt_directory,
-        expected_manifest_sha256="c" * 64,
-        sync_directory=False,
-    )
-    assert bool_gate["status_receipt_count"] == 48
-    assert bool_gate["all_48_fit_and_baseline_statuses_complete"] is False
-    assert "training summary is not a valid durable campaign receipt" in bool_gate["problems"]
-
-    wrong_case_id = dict(original_summary)
-    wrong_case_statuses = [dict(entry) for entry in original_summary["case_statuses"]]
-    wrong_case_statuses[12]["case_id"] = "wrong-case-id"
-    wrong_case_id["case_statuses"] = wrong_case_statuses
-    write_tampered_summary(wrong_case_id)
-    wrong_case_gate = watchdog._inspect_fit_phase_gate(
-        receipt_directory,
-        expected_manifest_sha256="c" * 64,
-        sync_directory=False,
-    )
-    assert wrong_case_gate["status_receipt_count"] == 48
-    assert wrong_case_gate["all_48_status_receipts_present_and_linked"] is False
-    assert wrong_case_gate["all_48_fit_and_baseline_statuses_complete"] is False
-    assert "summary identity/status links do not match durable case receipts" in wrong_case_gate["problems"]
+    assert gate["receipt_root_identity_valid"] is False
+    assert gate["all_48_status_receipts_present_and_linked"] is False
+    assert gate["pre_score_artifact_chain_valid"] is False
+    assert any("pinned receipt-root identity is invalid" in item for item in gate["problems"])
