@@ -39,6 +39,17 @@ MAX_EVIDENCE_TOTAL_BYTES: Final = 1024 * 1024 * 1024
 MAX_MARKER_BYTES: Final = cases._MAX_REVEAL_MARKER_BYTES
 TERMINAL_FILENAME: Final = "watchdog-terminal-receipt.json"
 TERMINAL_ACK_FILENAME: Final = "terminal-readback.ok"
+GRANT_RECORD_FILENAME: Final = "watchdog-child-grant.json"
+_FORECAST_FILENAME: Final = "campaign.target-free-forecasts.json"
+_BOOTSTRAP_GRANT_FIELDS: Final = frozenset(
+    {
+        "transport",
+        "environment_locator",
+        "descriptor_fd",
+        "grant_sha256",
+        "digest_receipt_leaf",
+    }
+)
 _INTEGRATED_SOURCE_PATHS: Final = (
     "scripts/run_cascaded_tanks_abc6_synthetic.py",
     "core/real_data/cascaded_tanks_abc6_forecast.py",
@@ -195,6 +206,12 @@ class _LeafPin:
     sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class _AbsencePin:
+    parent: cases._DirectoryAnchor = field(repr=False, compare=False)
+    filename: str
+
+
 class _ReadSession:
     """Own anchored directories and revalidate every referenced leaf at exit."""
 
@@ -202,6 +219,10 @@ class _ReadSession:
         self.frozen = frozen
         self.anchors: list[cases._DirectoryAnchor] = []
         self.pins: list[_LeafPin] = []
+        self.absence_pins: list[_AbsencePin] = []
+        self.directory_entry_pins: list[
+            tuple[cases._DirectoryAnchor, tuple[str, ...]]
+        ] = []
         identity = frozen.receipt_root_identity
         try:
             identity.verify()
@@ -364,6 +385,46 @@ class _ReadSession:
         except OSError as error:
             raise _Reject(stage, "cannot inspect the fixed evidence leaf") from error
 
+    def require_absent(
+        self,
+        parent: cases._DirectoryAnchor,
+        filename: str,
+        *,
+        label: str,
+        stage: str,
+    ) -> None:
+        """Pin an anchored no-follow absence for final namespace revalidation."""
+
+        if filename in {"", ".", ".."} or Path(filename).name != filename:
+            raise _Reject(stage, f"{label} is not a leaf file")
+        try:
+            os.stat(filename, dir_fd=parent.descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            self.absence_pins.append(_AbsencePin(parent, filename))
+            return
+        except OSError as error:
+            raise _Reject(stage, f"cannot verify absence of {label}") from error
+        raise _Reject(stage, f"{label} unexpectedly exists")
+
+    def require_directory_entries(
+        self,
+        parent: cases._DirectoryAnchor,
+        *,
+        allowed: set[str],
+        required: set[str],
+        label: str,
+        stage: str,
+    ) -> None:
+        """Reject unrecognized directory entries and recheck the exact listing."""
+
+        try:
+            entries = tuple(sorted(os.listdir(parent.descriptor)))
+        except OSError as error:
+            raise _Reject(stage, f"cannot enumerate {label}") from error
+        if not required.issubset(entries) or not set(entries).issubset(allowed):
+            raise _Reject(stage, f"{label} contains missing or unexpected artifacts")
+        self.directory_entry_pins.append((parent, entries))
+
     def verify_stable(self) -> None:
         try:
             self.frozen.receipt_root_identity.verify()
@@ -391,6 +452,37 @@ class _ReadSession:
                     raise _Reject(
                         "final_identity_revalidation",
                         f"{pin.filename} changed after its initial verification",
+                    )
+            for pin in self.absence_pins:
+                try:
+                    os.stat(
+                        pin.filename,
+                        dir_fd=pin.parent.descriptor,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    continue
+                except OSError as error:
+                    raise _Reject(
+                        "final_identity_revalidation",
+                        f"absence of {pin.filename} could not be revalidated",
+                    ) from error
+                raise _Reject(
+                    "final_identity_revalidation",
+                    f"{pin.filename} appeared during replay",
+                )
+            for parent, expected_entries in self.directory_entry_pins:
+                try:
+                    entries = tuple(sorted(os.listdir(parent.descriptor)))
+                except OSError as error:
+                    raise _Reject(
+                        "final_identity_revalidation",
+                        "anchored evidence directory changed during replay",
+                    ) from error
+                if entries != expected_entries:
+                    raise _Reject(
+                        "final_identity_revalidation",
+                        "anchored evidence directory entries changed during replay",
                     )
             self.frozen.receipt_root_identity.verify()
         except _Reject:
@@ -515,6 +607,18 @@ def _verify_claims(
     if global_raw != receipt_raw or global_claim != receipt_claim:
         raise _Reject("global_campaign_claim", "global and receipt campaign claims differ")
 
+    _watchdog_sha, watchdog_claim = _verify_watchdog_claim(ctx)
+    return campaign_claim_sha, receipt_claim, watchdog_claim
+
+
+def _verify_watchdog_claim(
+    ctx: _ReadSession,
+) -> tuple[str, dict[str, object]]:
+    """Verify the frozen one-use watchdog claim under its anchored parent."""
+
+    if ctx.scorer_claim_parent is None:
+        raise _Reject("watchdog_claim", "pinned scorer claim parent is unavailable")
+    frozen = ctx.frozen
     watchdog_raw, watchdog_claim, _ = ctx.read(
         ctx.campaign_claim_parent,
         f"{frozen.run_id}.watchdog.claim",
@@ -522,7 +626,8 @@ def _verify_claims(
         label="watchdog one-use claim",
         stage="watchdog_claim",
     )
-    if hashlib.sha256(watchdog_raw).hexdigest() != frozen.watchdog_claim_sha256:
+    watchdog_sha = hashlib.sha256(watchdog_raw).hexdigest()
+    if watchdog_sha != frozen.watchdog_claim_sha256:
         raise _Reject("watchdog_claim", "watchdog claim digest differs from frozen identity")
     expected_fields = {
         "protocol_id": frozen.protocol_id,
@@ -544,7 +649,243 @@ def _verify_claims(
     }
     if any(watchdog_claim.get(key) != value for key, value in expected_fields.items()):
         raise _Reject("watchdog_claim", "watchdog claim identity differs from frozen root")
-    return campaign_claim_sha, receipt_claim, watchdog_claim
+    return watchdog_sha, watchdog_claim
+
+
+def _verify_no_campaign_chain(ctx: _ReadSession) -> None:
+    """Pin no-follow absence of all fixed campaign and post-score artifacts."""
+
+    if ctx.scorer_claim_parent is None:
+        raise _Reject("reveal_marker", "pinned scorer claim parent is unavailable")
+    ctx.require_absent(
+        ctx.receipt,
+        campaign_fit.CLAIM_FILENAME,
+        label="receipt campaign claim",
+        stage="campaign_claim_absence",
+    )
+    ctx.require_absent(
+        ctx.campaign_claim_parent,
+        f"{ctx.frozen.run_id}.claim",
+        label="global campaign claim",
+        stage="campaign_claim_absence",
+    )
+    ctx.require_absent(
+        ctx.scorer_claim_parent,
+        f"{ctx.frozen.run_id}.claim",
+        label="reveal marker",
+        stage="reveal_marker_absence",
+    )
+    for case in cases.CASE_ROSTER:
+        for component in ("fit", "baseline"):
+            filename = f"case-{case.case_index:02d}.{component}-status.json"
+            ctx.require_absent(
+                ctx.receipt,
+                filename,
+                label=f"{component} status receipt {case.case_index}",
+                stage="campaign_status_absence",
+            )
+    for filename, label in (
+        (campaign_fit.SUMMARY_FILENAME, "training summary"),
+        (campaign_fit.EVIDENCE_MANIFEST_FILENAME, "training evidence manifest"),
+        (campaign_fit.FAILURE_FILENAME, "campaign failure receipt"),
+        (_FORECAST_FILENAME, "target-free forecast artifact"),
+        (scoring.TARGET_ARRAYS_ARTIFACT_FILENAME, "prospective target artifact"),
+        (scoring.SCORE_RECEIPT_FILENAME, "deferred score receipt"),
+    ):
+        ctx.require_absent(
+            ctx.receipt,
+            filename,
+            label=label,
+            stage="campaign_artifact_absence",
+        )
+
+
+def _verify_pre_campaign_child_state(
+    ctx: _ReadSession,
+    terminal: dict[str, object],
+) -> Literal["prechild", "child"]:
+    """Separate a genuine prechild terminal from an attested child stop."""
+
+    fit_gate = terminal.get("fit_phase_gate")
+    if (
+        type(fit_gate) is not dict
+        or fit_gate.get("status_receipt_count") != 0
+        or fit_gate.get("status_receipts") != []
+        or fit_gate.get("summary_sha256") is not None
+        or fit_gate.get("evidence_manifest_sha256") is not None
+        or fit_gate.get("target_free_forecast_sha256") is not None
+        or fit_gate.get("pre_score_artifact_chain_valid") is not False
+        or fit_gate.get("all_48_status_receipts_present_and_linked") is not False
+        or fit_gate.get("training_evidence_chain_valid") is not False
+        or fit_gate.get("target_free_forecast_chain_valid") is not False
+    ):
+        raise _Reject(
+            "terminal_fit_gate",
+            "terminal does not retain an empty pre-campaign fit-stage snapshot",
+        )
+    launch = terminal.get("child_launch")
+    if type(launch) is not dict or type(launch.get("image_observations")) is not list:
+        raise _Reject("terminal_child_attestation", "terminal child launch snapshot is malformed")
+    observed = launch.get("observed_process")
+    if observed is None:
+        if (
+            launch.get("image_observations") != []
+            or terminal.get("process_return_code") is not None
+            or terminal.get("kill_and_reap") is not None
+        ):
+            raise _Reject(
+                "terminal_child_attestation",
+                "prechild terminal contains child execution or cleanup evidence",
+            )
+        bootstrap = terminal.get("bootstrap_grant")
+        if bootstrap is not None:
+            if (
+                type(bootstrap) is not dict
+                or set(bootstrap) != _BOOTSTRAP_GRANT_FIELDS
+                or bootstrap.get("transport") != "inherited-anonymous-unix-stream-socket"
+                or bootstrap.get("environment_locator") != "ABC6_GRANT_FD"
+                or type(bootstrap.get("descriptor_fd")) is not int
+                or bootstrap["descriptor_fd"] < 0
+                or bootstrap.get("grant_sha256") is not None
+                or bootstrap.get("digest_receipt_leaf") != GRANT_RECORD_FILENAME
+            ):
+                raise _Reject(
+                    "terminal_child_attestation",
+                    "prechild bootstrap grant fields are inconsistent",
+                )
+        ctx.require_absent(
+            ctx.receipt,
+            GRANT_RECORD_FILENAME,
+            label="durable child grant record",
+            stage="terminal_child_attestation",
+        )
+        ctx.require_directory_entries(
+            ctx.receipt,
+            allowed={TERMINAL_FILENAME, TERMINAL_ACK_FILENAME},
+            required={TERMINAL_FILENAME, TERMINAL_ACK_FILENAME},
+            label="prechild receipt root",
+            stage="campaign_artifact_absence",
+        )
+        return "prechild"
+
+    _require_verified_child_reap(terminal)
+    if type(terminal.get("process_return_code")) is not int:
+        raise _Reject(
+            "terminal_child_reap", "observed child has no retained process return code"
+        )
+    _verify_child_grant_record(ctx, terminal)
+    ctx.require_directory_entries(
+        ctx.receipt,
+        allowed={TERMINAL_FILENAME, TERMINAL_ACK_FILENAME, GRANT_RECORD_FILENAME},
+        required={TERMINAL_FILENAME, TERMINAL_ACK_FILENAME},
+        label="pre-campaign child receipt root",
+        stage="campaign_artifact_absence",
+    )
+    return "child"
+
+
+def _verify_child_grant_record(
+    ctx: _ReadSession,
+    terminal: dict[str, object],
+) -> None:
+    """If a child grant was durably issued, verify its anchored receipt link."""
+
+    present = ctx.maybe_present(
+        ctx.receipt, GRANT_RECORD_FILENAME, stage="child_grant"
+    )
+    bootstrap = terminal.get("bootstrap_grant")
+    if not present:
+        if type(bootstrap) is dict and bootstrap.get("grant_sha256") is not None:
+            raise _Reject("child_grant", "terminal grant digest has no durable grant record")
+        if bootstrap is not None and type(bootstrap) is not dict:
+            raise _Reject("child_grant", "terminal bootstrap grant is malformed")
+        return
+    _raw, grant, _identity = ctx.read(
+        ctx.receipt,
+        GRANT_RECORD_FILENAME,
+        maximum_bytes=MAX_CLAIM_BYTES,
+        label="durable child grant record",
+        stage="child_grant",
+    )
+    bindings = grant.get("bindings")
+    if (
+        set(grant)
+        != {"schema_version", "grant_sha256", "grant_fd", "bindings_sha256", "bindings"}
+        or grant.get("schema_version") != 1
+        or not _is_sha256(grant.get("grant_sha256"))
+        or type(grant.get("grant_fd")) is not int
+        or grant["grant_fd"] < 0
+        or not _is_sha256(grant.get("bindings_sha256"))
+        or type(bindings) is not dict
+        or hashlib.sha256(_canonical_json(bindings)).hexdigest()
+        != grant.get("bindings_sha256")
+        or type(bootstrap) is not dict
+        or set(bootstrap) != _BOOTSTRAP_GRANT_FIELDS
+        or bootstrap.get("transport") != "inherited-anonymous-unix-stream-socket"
+        or bootstrap.get("environment_locator") != "ABC6_GRANT_FD"
+        or type(bootstrap.get("descriptor_fd")) is not int
+        or bootstrap["descriptor_fd"] < 0
+        or bootstrap.get("grant_sha256") != grant.get("grant_sha256")
+        or bootstrap.get("digest_receipt_leaf") != GRANT_RECORD_FILENAME
+    ):
+        raise _Reject("child_grant", "durable child grant record does not match its terminal link")
+
+
+def _classify_no_campaign_claim(
+    terminal: dict[str, object],
+    child_state: Literal["prechild", "child"],
+) -> tuple[Literal["failed", "incomplete"], str, str]:
+    """Classify only fully evidenced watchdog-only/pre-campaign outcomes."""
+
+    capture = terminal["intervention_capture"]
+    status = terminal["status"]
+    return_code = terminal.get("process_return_code")
+    if capture["status"] == "recorded" and capture["attempted_type"] in {
+        "budget_cap",
+        "operator_stop",
+    }:
+        monitor_error = terminal.get("monitor_error")
+        expected_operator_stop = (
+            capture["attempted_type"] == "operator_stop"
+            and capture["attempted_stage"] == "watchdog_interrupted"
+            and monitor_error == "KeyboardInterrupt: "
+        )
+        if monitor_error is not None and not expected_operator_stop:
+            raise _Reject(
+                "terminal_monitor_error",
+                "watchdog intervention has an unresolved monitor error",
+            )
+        if status not in {"capped", "failed"}:
+            raise _Reject(
+                "terminal_intervention", "recorded stop event contradicts terminal status"
+            )
+        stage = str(capture["attempted_stage"])
+        return (
+            "incomplete",
+            stage,
+            "A recorded budget or operator stop verified before the campaign claim.",
+        )
+    if capture["status"] == "not_attempted" and child_state == "prechild":
+        raise _Reject(
+            "prechild_failure_unstructured",
+            "a prechild failure has no structured failure receipt and is unreplayable",
+        )
+    if (
+        capture["status"] == "not_attempted"
+        and child_state == "child"
+        and status == "failed"
+        and type(return_code) is int
+        and return_code != 0
+    ):
+        return (
+            "failed",
+            str(terminal["stop_reason"]),
+            "An attested child exited nonzero before creating a campaign claim.",
+        )
+    raise _Reject(
+        "terminal_score_chain",
+        "watchdog terminal does not support a pre-campaign classification",
+    )
 
 
 def _verify_statuses_and_summary(
@@ -1266,6 +1607,10 @@ def _verify_terminal(
     expected_forecast_sha: str | None = None,
     statuses: tuple[dict[str, object], ...] | None = None,
 ) -> tuple[dict[str, object], int | None]:
+    if ctx.scorer_claim_parent is None:
+        raise _Reject(
+            "watchdog_claim", "pinned scorer claim parent is unavailable"
+        )
     try:
         os.fsync(ctx.receipt.descriptor)
     except OSError as error:
@@ -1851,6 +2196,37 @@ def verify_abc6_postscore_evidence(
             raise _Reject(
                 "terminal_intervention_unavailable",
                 "the intervention was attempted but no trustworthy monotonic event was captured",
+            )
+        if (
+            not marker_present
+            and not score_present
+            and not targets_present
+            and not receipt_claim_present
+            and not global_claim_present
+        ):
+            _verify_watchdog_claim(ctx)
+            _verify_no_campaign_chain(ctx)
+            child_state = _verify_pre_campaign_child_state(ctx, terminal)
+            classification, failure_stage, detail = _classify_no_campaign_claim(
+                terminal, child_state
+            )
+            ctx.verify_stable()
+            return ABC6ReplayGate(
+                classification=classification,
+                marker_present=False,
+                failure_stage=failure_stage,
+                detail=detail,
+                terminal_status=str(terminal["status"]),
+                watchdog_intervention_monotonic_ns=intervention_ns,
+                **_terminal_intervention_fields(terminal),
+                **_terminal_capture_fields(terminal),
+                status_receipt_count=0,
+                all_statuses_complete=False,
+            )
+        if marker_present and not score_present:
+            raise _Reject(
+                "post_marker_chain",
+                "post-marker runs without a score receipt remain outside this staged verifier",
             )
         if not score_present and not targets_present:
             if not watchdog_claim_present:

@@ -548,6 +548,280 @@ def _frozen_for_execution(execution, source_hashes):
     )
 
 
+def _run_fake_pre_campaign_terminal(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    child: bool = False,
+    outcome: str = "prechild_failure",
+    bootstrap_grant: bool = True,
+):
+    (
+        root,
+        receipts,
+        _training,
+        manifest,
+        manifest_sha256,
+        _claim_registry,
+        marker,
+        source_hashes,
+        _test_authority,
+    ) = _private_root_fixture(tmp_path, monkeypatch)
+    root_fd = campaign_fit._open_matching_checkout_root(str(root))
+    try:
+        identity = campaign_fit._open_receipt_root_identity(
+            root_fd,
+            str(root),
+            campaign_fit.RECEIPT_ROOT_RELATIVE,
+            str(receipts),
+        )
+    finally:
+        os.close(root_fd)
+    root_anchor, receipt_anchor = cases._open_execution_directory_anchors(identity)
+    claim_parent = cases._open_relative_directory_anchor(
+        root_anchor,
+        campaign_fit.CAMPAIGN_CLAIM_PARENT_RELATIVE,
+        label="fake pre-campaign watchdog claim parent",
+        create=True,
+    )
+    scorer_parent = cases._open_relative_directory_anchor(
+        root_anchor,
+        _SCORER_CLAIMS_RELATIVE,
+        label="fake pre-campaign scorer claim parent",
+        create=True,
+    )
+    try:
+        root_binding = {
+            "repository_root_realpath": str(root_anchor.path),
+            "repository_root_device": root_anchor.device,
+            "repository_root_inode": root_anchor.inode,
+            "receipt_root_relative": campaign_fit.RECEIPT_ROOT_RELATIVE,
+            "receipt_root_device": receipt_anchor.device,
+            "receipt_root_inode": receipt_anchor.inode,
+        }
+        claim_parent_binding = {
+            "watchdog_claim_parent_device": claim_parent.device,
+            "watchdog_claim_parent_inode": claim_parent.inode,
+            "scorer_claim_parent_device": scorer_parent.device,
+            "scorer_claim_parent_inode": scorer_parent.inode,
+        }
+        watchdog_claim = {
+            "protocol_id": _FAKE_PROTOCOL,
+            "run_id": _FAKE_RUN,
+            "manifest_sha256": manifest_sha256,
+            "approval_record_sha256": _APPROVAL_SHA256,
+            "reviewed_git_head": _HEAD,
+            **root_binding,
+            **claim_parent_binding,
+            "claimed_at_utc": "2026-09-30T00:00:00.000000Z",
+            "claim_semantics": "consumed_once_no_resume",
+        }
+        claim_bytes = campaign_fit._canonical_json(watchdog_claim)
+        claim_sha256 = hashlib.sha256(claim_bytes).hexdigest()
+        campaign_fit._write_exclusive_durable_at(
+            claim_parent.descriptor,
+            f"{_FAKE_RUN}.watchdog.claim",
+            claim_bytes,
+        )
+
+        declared_vector = ["/private/fake-python3.14", "-c", "private fake child"]
+        observed_path = "/private/fake-Python.app/Contents/MacOS/Python"
+        observed_sha = "e" * 64
+        observed_utc = "2026-09-30T00:00:00.000000Z"
+        child_launch = {
+            "declared_launch_vector": declared_vector,
+            "declared_executable_path": declared_vector[0],
+            "declared_executable_sha256": "d" * 64,
+            "observed_process": (
+                {
+                    "observed_live_argv": declared_vector,
+                    "observed_executable_path": observed_path,
+                    "observed_executable_sha256": observed_sha,
+                    "verified_image_role": "observed_python_app_image",
+                    "observed_at_utc": observed_utc,
+                }
+                if child
+                else None
+            ),
+            "image_observations": (
+                [
+                    {
+                        "timestamp_utc": observed_utc,
+                        "path": observed_path,
+                        "sha256": observed_sha,
+                        "phase": "observed_python_app_image",
+                    }
+                ]
+                if child
+                else []
+            ),
+        }
+        intervention = None
+        if outcome in {"prechild_cap", "child_cap", "prechild_operator"}:
+            is_operator = outcome == "prechild_operator"
+            intervention = {
+                "type": "operator_stop" if is_operator else "budget_cap",
+                "stage": "watchdog_interrupted" if is_operator else "wall_clock_limit_exceeded",
+                "monotonic_ns": 123456789,
+                "occurred_at_utc": "2026-09-30T00:00:01.000000Z",
+                "clock": "host-local-monotonic-ns",
+            }
+        if outcome == "prechild_unavailable":
+            capture = {
+                "status": "unavailable",
+                "attempted_type": "watchdog_stop",
+                "attempted_stage": "watchdog_monitoring_error",
+                "failure_kind": "monotonic_unavailable",
+            }
+        elif intervention is None:
+            capture = {
+                "status": "not_attempted",
+                "attempted_type": None,
+                "attempted_stage": None,
+                "failure_kind": None,
+            }
+        else:
+            capture = {
+                "status": "recorded",
+                "attempted_type": intervention["type"],
+                "attempted_stage": intervention["stage"],
+                "failure_kind": None,
+            }
+        if outcome in {"prechild_cap", "child_cap"}:
+            terminal_status = "capped"
+            stop_reason = "wall_clock_limit_exceeded"
+            return_code = -9 if child else None
+        elif outcome == "prechild_operator":
+            terminal_status = "failed"
+            stop_reason = "watchdog_interrupted"
+            return_code = None
+        elif child:
+            terminal_status = "failed"
+            stop_reason = "runner_failed_before_campaign_claim"
+            return_code = 1
+        else:
+            terminal_status = "failed"
+            stop_reason = "watchdog_monitoring_error"
+            return_code = None
+        terminal = {
+            "schema_version": 2,
+            "protocol_id": _FAKE_PROTOCOL,
+            "run_id": _FAKE_RUN,
+            "manifest_sha256": manifest_sha256,
+            "approval_record_sha256": _APPROVAL_SHA256,
+            "reviewed_git_head": _HEAD,
+            **root_binding,
+            **claim_parent_binding,
+            "watchdog_claim_path": str(
+                root
+                / campaign_fit.CAMPAIGN_CLAIM_PARENT_RELATIVE
+                / f"{_FAKE_RUN}.watchdog.claim"
+            ),
+            "watchdog_claim_sha256": claim_sha256,
+            "bootstrap_grant": (
+                {
+                    "transport": "inherited-anonymous-unix-stream-socket",
+                    "environment_locator": "ABC6_GRANT_FD",
+                    "descriptor_fd": 10,
+                    "grant_sha256": None,
+                    "digest_receipt_leaf": replay.GRANT_RECORD_FILENAME,
+                }
+                if bootstrap_grant and not child
+                else None
+            ),
+            "status": terminal_status,
+            "stop_reason": stop_reason,
+            "monitor_error": (
+                "KeyboardInterrupt: "
+                if outcome == "prechild_operator"
+                else (
+                    "RuntimeError: fake prechild setup failure"
+                    if not child and intervention is None
+                    else None
+                )
+            ),
+            "intervention_capture": capture,
+            "watchdog_intervention": intervention,
+            "process_return_code": return_code,
+            "child_launch": child_launch,
+            "kill_and_reap": (
+                {
+                    "process_group_id": 12345,
+                    "membership_verification": "verified_empty",
+                    "membership_enumeration_errors": [],
+                    "unreaped_process_pids": [],
+                    "child_reaped": True,
+                    "tracked_process_group_reaped": True,
+                }
+                if child
+                else None
+            ),
+            "fit_phase_gate": {
+                "status_receipt_count": 0,
+                "status_receipts": [],
+                "summary_sha256": None,
+                "evidence_manifest_sha256": None,
+                "target_free_forecast_sha256": None,
+                "pre_score_artifact_chain_valid": False,
+                "all_48_status_receipts_present_and_linked": False,
+                "training_evidence_chain_valid": False,
+                "target_free_forecast_chain_valid": False,
+                "problems": ["campaign has no claim or status receipts"],
+            },
+        }
+        terminal_bytes = campaign_fit._canonical_json(terminal)
+        campaign_fit._write_exclusive_durable_at(
+            receipt_anchor.descriptor, replay.TERMINAL_FILENAME, terminal_bytes
+        )
+        terminal_info = os.stat(
+            replay.TERMINAL_FILENAME,
+            dir_fd=receipt_anchor.descriptor,
+            follow_symlinks=False,
+        )
+        acknowledgement = {
+            "schema_version": 1,
+            "kind": "abc6-watchdog-terminal-readback-acknowledgment",
+            "protocol_id": _FAKE_PROTOCOL,
+            "run_id": _FAKE_RUN,
+            "manifest_sha256": manifest_sha256,
+            "watchdog_claim_path": terminal["watchdog_claim_path"],
+            "watchdog_claim_sha256": claim_sha256,
+            "root_binding": root_binding,
+            "terminal_receipt": {
+                "leaf_name": replay.TERMINAL_FILENAME,
+                "sha256": hashlib.sha256(terminal_bytes).hexdigest(),
+                "file_identity": {
+                    "device": terminal_info.st_dev,
+                    "inode": terminal_info.st_ino,
+                    "size": terminal_info.st_size,
+                    "mtime_ns": terminal_info.st_mtime_ns,
+                    "ctime_ns": terminal_info.st_ctime_ns,
+                },
+            },
+        }
+        campaign_fit._write_exclusive_durable_at(
+            receipt_anchor.descriptor,
+            replay.TERMINAL_ACK_FILENAME,
+            campaign_fit._canonical_json(acknowledgement),
+        )
+    finally:
+        scorer_parent.close()
+        claim_parent.close()
+        receipt_anchor.close()
+        root_anchor.close()
+    frozen = replay.ABC6FrozenReplayIdentity(
+        receipt_root_identity=identity,
+        protocol_id=_FAKE_PROTOCOL,
+        run_id=_FAKE_RUN,
+        manifest_sha256=manifest_sha256,
+        approval_record_sha256=_APPROVAL_SHA256,
+        reviewed_git_head=_HEAD,
+        watchdog_claim_sha256=claim_sha256,
+        integrated_source_hashes=source_hashes,
+    )
+    return root, receipts, marker, frozen
+
+
 def test_full_fake_score_chain_replays_complete_but_not_scientifically_ready(
     tmp_path, monkeypatch
 ):
@@ -566,6 +840,154 @@ def test_full_fake_score_chain_replays_complete_but_not_scientifically_ready(
     assert gate.scientifically_ready is False
     assert tuple(name for name, _ in gate.verified_target_hashes) == ("A", "B", "M")
     assert materializer_calls == ["fake-only"]
+
+
+@pytest.mark.parametrize("outcome", ["prechild_cap", "prechild_operator"])
+def test_recorded_prechild_budget_or_operator_stop_is_incomplete(
+    tmp_path, monkeypatch, outcome
+):
+    _root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, outcome=outcome
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "incomplete", gate
+    assert gate.marker_present is False
+    assert gate.status_receipt_count == 0
+    assert gate.all_statuses_complete is False
+    assert gate.watchdog_intervention_capture_status == "recorded"
+    assert gate.watchdog_intervention_attempted_type in {"budget_cap", "operator_stop"}
+    assert sorted(path.name for path in receipts.iterdir()) == sorted(
+        [replay.TERMINAL_FILENAME, replay.TERMINAL_ACK_FILENAME]
+    )
+
+
+def test_not_attempted_prechild_failure_is_unreplayable(tmp_path, monkeypatch):
+    _root, _receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "prechild_failure_unstructured"
+    assert gate.watchdog_intervention_capture_status == "not_attempted"
+
+
+def test_unavailable_capture_without_score_is_unreplayable(tmp_path, monkeypatch):
+    _root, _receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, outcome="prechild_unavailable"
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "terminal_intervention_unavailable"
+    assert gate.watchdog_intervention_capture_status == "unavailable"
+
+
+def test_attested_nonzero_child_without_campaign_claim_is_failed(tmp_path, monkeypatch):
+    _root, _receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "failed", gate
+    assert gate.failure_stage == "runner_failed_before_campaign_claim"
+    assert gate.marker_present is False
+    assert gate.terminal_status == "failed"
+
+
+def test_attested_child_budget_stop_before_campaign_claim_is_incomplete(
+    tmp_path, monkeypatch
+):
+    _root, _receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_cap"
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "incomplete", gate
+    assert gate.watchdog_intervention_attempted_type == "budget_cap"
+
+
+@pytest.mark.parametrize("extra_kind", ["symlink_status", "extra_leaf", "partial_status"])
+def test_pre_campaign_artifact_presence_is_unreplayable(
+    tmp_path, monkeypatch, extra_kind
+):
+    _root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, outcome="prechild_cap"
+    )
+    status_path = receipts / "case-00.fit-status.json"
+    if extra_kind == "symlink_status":
+        target = tmp_path.resolve() / "prechild-status-decoy"
+        target.write_bytes(b"private status decoy")
+        status_path.symlink_to(target)
+    elif extra_kind == "partial_status":
+        status_path.write_bytes(b"partial stage receipt")
+    else:
+        (receipts / "unexpected.extra").write_bytes(b"private extra artifact")
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage in {"campaign_status_absence", "campaign_artifact_absence"}
+
+
+def test_tampered_watchdog_claim_cannot_support_pre_campaign_result(
+    tmp_path, monkeypatch
+):
+    root, _receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, outcome="prechild_cap"
+    )
+    claim_path = (
+        root
+        / campaign_fit.CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{_FAKE_RUN}.watchdog.claim"
+    )
+    claim = json.loads(claim_path.read_text("ascii"))
+    claim["reviewed_git_head"] = "f" * 40
+    claim_path.write_bytes(campaign_fit._canonical_json(claim))
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "watchdog_claim"
+
+
+def test_observed_child_without_verified_group_cleanup_is_unreplayable(
+    tmp_path, monkeypatch
+):
+    _root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    _rewrite_fake_terminal(
+        receipts,
+        lambda terminal: terminal["kill_and_reap"].update(
+            tracked_process_group_reaped=False
+        ),
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "terminal_child_reap"
+
+
+def test_child_grant_record_symlink_is_unreplayable(tmp_path, monkeypatch):
+    _root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    target = tmp_path.resolve() / "pre-campaign-grant-decoy"
+    target.write_bytes(b"private grant decoy")
+    (receipts / replay.GRANT_RECORD_FILENAME).symlink_to(target)
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
 
 
 def test_postmarker_failure_is_replayed_as_failed_and_consumed(tmp_path, monkeypatch):
@@ -768,7 +1190,9 @@ def test_consumed_watchdog_terminal_without_postscore_files_is_not_premarker_abs
     status_leaf.write_bytes(status_bytes)
 
 
-def test_capped_terminal_with_marker_but_no_score_is_incomplete(tmp_path, monkeypatch):
+def test_capped_terminal_with_marker_but_no_score_remains_unreplayable(
+    tmp_path, monkeypatch
+):
     _root, receipts, marker, frozen, _result, error, _calls = _run_fake_score(
         tmp_path, monkeypatch, intervention_before_score=True
     )
@@ -779,12 +1203,11 @@ def test_capped_terminal_with_marker_but_no_score_is_incomplete(tmp_path, monkey
 
     gate = replay.verify_abc6_postscore_evidence(frozen)
 
-    assert gate.classification == "incomplete", gate
+    assert gate.classification == "unreplayable", gate
     assert gate.marker_present is True
     assert gate.score_outcome is None
     assert gate.terminal_status == "capped"
-    assert gate.failure_stage == "wall_clock_limit_exceeded"
-    assert gate.status_receipt_count == 48
+    assert gate.failure_stage == "post_marker_chain"
 
 
 def test_failed_terminal_cannot_be_overridden_by_complete_score_chain(tmp_path, monkeypatch):
