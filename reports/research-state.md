@@ -1,6 +1,52 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T17:00Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T18:35Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: ABC6 binding amendment independently reviewed
+
+An independent `gpt-6-luna` max reviewer gave **design GO** on
+`reports/cascaded-tanks-abc6-binding-amendment-proposal-2026-09-30.md` after
+the primary incorporated its exact-path, source-map equality, scoring-permit,
+and approval-v2 clarifications. The proposal freezes a **starting** 15-path
+source roster subject to a final import audit, an inherited anonymous grant
+socket located by canonical `ABC6_GRANT_FD` without changing the exact child
+vector, and a capability-bound exception for the sole grant record before the
+campaign claim. Approval-v2 suffices because its report hash binds the reviewed
+transport policy and manifest identity. This is **design approval only**:
+watchdog/runner/campaign/case/scorer wiring, exact final source/runtime pins,
+immutable manifest, independent end-to-end fake review, final report/approval,
+and operational GO remain HOLD. The reviewed documents are local and pending
+one-owner Git sync; no code or campaign was changed by the design review. See
+`reports/research-ledger/2026-09-30T1835Z.md`.
+
+## Latest checkpoint: ABC6 grant integration contract HOLD
+
+A Luna read-only source-closure audit found that the strict manifest still
+requires exactly eight source paths while its embedded reviewed-digest map
+covers five. Runner and scorer integrated pins fail closed; the current roster
+omits seven execution/verifier paths identified in the audit. Campaign-fit's
+own digest must be externally bound in the final manifest and reviewed HEAD,
+not embedded in its own static digest map. The follow-on Luna grant-integration
+attempt stopped before editing: the authority requires runner/campaign/cases/
+scorer hashes that the manifest cannot currently admit, the approved child
+vector has no grant-FD locator, and the grant would leave a receipt leaf where
+campaign-fit presently requires an empty directory. Its turn then failed with
+the exact workspace error `Your workspace is out of credits. Ask your
+workspace owner to refill in order to continue.` No code, tests, Git, or
+campaign work resulted from that attempt.
+
+The primary drafted
+`reports/cascaded-tanks-abc6-binding-amendment-proposal-2026-09-30.md` to
+resolve these three contracts without changing the frozen science. It is a
+proposal under independent Luna review, not an approved protocol or GO.
+Read-only Luna monitoring at 17:04Z listed the exact fixed Qwen model and saw
+no ABC6 process, reserved run directory, claim or marker; its Git comparison
+used cached `origin/main`, not a fresh fetch. Last fresh fetched content and
+docs sync remains `4f42b2ac6d92fad84f843dcb7293ac201c442bcc` on
+`main == origin/main`. The reserved synthetic campaign remains UNUSED/HOLD;
+there are no protocol prospective targets, real tank Qwen/ABC, held-out
+target accesses, or breakthrough claims. See
+`reports/research-ledger/2026-09-30T1824Z.md`.
 
 ## Latest checkpoint: approval-v2 report preclaim gate reviewed and synced
 
