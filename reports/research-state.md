@@ -1,6 +1,30 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T16:33Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T16:43Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: approval-v2 provenance gate frozen; wiring held
+
+A bounded Luna attempt to wire the reviewed anonymous child grant into the
+watchdog and runner stopped **before editing**: the reviewed watchdog baseline
+on `origin/main` then accepted exact approval schema v1 with no independent
+review-report SHA, and its run identity could not bind
+that hash, and the runner's integrated source pins remain intentionally
+closed. The primary froze a separate approval-v2 decision that retains v1
+identities/vectors, adds a fixed report path and SHA-256, and requires a
+bounded no-follow report read and identity recheck before a one-use claim.
+Independent Luna approved the design; its document-only change was pushed
+as `786f25ff9d13c736bea7f369cfa6cb36ae8671c2`, fresh
+`HEAD == origin/main`. A Luna author is implementing only this watchdog
+preclaim schema seam with fake fixtures; its current worktree edits are
+unreviewed and unsynced.
+See `reports/research-ledger/2026-09-30T1643Z.md`.
+
+Replay and isolated authority primitives remain reviewed components, not
+operational integration. The last direct runtime snapshot at 14:36:53Z found
+no manifest, report, approval, claim, marker or research process for the
+reserved ID; agents have reported no later campaign launch or prospective
+target generation. Real tank held-out targets remain unread; no breakthrough
+is claimed.
 
 ## Latest checkpoint: isolated supervised authority primitive reviewed and synced
 
