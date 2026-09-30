@@ -977,9 +977,49 @@ def test_access_denied_kills_group_but_receipt_stays_unknown(
 
 
 def test_detached_child_receipt_only_claims_group_membership(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     marker = tmp_path / "detached-pid.txt"
+    release_marker = tmp_path / "detached-child-release.txt"
+    post_detach_samples = 0
+    child_processes: list[object] = []
+    real_popen = watchdog.subprocess.Popen
+    real_snapshot = watchdog._snapshot_process_group
+
+    def track_fake_child(*args, **kwargs):
+        child = real_popen(*args, **kwargs)
+        child_processes.append(child)
+        return child
+
+    def snapshot_then_release_detached_child(process_group_id: int):
+        nonlocal post_detach_samples
+        snapshot = real_snapshot(process_group_id)
+        members, _rss, _vanished, errors = snapshot
+        if (
+            marker.is_file()
+            and child_processes
+            and process_group_id == child_processes[0].pid
+            and not errors
+            and any(member.get("pid") == process_group_id for member in members)
+            and post_detach_samples < 5
+        ):
+            post_detach_samples += 1
+            if post_detach_samples == 5:
+                release_marker.touch()
+                deadline = time.monotonic() + 1.0
+                while (
+                    child_processes[0].poll() is None
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.005)
+                if child_processes[0].poll() is not None:
+                    snapshot = real_snapshot(process_group_id)
+        return snapshot
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", track_fake_child)
+    monkeypatch.setattr(
+        watchdog, "_snapshot_process_group", snapshot_then_release_detached_child
+    )
     code = (
         "import os,time\n"
         "time.sleep(0.08)\n"
@@ -990,11 +1030,11 @@ def test_detached_child_receipt_only_claims_group_membership(
         "    time.sleep(30)\n"
         "    os._exit(0)\n"
         f"while not os.path.exists({str(marker)!r}): time.sleep(0.001)\n"
-        "time.sleep(0.08)\n"
+        f"while not os.path.exists({str(release_marker)!r}): time.sleep(0.001)\n"
         "os._exit(0)\n"
     )
 
-    result = _run_fake_child(tmp_path, code, wall_seconds=1.0, sample_seconds=0.01)
+    result = _run_fake_child(tmp_path, code, wall_seconds=2.0, sample_seconds=0.01)
     receipt = result["receipt"]
     detached_pid = int(marker.read_text(encoding="ascii"))
     try:
@@ -1002,6 +1042,8 @@ def test_detached_child_receipt_only_claims_group_membership(
         assert receipt["status"] == "failed"
         assert receipt["process_return_code"] == 0
         assert receipt["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
+        assert release_marker.is_file() and post_detach_samples >= 5
+        assert len(child_processes) == 1
         assert receipt["kill_and_reap"]["tracked_process_group_reaped"] is True
         assert receipt["kill_and_reap"]["membership_scope"] == "isolated_process_group_only"
         assert receipt["kill_and_reap"]["all_descendants_reaped_claimed"] is False

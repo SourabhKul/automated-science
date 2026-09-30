@@ -68,6 +68,7 @@ def _private_root_fixture(tmp_path: Path, monkeypatch):
         _unused_claim_registry,
         marker,
         source_hashes,
+        test_authority,
     ) = runner_fixtures._private_runner_fixture(tmp_path, monkeypatch)
     claim_registry = (
         root
@@ -83,6 +84,7 @@ def _private_root_fixture(tmp_path: Path, monkeypatch):
         claim_registry,
         marker,
         source_hashes,
+        test_authority,
     )
 
 
@@ -151,6 +153,7 @@ def _run_fake_score(
     intervention_after_score: bool = False,
     intervention_same_as_score: bool = False,
     terminal_status_override: str | None = None,
+    intervention_utc: str | None = "2026-09-30T00:00:00.000000Z",
 ):
     (
         root,
@@ -161,6 +164,7 @@ def _run_fake_score(
         claim_registry,
         marker,
         source_hashes,
+        test_authority,
     ) = _private_root_fixture(tmp_path, monkeypatch)
     executions = []
 
@@ -205,7 +209,7 @@ def _run_fake_score(
     run_result = None
     try:
         run_result = runner.run_cascaded_tanks_abc6_synthetic(
-            manifest, manifest_sha256, receipts
+            manifest, manifest_sha256, receipts, launch_authority=test_authority
         )
     except scoring.ABC6DeferredScoreConsumedError as error:
         consumed_error = error
@@ -227,11 +231,16 @@ def _run_fake_score(
             executions[0],
             source_hashes,
             terminal_status=terminal_status_override or ("failed" if bad_target_hash else (
-                "capped" if intervention_before_score else "completed"
+                "capped"
+                if intervention_before_score
+                or intervention_after_score
+                or intervention_same_as_score
+                else "completed"
             )),
             intervention_before_score=intervention_before_score,
             intervention_after_score=intervention_after_score,
             intervention_same_as_score=intervention_same_as_score,
+            intervention_utc=intervention_utc,
         )
     frozen = replay.ABC6FrozenReplayIdentity(
         receipt_root_identity=executions[0].receipt_root_identity,
@@ -256,6 +265,7 @@ def _publish_fake_watchdog_terminal(
     intervention_before_score: bool = False,
     intervention_after_score: bool = False,
     intervention_same_as_score: bool = False,
+    intervention_utc: str | None = "2026-09-30T00:00:00.000000Z",
 ) -> str:
     identity = execution.receipt_root_identity
     identity.verify()
@@ -363,12 +373,16 @@ def _publish_fake_watchdog_terminal(
                         else (-1 if intervention_before_score else 0)
                     )
                 ),
-                "occurred_at_utc": "2026-09-30T00:00:00.000000Z",
+                "occurred_at_utc": intervention_utc,
                 "clock": "host-local-monotonic-ns",
             }
         claim_path = root / campaign_fit.CAMPAIGN_CLAIM_PARENT_RELATIVE / watchdog_claim_filename
+        declared_vector = ["/private/fake-python3.14", "-c", "private fake child"]
+        observed_path = "/private/fake-Python.app/Contents/MacOS/Python"
+        observed_sha = "e" * 64
+        observed_utc = "2026-09-30T00:00:00.000000Z"
         terminal = {
-            "schema_version": 1,
+            "schema_version": 2,
             "protocol_id": _FAKE_PROTOCOL,
             "run_id": _FAKE_RUN,
             "manifest_sha256": execution.campaign_result.manifest_sha256,
@@ -396,7 +410,51 @@ def _publish_fake_watchdog_terminal(
                     else (1 if terminal_status == "failed" else 0)
                 )
             ),
+            "intervention_capture": (
+                {
+                    "status": "not_attempted",
+                    "attempted_type": None,
+                    "attempted_stage": None,
+                    "failure_kind": None,
+                }
+                if intervention is None
+                else {
+                    "status": "recorded",
+                    "attempted_type": intervention["type"],
+                    "attempted_stage": intervention["stage"],
+                    "failure_kind": None,
+                }
+            ),
             "watchdog_intervention": intervention,
+            "monitor_error": None,
+            "child_launch": {
+                "declared_launch_vector": declared_vector,
+                "declared_executable_path": declared_vector[0],
+                "declared_executable_sha256": "d" * 64,
+                "observed_process": {
+                    "observed_live_argv": declared_vector,
+                    "observed_executable_path": observed_path,
+                    "observed_executable_sha256": observed_sha,
+                    "verified_image_role": "observed_python_app_image",
+                    "observed_at_utc": observed_utc,
+                },
+                "image_observations": [
+                    {
+                        "timestamp_utc": observed_utc,
+                        "path": observed_path,
+                        "sha256": observed_sha,
+                        "phase": "observed_python_app_image",
+                    }
+                ],
+            },
+            "kill_and_reap": {
+                "process_group_id": 12345,
+                "membership_verification": "verified_empty",
+                "membership_enumeration_errors": [],
+                "unreaped_process_pids": [],
+                "child_reaped": True,
+                "tracked_process_group_reaped": True,
+            },
             "fit_phase_gate": {
                 "status_receipt_count": 48,
                 "status_receipts": statuses,
@@ -407,6 +465,7 @@ def _publish_fake_watchdog_terminal(
                 "all_48_status_receipts_present_and_linked": True,
                 "training_evidence_chain_valid": True,
                 "target_free_forecast_chain_valid": True,
+                "problems": [],
             },
         }
         terminal_bytes = campaign_fit._canonical_json(terminal)
@@ -450,6 +509,30 @@ def _publish_fake_watchdog_terminal(
         claim_parent.close()
         receipt_anchor.close()
         root_anchor.close()
+
+
+def _rewrite_fake_terminal(receipts: Path, edit) -> dict[str, object]:
+    terminal_path = receipts / replay.TERMINAL_FILENAME
+    ack_path = receipts / replay.TERMINAL_ACK_FILENAME
+    terminal = json.loads(terminal_path.read_text("ascii"))
+    acknowledgement = json.loads(ack_path.read_text("ascii"))
+    edit(terminal)
+    terminal_raw = campaign_fit._canonical_json(terminal)
+    terminal_path.write_bytes(terminal_raw)
+    terminal_info = terminal_path.stat()
+    acknowledgement["terminal_receipt"] = {
+        "leaf_name": replay.TERMINAL_FILENAME,
+        "sha256": hashlib.sha256(terminal_raw).hexdigest(),
+        "file_identity": {
+            "device": terminal_info.st_dev,
+            "inode": terminal_info.st_ino,
+            "size": terminal_info.st_size,
+            "mtime_ns": terminal_info.st_mtime_ns,
+            "ctime_ns": terminal_info.st_ctime_ns,
+        },
+    }
+    ack_path.write_bytes(campaign_fit._canonical_json(acknowledgement))
+    return terminal
 
 
 def _frozen_for_execution(execution, source_hashes):
@@ -556,6 +639,93 @@ def test_equal_failure_and_cap_timestamps_are_unreplayable_with_raw_events(
     assert gate.watchdog_intervention_clock == "host-local-monotonic-ns"
 
 
+@pytest.mark.parametrize("score_case", ["complete", "failed", "none"])
+def test_unavailable_intervention_capture_is_unreplayable_before_score_ordering(
+    tmp_path, monkeypatch, score_case
+):
+    _root, receipts, marker, frozen, _result, _error, _calls = _run_fake_score(
+        tmp_path,
+        monkeypatch,
+        bad_target_hash=score_case == "failed",
+        intervention_before_score=True,
+        terminal_status_override="capped",
+    )
+
+    def make_unavailable(terminal):
+        terminal["intervention_capture"].update(
+            status="unavailable", failure_kind="monotonic_unavailable"
+        )
+        terminal["watchdog_intervention"] = None
+
+    _rewrite_fake_terminal(receipts, make_unavailable)
+    if score_case == "none":
+        marker.unlink()
+        (receipts / scoring.SCORE_RECEIPT_FILENAME).unlink()
+        (receipts / scoring.TARGET_ARRAYS_ARTIFACT_FILENAME).unlink()
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "terminal_intervention_unavailable"
+    assert gate.watchdog_intervention_capture_status == "unavailable"
+    assert gate.watchdog_intervention_attempted_type == "budget_cap"
+    assert gate.watchdog_intervention_attempted_stage == "wall_clock_limit_exceeded"
+    assert gate.watchdog_intervention_failure_kind == "monotonic_unavailable"
+
+
+def test_monotonic_order_replays_utc_null_and_postscore_cap_as_complete(
+    tmp_path, monkeypatch
+):
+    _root, receipts, _marker, frozen, _result, error, _calls = _run_fake_score(
+        tmp_path,
+        monkeypatch,
+        intervention_after_score=True,
+        intervention_utc=None,
+    )
+    assert error is None
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "complete", gate
+    assert gate.watchdog_intervention_monotonic_ns > gate.score_event_monotonic_ns
+    assert gate.watchdog_intervention_utc is None
+    terminal = json.loads((receipts / replay.TERMINAL_FILENAME).read_text("ascii"))
+    assert terminal["intervention_capture"]["status"] == "recorded"
+
+
+def test_contradictory_intervention_capture_fields_are_unreplayable(
+    tmp_path, monkeypatch
+):
+    _root, receipts, _marker, frozen, _result, error, _calls = _run_fake_score(
+        tmp_path, monkeypatch, intervention_before_score=True
+    )
+    assert error is None
+
+    def mismatch_cause(terminal):
+        terminal["intervention_capture"]["attempted_stage"] = (
+            "sampled_rss_limit_exceeded"
+        )
+
+    _rewrite_fake_terminal(receipts, mismatch_cause)
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "terminal_intervention"
+
+
+def test_terminal_v1_is_rejected_after_acknowledged_readback(tmp_path, monkeypatch):
+    _root, receipts, _marker, frozen, _result, error, _calls = _run_fake_score(
+        tmp_path, monkeypatch
+    )
+    assert error is None
+    _rewrite_fake_terminal(receipts, lambda terminal: terminal.update(schema_version=1))
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "terminal_receipt"
+
+
 def test_intervention_before_score_is_incomplete_even_with_48_statuses(
     tmp_path, monkeypatch
 ):
@@ -625,10 +795,10 @@ def test_failed_terminal_cannot_be_overridden_by_complete_score_chain(tmp_path, 
 
     gate = replay.verify_abc6_postscore_evidence(frozen)
 
-    assert gate.classification == "failed", gate
+    assert gate.classification == "unreplayable", gate
     assert gate.score_outcome == "complete"
     assert gate.terminal_status == "failed"
-    assert gate.failure_stage == "child_exited"
+    assert gate.failure_stage == "terminal_receipt"
 
 
 def test_terminal_without_valid_readback_ack_is_unreplayable(tmp_path, monkeypatch):
@@ -654,6 +824,7 @@ def test_campaign_claim_without_watchdog_is_unreplayable(tmp_path, monkeypatch):
         claim_registry,
         _marker,
         source_hashes,
+        _test_authority,
     ) = _private_root_fixture(tmp_path, monkeypatch)
     execution = runner_fixtures._execute_private_training(
         manifest, manifest_sha256, receipts, claim_registry

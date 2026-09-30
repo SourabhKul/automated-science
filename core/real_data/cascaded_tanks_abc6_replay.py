@@ -18,7 +18,7 @@ import re
 import stat
 import struct
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final, Literal
 
@@ -60,6 +60,7 @@ _WATCHDOG_INTERVENTION_REASONS: Final = {
             "watchdog_identity_or_monitoring_error",
             "watchdog_monitoring_error",
             "child_exited_process_group_reap_unverified",
+            "child_runtime_attestation_timeout",
         }
     ),
 }
@@ -150,6 +151,10 @@ class ABC6ReplayGate:
     watchdog_intervention_monotonic_ns: int | None = None
     watchdog_intervention_utc: str | None = None
     watchdog_intervention_clock: str | None = None
+    watchdog_intervention_capture_status: str | None = None
+    watchdog_intervention_attempted_type: str | None = None
+    watchdog_intervention_attempted_stage: str | None = None
+    watchdog_intervention_failure_kind: str | None = None
     status_receipt_count: int = 0
     all_statuses_complete: bool | None = None
     scientifically_ready: bool | None = None
@@ -975,6 +980,16 @@ def _validate_event(value: object, *, stage: str) -> tuple[str, int, str]:
     return event_stage, monotonic_ns, utc
 
 
+def _valid_utc_text(value: object) -> bool:
+    if type(value) is not str or len(value) > 32 or not value.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return parsed.utcoffset() == timezone.utc.utcoffset(parsed)
+
+
 def _verify_score_result(
     score: object,
     *,
@@ -1317,8 +1332,10 @@ def _verify_terminal(
     terminal_status = terminal.get("status")
     stop_reason = terminal.get("stop_reason")
     return_code = terminal.get("process_return_code")
+    capture = terminal.get("intervention_capture")
     if (
-        terminal.get("schema_version") != 1
+        type(terminal.get("schema_version")) is not int
+        or terminal.get("schema_version") != 2
         or terminal.get("protocol_id") != ctx.frozen.protocol_id
         or terminal.get("run_id") != ctx.frozen.run_id
         or terminal.get("manifest_sha256") != ctx.frozen.manifest_sha256
@@ -1390,44 +1407,85 @@ def _verify_terminal(
             or fit_gate.get("target_free_forecast_chain_valid") is not True
         ):
             raise _Reject("terminal_fit_gate", "terminal receipt does not bind the verified pre-score chain")
+    if type(capture) is not dict or set(capture) != {
+        "status", "attempted_type", "attempted_stage", "failure_kind"
+    }:
+        raise _Reject("terminal_intervention_capture", "intervention capture schema is invalid")
+    capture_status = capture.get("status")
+    attempted_type = capture.get("attempted_type")
+    attempted_stage = capture.get("attempted_stage")
+    failure_kind = capture.get("failure_kind")
     intervention = terminal.get("watchdog_intervention")
     intervention_ns: int | None = None
-    if intervention is not None:
+    if capture_status == "not_attempted":
         if (
-            type(intervention) is not dict
-            or set(intervention)
-            != {"type", "stage", "monotonic_ns", "occurred_at_utc", "clock"}
-            or type(intervention.get("monotonic_ns")) is not int
-            or not 0 <= intervention["monotonic_ns"] <= 2**63 - 1
-            or intervention.get("clock") != "host-local-monotonic-ns"
-            or type(intervention.get("occurred_at_utc")) is not str
-            or not intervention["occurred_at_utc"].endswith("Z")
+            attempted_type is not None
+            or attempted_stage is not None
+            or failure_kind is not None
+            or intervention is not None
         ):
-            raise _Reject("terminal_intervention", "watchdog intervention event is invalid")
-        try:
-            datetime.fromisoformat(intervention["occurred_at_utc"][:-1] + "+00:00")
-        except ValueError as error:
-            raise _Reject("terminal_intervention", "watchdog UTC timestamp is invalid") from error
-        intervention_ns = intervention["monotonic_ns"]
-        intervention_type = intervention.get("type")
-        intervention_stage = intervention.get("stage")
+            raise _Reject(
+                "terminal_intervention_capture",
+                "not_attempted capture contradicts its event or attempted cause",
+            )
+    elif capture_status in {"recorded", "unavailable"}:
         if (
-            type(intervention_type) is not str
-            or type(intervention_stage) is not str
-            or intervention_type not in _WATCHDOG_INTERVENTION_REASONS
-            or intervention_stage
-            not in _WATCHDOG_INTERVENTION_REASONS[intervention_type]
-            or intervention_stage != terminal.get("stop_reason")
+            type(attempted_type) is not str
+            or type(attempted_stage) is not str
+            or attempted_type not in _WATCHDOG_INTERVENTION_REASONS
+            or attempted_stage not in _WATCHDOG_INTERVENTION_REASONS[attempted_type]
         ):
-            raise _Reject("terminal_intervention", "watchdog intervention type is invalid")
+            raise _Reject(
+                "terminal_intervention_capture", "attempted intervention cause is invalid"
+            )
+        if capture_status == "unavailable":
+            if (
+                failure_kind not in {"monotonic_unavailable", "event_snapshot_invalid"}
+                or intervention is not None
+            ):
+                raise _Reject(
+                    "terminal_intervention_capture",
+                    "unavailable capture contradicts its bounded failure kind or event",
+                )
+        else:
+            if failure_kind is not None:
+                raise _Reject(
+                    "terminal_intervention_capture",
+                    "recorded capture cannot carry a failure kind",
+                )
+            if (
+                type(intervention) is not dict
+                or set(intervention)
+                != {"type", "stage", "monotonic_ns", "occurred_at_utc", "clock"}
+                or intervention.get("type") != attempted_type
+                or intervention.get("stage") != attempted_stage
+                or type(intervention.get("monotonic_ns")) is not int
+                or not 0 <= intervention["monotonic_ns"] <= 2**63 - 1
+                or intervention.get("clock") != "host-local-monotonic-ns"
+                or (
+                    intervention.get("occurred_at_utc") is not None
+                    and not _valid_utc_text(intervention.get("occurred_at_utc"))
+                )
+            ):
+                raise _Reject("terminal_intervention", "watchdog intervention event is invalid")
+            intervention_ns = intervention["monotonic_ns"]
+    else:
+        raise _Reject("terminal_intervention_capture", "intervention capture status is invalid")
+    if terminal_status == "completed" and capture_status != "not_attempted":
+        raise _Reject(
+            "terminal_intervention_capture", "completed terminal has an attempted intervention"
+        )
     if terminal_status == "capped" and (
-        intervention is None
-        or intervention.get("type") != "budget_cap"
-        or intervention.get("stage") != terminal.get("stop_reason")
-        or intervention.get("stage")
-        not in _WATCHDOG_INTERVENTION_REASONS["budget_cap"]
+        stop_reason not in _WATCHDOG_INTERVENTION_REASONS["budget_cap"]
+        or attempted_type != "budget_cap"
+        or attempted_stage != stop_reason
+        or capture_status == "not_attempted"
     ):
-        raise _Reject("terminal_intervention", "capped terminal lacks its budget-cap event")
+        raise _Reject("terminal_intervention", "capped terminal lacks its budget-cap cause")
+    if terminal_status == "capped" and capture_status == "recorded" and (
+        intervention is None or intervention.get("type") != "budget_cap"
+    ):
+        raise _Reject("terminal_intervention", "capped terminal lacks a recorded budget-cap event")
     try:
         os.fsync(ctx.receipt.descriptor)
     except OSError as error:
@@ -1452,6 +1510,96 @@ def _terminal_intervention_fields(
         "watchdog_intervention_utc": event.get("occurred_at_utc"),
         "watchdog_intervention_clock": event.get("clock"),
     }
+
+
+def _terminal_capture_fields(terminal: dict[str, object]) -> dict[str, object]:
+    capture = terminal.get("intervention_capture")
+    if type(capture) is not dict:
+        return {
+            "watchdog_intervention_capture_status": None,
+            "watchdog_intervention_attempted_type": None,
+            "watchdog_intervention_attempted_stage": None,
+            "watchdog_intervention_failure_kind": None,
+        }
+    return {
+        "watchdog_intervention_capture_status": capture.get("status"),
+        "watchdog_intervention_attempted_type": capture.get("attempted_type"),
+        "watchdog_intervention_attempted_stage": capture.get("attempted_stage"),
+        "watchdog_intervention_failure_kind": capture.get("failure_kind"),
+    }
+
+
+def _require_verified_child_reap(terminal: dict[str, object]) -> None:
+    """Require retained direct-child attestation and a verified empty group."""
+
+    launch = terminal.get("child_launch")
+    observed = launch.get("observed_process") if type(launch) is dict else None
+    declared_vector = launch.get("declared_launch_vector") if type(launch) is dict else None
+    observations = launch.get("image_observations") if type(launch) is dict else None
+    if (
+        type(launch) is not dict
+        or type(declared_vector) is not list
+        or not declared_vector
+        or any(type(value) is not str for value in declared_vector)
+        or type(observed) is not dict
+        or type(observed.get("observed_live_argv")) is not list
+        or not observed["observed_live_argv"]
+        or any(type(value) is not str for value in observed["observed_live_argv"])
+        or type(observed.get("observed_executable_path")) is not str
+        or not Path(observed["observed_executable_path"]).is_absolute()
+        or not _is_sha256(observed.get("observed_executable_sha256"))
+        or observed.get("verified_image_role") != "observed_python_app_image"
+        or not _valid_utc_text(observed.get("observed_at_utc"))
+        or type(observations) is not list
+        or not any(
+            type(row) is dict
+            and row.get("path") == observed.get("observed_executable_path")
+            and row.get("sha256") == observed.get("observed_executable_sha256")
+            and row.get("phase") == "observed_python_app_image"
+            for row in observations
+        )
+        or observed["observed_live_argv"][1:] != declared_vector[1:]
+        or observed["observed_live_argv"][0]
+        not in {declared_vector[0], observed.get("observed_executable_path")}
+    ):
+        raise _Reject(
+            "terminal_child_attestation",
+            "terminal does not retain a consistent observed child launch identity",
+        )
+    reap = terminal.get("kill_and_reap")
+    if (
+        type(reap) is not dict
+        or reap.get("child_reaped") is not True
+        or reap.get("tracked_process_group_reaped") is not True
+        or reap.get("membership_verification") != "verified_empty"
+        or reap.get("membership_enumeration_errors") != []
+        or reap.get("unreaped_process_pids") != []
+    ):
+        raise _Reject(
+            "terminal_child_reap",
+            "terminal does not verify direct-child reap and an empty tracked process group",
+        )
+
+
+def _require_no_prior_terminal_error(terminal: dict[str, object]) -> None:
+    fit_gate = terminal.get("fit_phase_gate")
+    if type(fit_gate) is not dict or fit_gate.get("problems") != []:
+        raise _Reject(
+            "terminal_fit_gate", "terminal retains an earlier or unresolved fit-stage error"
+        )
+    monitor_error = terminal.get("monitor_error")
+    capture = terminal.get("intervention_capture")
+    expected_operator_stop = (
+        type(capture) is dict
+        and capture.get("status") == "recorded"
+        and capture.get("attempted_type") == "operator_stop"
+        and capture.get("attempted_stage") == "watchdog_interrupted"
+        and monitor_error == "KeyboardInterrupt: "
+    )
+    if monitor_error is not None and not expected_operator_stop:
+        raise _Reject(
+            "terminal_monitor_error", "terminal retains an error with no monotonic order evidence"
+        )
 
 
 def _verify_score_receipt(
@@ -1697,7 +1845,13 @@ def verify_abc6_postscore_evidence(
             terminal_status=terminal.get("status"),
             watchdog_intervention_monotonic_ns=intervention_ns,
             **_terminal_intervention_fields(terminal),
+            **_terminal_capture_fields(terminal),
         )
+        if terminal["intervention_capture"]["status"] == "unavailable":
+            raise _Reject(
+                "terminal_intervention_unavailable",
+                "the intervention was attempted but no trustworthy monotonic event was captured",
+            )
         if not score_present and not targets_present:
             if not watchdog_claim_present:
                 raise _Reject("watchdog_claim", "terminal evidence exists without its one-use claim")
@@ -1769,20 +1923,23 @@ def verify_abc6_postscore_evidence(
                 watchdog_intervention_monotonic_ns=intervention_ns,
                 scientifically_ready=scientific_ready,
                 **_terminal_intervention_fields(terminal),
+                **_terminal_capture_fields(terminal),
             )
             status = terminal["status"]
             intervention = terminal.get("watchdog_intervention")
             stop_reason = terminal["stop_reason"]
             return_code = terminal.get("process_return_code")
+            capture_status = terminal["intervention_capture"]["status"]
+            attempted_type = terminal["intervention_capture"]["attempted_type"]
             if status == "completed":
                 raise _Reject(
                     "terminal_score_chain",
                     "completed terminal has no score receipt",
                 )
-            if status == "capped" or (
-                type(intervention) is dict
-                and intervention.get("type") in {"budget_cap", "operator_stop", "watchdog_stop"}
-            ):
+            if capture_status == "recorded" and attempted_type in {
+                "budget_cap", "operator_stop"
+            }:
+                _require_verified_child_reap(terminal)
                 classification: ReplayClassification = "incomplete"
                 failure_stage = str(stop_reason)
                 detail = (
@@ -1791,9 +1948,13 @@ def verify_abc6_postscore_evidence(
                     if marker_present
                     else "A verified watchdog intervention stopped a fully linked pre-score chain."
                 )
-            elif status == "failed" and intervention is None and (
-                return_code != 0 or stop_reason != "child_exited"
+            elif (
+                status == "failed"
+                and capture_status == "not_attempted"
+                and type(return_code) is int
+                and return_code != 0
             ):
+                _require_verified_child_reap(terminal)
                 classification = "failed"
                 failure_stage = str(stop_reason)
                 detail = (
@@ -1815,6 +1976,7 @@ def verify_abc6_postscore_evidence(
                 terminal_status=str(status),
                 watchdog_intervention_monotonic_ns=intervention_ns,
                 **_terminal_intervention_fields(terminal),
+                **_terminal_capture_fields(terminal),
                 status_receipt_count=len(statuses),
                 all_statuses_complete=all_statuses_complete,
                 scientifically_ready=scientific_ready,
@@ -1907,6 +2069,7 @@ def verify_abc6_postscore_evidence(
             watchdog_intervention_monotonic_ns=intervention_ns,
             verified_target_hashes=target_hashes,
             **_terminal_intervention_fields(terminal),
+            **_terminal_capture_fields(terminal),
         )
         if intervention_ns is not None and intervention_ns == score_event_ns:
             raise _Reject(
@@ -1916,42 +2079,73 @@ def verify_abc6_postscore_evidence(
         intervention_preceded_event = (
             intervention_ns is not None and intervention_ns < score_event_ns
         )
+        intervention_followed_event = (
+            intervention_ns is not None and intervention_ns > score_event_ns
+        )
+        capture = terminal["intervention_capture"]
         if score["outcome"] == "failed":
             if intervention_preceded_event:
                 classification: ReplayClassification = "incomplete"
                 failure_stage = f"watchdog_intervention_before_{score_event_stage}"
                 detail = "Watchdog intervention preceded the recorded score failure."
-            elif terminal.get("status") == "completed":
-                raise _Reject(
-                    "terminal_score_chain",
-                    "completed watchdog terminal contradicts a failed score receipt",
-                )
-            elif terminal.get("status") in {"capped", "failed"}:
+            elif intervention_followed_event:
+                if terminal.get("status") not in {"capped", "failed"}:
+                    raise _Reject(
+                        "terminal_score_chain",
+                        "post-score intervention contradicts the watchdog terminal status",
+                    )
+                _require_verified_child_reap(terminal)
                 classification = "failed"
                 checkpoint = score.get("failure_checkpoint")
                 failure_stage = str(checkpoint["stage"])
                 detail = "The recorded score failure preceded any watchdog intervention."
+            elif (
+                capture["status"] == "not_attempted"
+                and terminal.get("status") == "failed"
+                and type(terminal.get("process_return_code")) is int
+                and terminal["process_return_code"] != 0
+            ):
+                _require_verified_child_reap(terminal)
+                classification = "failed"
+                checkpoint = score.get("failure_checkpoint")
+                failure_stage = str(checkpoint["stage"])
+                detail = "The validated score failure checkpoint matches a failed child terminal."
             else:
-                raise _Reject("terminal_receipt", "terminal status cannot classify this failed score")
+                raise _Reject(
+                    "terminal_receipt",
+                    "terminal fields do not establish the order of this failed score",
+                )
         elif score["outcome"] == "complete":
             if intervention_preceded_event:
                 classification = "incomplete"
                 failure_stage = f"watchdog_intervention_before_{score_event_stage}"
                 detail = "Watchdog intervention preceded the recorded score event."
-            elif terminal.get("status") == "capped":
-                classification = "incomplete"
-                failure_stage = str(terminal.get("stop_reason"))
-                detail = "A watchdog budget cap prevents operational completion."
-            elif terminal.get("status") == "failed":
-                classification = "failed"
-                failure_stage = str(terminal.get("stop_reason"))
-                detail = "The canonical watchdog terminal records an operational failure."
+            elif intervention_followed_event:
+                if (
+                    capture.get("attempted_type") not in {"budget_cap", "operator_stop"}
+                    or terminal.get("status") not in {"capped", "failed"}
+                ):
+                    raise _Reject(
+                        "terminal_score_chain",
+                        "post-score watchdog stop lacks a supported complete-run predicate",
+                    )
+                _require_no_prior_terminal_error(terminal)
+                _require_verified_child_reap(terminal)
+                classification = "complete"
+                failure_stage = None
+                detail = (
+                    "The score completed before a recorded budget or operator stop, and child cleanup verified."
+                )
             elif terminal.get("status") == "completed":
+                _require_verified_child_reap(terminal)
                 classification = "complete"
                 failure_stage = None
                 detail = "The completed terminal and every deferred score link verified."
             else:
-                raise _Reject("terminal_receipt", "terminal status cannot classify this score chain")
+                raise _Reject(
+                    "terminal_receipt",
+                    "a missing intervention event cannot order a failed watchdog terminal against the score",
+                )
         else:
             raise _Reject("score_result", "score outcome cannot be operationally classified")
         ctx.verify_stable()
@@ -1969,6 +2163,7 @@ def verify_abc6_postscore_evidence(
             terminal_status=str(terminal.get("status")),
             watchdog_intervention_monotonic_ns=intervention_ns,
             **_terminal_intervention_fields(terminal),
+            **_terminal_capture_fields(terminal),
             status_receipt_count=len(statuses),
             all_statuses_complete=all_statuses_complete,
             scientifically_ready=scientific_ready,
@@ -1992,6 +2187,10 @@ def verify_abc6_postscore_evidence(
             watchdog_intervention_monotonic_ns=state.get("watchdog_intervention_monotonic_ns"),
             watchdog_intervention_utc=state.get("watchdog_intervention_utc"),
             watchdog_intervention_clock=state.get("watchdog_intervention_clock"),
+            watchdog_intervention_capture_status=state.get("watchdog_intervention_capture_status"),
+            watchdog_intervention_attempted_type=state.get("watchdog_intervention_attempted_type"),
+            watchdog_intervention_attempted_stage=state.get("watchdog_intervention_attempted_stage"),
+            watchdog_intervention_failure_kind=state.get("watchdog_intervention_failure_kind"),
             status_receipt_count=int(state.get("status_receipt_count", 0)),
             all_statuses_complete=state.get("all_statuses_complete"),
             scientifically_ready=state.get("scientifically_ready"),
@@ -2012,6 +2211,10 @@ def verify_abc6_postscore_evidence(
             watchdog_intervention_monotonic_ns=state.get("watchdog_intervention_monotonic_ns"),
             watchdog_intervention_utc=state.get("watchdog_intervention_utc"),
             watchdog_intervention_clock=state.get("watchdog_intervention_clock"),
+            watchdog_intervention_capture_status=state.get("watchdog_intervention_capture_status"),
+            watchdog_intervention_attempted_type=state.get("watchdog_intervention_attempted_type"),
+            watchdog_intervention_attempted_stage=state.get("watchdog_intervention_attempted_stage"),
+            watchdog_intervention_failure_kind=state.get("watchdog_intervention_failure_kind"),
             status_receipt_count=int(state.get("status_receipt_count", 0)),
             all_statuses_complete=state.get("all_statuses_complete"),
             scientifically_ready=state.get("scientifically_ready"),

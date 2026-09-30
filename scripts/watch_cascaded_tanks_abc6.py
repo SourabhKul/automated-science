@@ -48,6 +48,23 @@ KILL_REAP_GRACE_SECONDS = 3.0
 DIRECT_CHILD_REAP_GRACE_SECONDS = 0.05
 GRANT_RUNTIME_STABILITY_SAMPLES = 2
 GRANT_RUNTIME_ATTESTATION_TIMEOUT_SECONDS = 2.0
+_WATCHDOG_INTERVENTION_REASONS = {
+    "budget_cap": frozenset(
+        {"sampled_rss_limit_exceeded", "wall_clock_limit_exceeded"}
+    ),
+    "operator_stop": frozenset({"watchdog_interrupted"}),
+    "watchdog_stop": frozenset(
+        {
+            "child_exited_with_live_process_group_members",
+            "process_group_membership_unknown",
+            "unexpected_descendant_process",
+            "watchdog_identity_or_monitoring_error",
+            "watchdog_monitoring_error",
+            "child_exited_process_group_reap_unverified",
+            "child_runtime_attestation_timeout",
+        }
+    ),
+}
 
 # Keep the declared executable alias distinct from the process image observed
 # through psutil.  macOS may report the Python.app image for the watchdog even
@@ -677,27 +694,51 @@ def _utc_now() -> str:
     )
 
 
+def _valid_utc_text(value: object) -> bool:
+    if type(value) is not str or len(value) > 32 or not value.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return parsed.utcoffset() == timezone.utc.utcoffset(parsed)
+
+
 def _watchdog_intervention_snapshot(
     intervention_type: str,
     stage: str,
-) -> dict[str, object]:
-    """Capture a same-host monotonic ordering point matching scorer events."""
+) -> tuple[dict[str, object] | None, str | None]:
+    """Capture a typed event, preserving monotonic ordering if UTC is unavailable."""
 
-    monotonic_ns = time.monotonic_ns()
-    occurred_at_utc = _utc_now()
     if (
-        type(monotonic_ns) is not int
-        or not 0 <= monotonic_ns <= (2**63 - 1)
-        or len(occurred_at_utc) > 32
+        type(intervention_type) is not str
+        or type(stage) is not str
+        or intervention_type not in _WATCHDOG_INTERVENTION_REASONS
+        or stage not in _WATCHDOG_INTERVENTION_REASONS[intervention_type]
     ):
-        raise WatchdogError("watchdog intervention clock snapshot is invalid")
-    return {
-        "type": intervention_type,
-        "stage": stage,
-        "monotonic_ns": monotonic_ns,
-        "occurred_at_utc": occurred_at_utc,
-        "clock": "host-local-monotonic-ns",
-    }
+        return None, "event_snapshot_invalid"
+    try:
+        monotonic_ns = time.monotonic_ns()
+    except Exception:  # noqa: BLE001 - preserve the cause in terminal capture state.
+        return None, "monotonic_unavailable"
+    if type(monotonic_ns) is not int or not 0 <= monotonic_ns <= (2**63 - 1):
+        return None, "event_snapshot_invalid"
+    try:
+        occurred_at_utc: str | None = _utc_now()
+    except Exception:  # noqa: BLE001 - UTC is audit text; monotonic ordering remains valid.
+        occurred_at_utc = None
+    if not _valid_utc_text(occurred_at_utc):
+        occurred_at_utc = None
+    return (
+        {
+            "type": intervention_type,
+            "stage": stage,
+            "monotonic_ns": monotonic_ns,
+            "occurred_at_utc": occurred_at_utc,
+            "clock": "host-local-monotonic-ns",
+        },
+        None,
+    )
 
 
 def _write_all(fd: int, payload: bytes) -> None:
@@ -1896,6 +1937,152 @@ def _terminate_process_group(
     }
 
 
+def _terminate_process_group_without_monotonic_clock(
+    child: subprocess.Popen[bytes],
+    process_group_id: int,
+    *,
+    terminate_grace_seconds: float,
+    kill_reap_grace_seconds: float,
+    previously_uncertain: bool = False,
+) -> dict[str, object]:
+    """Best-effort bounded termination when the monotonic clock has failed."""
+
+    enumeration_errors: list[str] = []
+    membership_uncertain = previously_uncertain
+    term_pids: list[int] = []
+    kill_pids: list[int] = []
+    term_group_signal_sent = False
+    kill_group_signal_sent = False
+
+    def sample() -> tuple[list[dict[str, object]], bool]:
+        nonlocal membership_uncertain
+        try:
+            members, _rss, _vanished, errors = _snapshot_process_group(process_group_id)
+        except Exception as error:  # noqa: BLE001 - keep terminal publication reachable.
+            members = []
+            errors = [f"operation=process_group_snapshot error={type(error).__name__}: {error}"]
+        enumeration_errors.extend(errors)
+        if errors:
+            membership_uncertain = True
+        return members, bool(errors)
+
+    def child_reaped() -> bool:
+        try:
+            return child.poll() is not None
+        except Exception as error:  # noqa: BLE001 - report unknown rather than assert reaping.
+            enumeration_errors.append(
+                f"operation=direct_child_poll error={type(error).__name__}: {error}"
+            )
+            return False
+
+    def send_group_signal(sig: int, members: list[dict[str, object]]) -> bool:
+        nonlocal membership_uncertain
+        try:
+            os.killpg(process_group_id, sig)
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError as error:
+            enumeration_errors.append(
+                f"operation=killpg_{signal.Signals(sig).name} error={type(error).__name__}: {error}"
+            )
+            membership_uncertain = True
+            return False
+
+    def wait_for_reap(grace_seconds: float) -> tuple[list[dict[str, object]], bool, bool]:
+        # Fixed rounds keep this bounded without consulting the failed clock.
+        rounds = max(1, min(500, int(max(0.0, grace_seconds) / 0.02) + 1))
+        members: list[dict[str, object]] = []
+        uncertain = False
+        reaped = child_reaped()
+        for _ in range(rounds):
+            members, uncertain = sample()
+            reaped = child_reaped()
+            if reaped and not members and not uncertain:
+                break
+            try:
+                time.sleep(0.02)
+            except Exception as error:  # noqa: BLE001 - continue bounded cleanup attempts.
+                enumeration_errors.append(
+                    f"operation=termination_sleep error={type(error).__name__}: {error}"
+                )
+        return members, uncertain, reaped
+
+    members, uncertain = sample()
+    root_reaped = child_reaped()
+    if members or uncertain or not root_reaped:
+        term_pids = [int(member["pid"]) for member in members]
+        if not term_pids and not root_reaped:
+            term_pids = [child.pid]
+        term_group_signal_sent = send_group_signal(signal.SIGTERM, members)
+        members, uncertain, root_reaped = wait_for_reap(terminate_grace_seconds)
+
+        if members or uncertain or not root_reaped:
+            kill_pids = [int(member["pid"]) for member in members]
+            if not kill_pids and not root_reaped:
+                kill_pids = [child.pid]
+            kill_group_signal_sent = send_group_signal(signal.SIGKILL, members)
+            if not root_reaped:
+                try:
+                    child.kill()
+                    kill_group_signal_sent = True
+                except ProcessLookupError:
+                    pass
+                except OSError as error:
+                    enumeration_errors.append(
+                        f"operation=direct_child_SIGKILL error={type(error).__name__}: {error}"
+                    )
+                    membership_uncertain = True
+            members, uncertain, root_reaped = wait_for_reap(kill_reap_grace_seconds)
+
+    final_members, final_uncertain = sample()
+    root_reaped = child_reaped()
+    if final_uncertain:
+        membership_verification = "unknown"
+        unreaped_process_pids: list[int] | None = None
+    elif final_members:
+        membership_verification = "members_remaining"
+        unreaped_process_pids = [int(member["pid"]) for member in final_members]
+    elif membership_uncertain:
+        membership_verification = "unknown_after_enumeration_error"
+        unreaped_process_pids = None
+    else:
+        membership_verification = "verified_empty"
+        unreaped_process_pids = []
+
+    verified_group_reaped = (
+        root_reaped
+        and membership_verification == "verified_empty"
+        and not enumeration_errors
+    )
+    return {
+        "process_group_id": process_group_id,
+        "term_sent_at_elapsed_seconds": None,
+        "kill_sent_at_elapsed_seconds": None,
+        "term_pids": term_pids,
+        "kill_pids": kill_pids,
+        "term_process_group_signal_sent": term_group_signal_sent,
+        "kill_process_group_signal_sent": kill_group_signal_sent,
+        "unreaped_process_pids": unreaped_process_pids,
+        "membership_verification": membership_verification,
+        "membership_enumeration_errors": enumeration_errors,
+        "child_reaped": root_reaped,
+        "membership_scope": "isolated_process_group_only",
+        "tracked_process_group_reaped": verified_group_reaped,
+        "all_descendants_reaped_claimed": False,
+        "escape_limitation": (
+            "A descendant that creates a separate session/process group is outside this membership proof."
+        ),
+        "direct_child_reap_grace_seconds": DIRECT_CHILD_REAP_GRACE_SECONDS,
+        "bounded_grace_seconds": (
+            terminate_grace_seconds
+            + kill_reap_grace_seconds
+            + 2 * DIRECT_CHILD_REAP_GRACE_SECONDS
+        ),
+        "elapsed_seconds": None,
+    }
+
+
 def _observed_argv_matches(
     observed_argv: Sequence[str],
     launch_vector: Sequence[str],
@@ -2132,8 +2319,11 @@ def _supervise_command(
         raise
     grant_sha256: str | None = None
 
-    timer_started_utc = _utc_now()
-    timer_started = time.monotonic()
+    # The claim timestamp is a truthful fallback when child-timer setup fails
+    # immediately after the claim. The monotonic timer remains unset until the
+    # guarded pre-Popen initialization below succeeds.
+    timer_started_utc = str(claim["claimed_at_utc"])
+    timer_started: float | None = None
     child: subprocess.Popen[bytes] | None = None
     root: psutil.Process | None = None
     process_group_id: int | None = None
@@ -2141,13 +2331,33 @@ def _supervise_command(
     peak_rss = 0
     stop_reason = "watchdog_error"
     watchdog_intervention: dict[str, object] | None = None
+    intervention_capture: dict[str, object] = {
+        "status": "not_attempted",
+        "attempted_type": None,
+        "attempted_stage": None,
+        "failure_kind": None,
+    }
 
     def record_watchdog_intervention(intervention_type: str, stage: str) -> None:
         nonlocal watchdog_intervention
-        if watchdog_intervention is None:
-            watchdog_intervention = _watchdog_intervention_snapshot(
-                intervention_type, stage
-            )
+        if intervention_capture["status"] != "not_attempted":
+            return
+        # Freeze the cause before consulting either clock. Later cleanup faults
+        # may update stop_reason but cannot rewrite this attempted cause.
+        intervention_capture.update(
+            status="unavailable",
+            attempted_type=intervention_type,
+            attempted_stage=stage,
+            failure_kind="event_snapshot_invalid",
+        )
+        event, failure_kind = _watchdog_intervention_snapshot(
+            intervention_type, stage
+        )
+        if event is None:
+            intervention_capture["failure_kind"] = failure_kind
+            return
+        watchdog_intervention = event
+        intervention_capture.update(status="recorded", failure_kind=None)
 
     process_return_code: int | None = None
     kill_reap: dict[str, object] | None = None
@@ -2160,6 +2370,8 @@ def _supervise_command(
     membership_uncertain = False
     monitor_error: str | None = None
     try:
+        timer_started_utc = _utc_now()
+        timer_started = time.monotonic()
         try:
             child = subprocess.Popen(
                 list(launch_vector),
@@ -2407,11 +2619,13 @@ def _supervise_command(
         if watchdog_intervention is None:
             try:
                 record_watchdog_intervention("operator_stop", stop_reason)
-            except WatchdogError as clock_error:
+            except Exception as clock_error:
                 monitor_error = f"{type(clock_error).__name__}: {clock_error}"
         monitor_error = f"{type(error).__name__}: {error}"
     except Exception as error:  # noqa: BLE001 - persist terminal state after any monitor error.
-        if grant_attestation_timeout:
+        if timer_started is None and child is None:
+            stop_reason = "watchdog_monitoring_error"
+        elif grant_attestation_timeout:
             stop_reason = "child_runtime_attestation_timeout"
         elif isinstance(error, WatchdogError):
             stop_reason = "watchdog_identity_or_monitoring_error"
@@ -2421,19 +2635,77 @@ def _supervise_command(
         if watchdog_intervention is None:
             try:
                 record_watchdog_intervention("watchdog_stop", stop_reason)
-            except WatchdogError as clock_error:
+            except Exception as clock_error:
                 monitor_error += f"; {type(clock_error).__name__}: {clock_error}"
 
     if child is not None and root is not None and process_group_id is not None:
         process_return_code = child.poll()
         prior_error = membership_uncertain or stop_reason == "process_group_membership_unknown"
-        kill_reap = _terminate_process_group(
-            child,
-            process_group_id,
-            terminate_grace_seconds=terminate_grace_seconds,
-            kill_reap_grace_seconds=kill_reap_grace_seconds,
-            previously_uncertain=prior_error,
-        )
+        try:
+            kill_reap = _terminate_process_group(
+                child,
+                process_group_id,
+                terminate_grace_seconds=terminate_grace_seconds,
+                kill_reap_grace_seconds=kill_reap_grace_seconds,
+                previously_uncertain=prior_error,
+            )
+        except Exception as termination_error:  # noqa: BLE001 - clock failure must not skip terminal publication.
+            monitor_error = (
+                ("" if monitor_error is None else monitor_error + "; ")
+                + "timed process-group cleanup failed; timing is unknown: "
+                + f"{type(termination_error).__name__}: {str(termination_error)[:512]}"
+            )
+            if stop_reason == "child_exited":
+                stop_reason = "watchdog_monitoring_error"
+            if watchdog_intervention is None:
+                try:
+                    record_watchdog_intervention("watchdog_stop", stop_reason)
+                except Exception as intervention_error:
+                    monitor_error += (
+                        "; watchdog intervention timestamp unavailable: "
+                        + f"{type(intervention_error).__name__}: {str(intervention_error)[:512]}"
+                    )
+            try:
+                kill_reap = _terminate_process_group_without_monotonic_clock(
+                    child,
+                    process_group_id,
+                    terminate_grace_seconds=terminate_grace_seconds,
+                    kill_reap_grace_seconds=kill_reap_grace_seconds,
+                    previously_uncertain=prior_error,
+                )
+            except Exception as fallback_error:  # noqa: BLE001 - persist unknown cleanup state.
+                monitor_error += (
+                    "; clock-independent cleanup failed: "
+                    + f"{type(fallback_error).__name__}: {str(fallback_error)[:512]}"
+                )
+                kill_reap = {
+                    "process_group_id": process_group_id,
+                    "term_sent_at_elapsed_seconds": None,
+                    "kill_sent_at_elapsed_seconds": None,
+                    "term_pids": [],
+                    "kill_pids": [],
+                    "term_process_group_signal_sent": False,
+                    "kill_process_group_signal_sent": False,
+                    "unreaped_process_pids": None,
+                    "membership_verification": "unknown",
+                    "membership_enumeration_errors": [
+                        f"clock-independent cleanup failed: {type(fallback_error).__name__}"
+                    ],
+                    "child_reaped": False,
+                    "membership_scope": "isolated_process_group_only",
+                    "tracked_process_group_reaped": False,
+                    "all_descendants_reaped_claimed": False,
+                    "escape_limitation": (
+                        "A descendant that creates a separate session/process group is outside this membership proof."
+                    ),
+                    "direct_child_reap_grace_seconds": DIRECT_CHILD_REAP_GRACE_SECONDS,
+                    "bounded_grace_seconds": (
+                        terminate_grace_seconds
+                        + kill_reap_grace_seconds
+                        + 2 * DIRECT_CHILD_REAP_GRACE_SECONDS
+                    ),
+                    "elapsed_seconds": None,
+                }
         process_return_code = child.poll()
         if stop_reason == "child_exited" and not kill_reap["tracked_process_group_reaped"]:
             stop_reason = "child_exited_process_group_reap_unverified"
@@ -2441,7 +2713,27 @@ def _supervise_command(
         if stop_reason == "child_exited_with_live_process_group_members":
             stop_reason = "child_exited_with_live_process_group_members"
 
-    elapsed_total = time.monotonic() - timer_started
+    if timer_started is None:
+        elapsed_total: float | None = 0.0
+    else:
+        try:
+            elapsed_total = max(0.0, time.monotonic() - timer_started)
+        except Exception as error:
+            elapsed_total = None
+            prior_error = "" if monitor_error is None else monitor_error + "; "
+            monitor_error = (
+                prior_error
+                + f"elapsed monotonic timestamp unavailable: {type(error).__name__}: {str(error)[:512]}"
+            )
+            if watchdog_intervention is None:
+                stop_reason = "watchdog_monitoring_error"
+                try:
+                    record_watchdog_intervention("watchdog_stop", stop_reason)
+                except Exception as intervention_error:
+                    monitor_error += (
+                        "; "
+                        + f"{type(intervention_error).__name__}: {str(intervention_error)[:512]}"
+                    )
     if (
         stop_reason == "child_exited"
         and process_return_code == 0
@@ -2508,9 +2800,18 @@ def _supervise_command(
     if runner_exit_complete and not fit_gate["pre_score_artifact_chain_valid"]:
         terminal_status = "failed"
         stop_reason = "child_exited_with_invalid_pre_score_gate"
+    try:
+        ended_at_utc = _utc_now()
+    except Exception as error:
+        prior_error = "" if monitor_error is None else monitor_error + "; "
+        monitor_error = (
+            prior_error
+            + f"terminal UTC timestamp unavailable: {type(error).__name__}: {str(error)[:512]}"
+        )
+        ended_at_utc = timer_started_utc
     samples_bytes = _canonical_json(samples)
     body: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "protocol_id": run_identity.get("protocol_id"),
         "run_id": run_identity.get("run_id"),
         "manifest_sha256": run_identity.get("manifest_sha256"),
@@ -2557,9 +2858,14 @@ def _supervise_command(
         "timer_start": {
             "started_at_utc": timer_started_utc,
             "started_monotonic_seconds": timer_started,
-            "rule": "immediately before the single child Popen, after the durable watchdog claim",
+            "rule": (
+                "initialization failed after the durable claim and before child Popen; no child timer started"
+                if timer_started is None
+                else "immediately before the single child Popen, after the durable watchdog claim"
+            ),
         },
-        "ended_at_utc": _utc_now(),
+        "ended_at_utc": ended_at_utc,
+        "intervention_capture": dict(intervention_capture),
         "watchdog_intervention": watchdog_intervention,
         "elapsed_wall_seconds": elapsed_total,
         "process_return_code": process_return_code,
