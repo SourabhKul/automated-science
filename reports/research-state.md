@@ -1,6 +1,30 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T03:32Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T03:52Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: scorer/gate FIFO repair independently cleared and synced
+
+The ABC6 cases/scorer seam now requires the typed schema-v2 root identity,
+uses pinned no-follow descriptors for receipt, forecast, source and marker
+reads, and rejects FIFO leaves without blocking. The marker readback is
+bounded; fake status-FIFO and marker-FIFO probes fail before target
+materialization, and the latter remains consumed on retry. Independent Luna
+verified the exact five-file unit and **73/73** focused fake-only tests both
+locally and in a clean `origin/main` archive overlay. A sole Git owner
+pushed exactly those files as content commit
+`25bfcaca9530cf9946931a8132dbd2faa4110072` and fresh-fetch verified
+`HEAD == origin/main`. See
+`reports/research-ledger/2026-09-30T0352Z.md`.
+
+The separate runner's one failing fake integration test used a temporary
+receipt path that violates the fixed manifest contract. A Luna author has a
+bounded runner/target-free forecast identity task; its source/test files
+remain untracked until independent review. Full integrated source pins are
+still incomplete/stale and scoring fails closed before marker creation.
+Watchdog, separate approval, immutable manifest and replay remain uncleared.
+`ct-abc6-20260928-v1` is **UNUSED/HOLD**; no protocol prospective target,
+real tank Qwen/ABC, held-out tank access, or scientific breakthrough occurred.
+This state/ledger update is local pending factual review and Git sync.
 
 ## Latest checkpoint: scorer/gate author tests pass; FIFO review HOLD
 
