@@ -1,6 +1,29 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T10:17Z. This file records observed state, not inferred execution.
+Updated: 2026-09-30T10:34Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: bounded watchdog fit gate synced
+
+An independent `gpt-6-luna` max reviewer cleared the repaired watchdog
+fit gate with **40/40** fake-only tests locally and in a clean
+`origin/main` overlay. Seven targeted post-read symlink swaps failed
+closed. In a fake supervisor, an unchanged fixture plus child exit 0 was
+`completed`, while a status leaf swapped after its validated read made
+the gate invalid and the terminal result `failed`. The snapshot compares
+device/inode, size, modification/change times and SHA-256, plus receipt-
+root and nested evidence-directory identity before gate acceptance. A
+sole Luna Git owner pushed exactly the two reviewed watchdog files as
+`12d453b9c94d87fc524a1ba8b319508a740bd94e`; fresh fetch verified
+`HEAD == origin/main` and the worktree clean. The 10:17Z HOLD is preserved
+as historical evidence of the first, insufficient version. See
+`reports/research-ledger/2026-09-30T1034Z.md`.
+
+The primary has delegated the next bounded terminal-publication/readback
+and watchdog intervention-timing seam to Luna. Full post-score chain
+replay, supervised-child grant, versioned approval, complete integrated
+source pins, immutable manifest and separate launch GO remain HOLD.
+Synthetic `ct-abc6-20260928-v1` stays UNUSED/HOLD; no protocol prospective
+target, real tank Qwen/ABC, held-out target access or breakthrough occurred.
 
 ## Latest checkpoint: watchdog fit-gate post-read swap HOLD
 
