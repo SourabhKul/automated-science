@@ -1618,7 +1618,13 @@ def test_manifest_swap_to_fifo_after_watchdog_pin_fails_before_claim_or_child(
 
 @pytest.mark.parametrize(
     "occupied_path",
-    ["campaign_claim", "watchdog_claim", "scorer_marker", "receipt_output"],
+    [
+        "campaign_claim",
+        "watchdog_claim",
+        "launch_attestation",
+        "scorer_marker",
+        "receipt_output",
+    ],
 )
 def test_existing_claim_marker_or_output_fails_before_launch(
     tmp_path: Path,
@@ -1631,6 +1637,12 @@ def test_existing_claim_marker_or_output_fails_before_launch(
         path = root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE / f"{watchdog.RUN_ID}.claim"
     elif occupied_path == "watchdog_claim":
         path = root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE / f"{watchdog.RUN_ID}.watchdog.claim"
+    elif occupied_path == "launch_attestation":
+        path = (
+            root
+            / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+            / f"{watchdog.RUN_ID}{watchdog._LAUNCH_ATTESTATION_SUFFIX}"
+        )
     elif occupied_path == "scorer_marker":
         path = root / watchdog._SCORER_CLAIM_PARENT_RELATIVE / f"{watchdog.RUN_ID}.claim"
     else:

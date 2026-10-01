@@ -39,6 +39,10 @@ MAX_TRAINING_EVIDENCE_TOTAL_BYTES = 1024 * 1024 * 1024
 MAX_TARGET_FREE_FORECAST_BYTES = 128 * 1024 * 1024
 MAX_TERMINAL_RECEIPT_BYTES = 128 * 1024 * 1024
 MAX_TERMINAL_READBACK_ACK_BYTES = 64 * 1024
+MAX_LAUNCH_ATTESTATION_BYTES = 64 * 1024
+MAX_LAUNCH_ATTESTATION_ARGV_ITEMS = 256
+MAX_LAUNCH_ATTESTATION_ARGV_ITEM_CHARS = 4096
+_LAUNCH_ATTESTATION_SCHEMA_VERSION = 1
 _TERMINAL_READBACK_ACK_FILENAME = "terminal-readback.ok"
 WALL_LIMIT_SECONDS = 900.0
 RSS_LIMIT_BYTES = 2 * 1024**3
@@ -101,6 +105,7 @@ PINNED_PSUTIL_SHA256 = (
 )
 
 _REPO_ROOT = Path(__file__).absolute().parents[1]
+_TRUSTED_REPOSITORY_ROOT = _REPO_ROOT
 _SCRIPT_PATH = Path(__file__).absolute()
 _RUN_DIRECTORY_RELATIVE = (
     f"artifacts/cascaded_tanks_abc6_synthetic/{RUN_ID}"
@@ -113,6 +118,7 @@ _RECEIPT_ROOT_RELATIVE = f"{_RUN_DIRECTORY_RELATIVE}/receipts"
 _CAMPAIGN_CLAIM_PARENT_RELATIVE = (
     "artifacts/evaluations/cascaded_tanks_abc6_campaign_fit/claims"
 )
+_LAUNCH_ATTESTATION_SUFFIX = ".launch-attestation.json"
 _SCORER_CLAIM_PARENT_RELATIVE = (
     "artifacts/evaluations/cascaded_tanks_abc6_scoring/claims"
 )
@@ -142,6 +148,7 @@ _EXPECTED_UNUSED_LEAVES = {
     _CAMPAIGN_CLAIM_PARENT_RELATIVE: (
         f"{RUN_ID}.claim",
         f"{RUN_ID}.watchdog.claim",
+        f"{RUN_ID}{_LAUNCH_ATTESTATION_SUFFIX}",
     ),
     _SCORER_CLAIM_PARENT_RELATIVE: (f"{RUN_ID}.claim",),
 }
@@ -166,6 +173,41 @@ class _PinnedFile:
     mtime_ns: int
     ctime_ns: int
     raw: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _LaunchAttestationSnapshot:
+    """Publication-time digest and exact descriptor file identity."""
+
+    leaf: str
+    sha256: str
+    device: int
+    inode: int
+    mode: int
+    size_bytes: int
+
+    @classmethod
+    def from_stat(
+        cls, leaf: str, digest: str, info: os.stat_result
+    ) -> "_LaunchAttestationSnapshot":
+        return cls(
+            leaf=leaf,
+            sha256=digest,
+            device=info.st_dev,
+            inode=info.st_ino,
+            mode=info.st_mode,
+            size_bytes=info.st_size,
+        )
+
+    def terminal_value(self) -> dict[str, object]:
+        return {
+            "leaf": self.leaf,
+            "sha256": self.sha256,
+            "device": self.device,
+            "inode": self.inode,
+            "mode": self.mode,
+            "size_bytes": self.size_bytes,
+        }
 
 
 @dataclass(slots=True)
@@ -673,6 +715,331 @@ def _canonical_json(value: object) -> bytes:
         ensure_ascii=True,
         allow_nan=False,
     ).encode("ascii")
+
+
+_LAUNCH_ATTESTATION_KEYS = frozenset(
+    {
+        "schema_version",
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "approval_sha256",
+        "review_sha256",
+        "reviewed_git_head",
+        "watchdog_claim_sha256",
+        "physical_root",
+        "root_device",
+        "root_inode",
+        "receipt_root_relative",
+        "receipt_device",
+        "receipt_inode",
+        "claim_parent_device",
+        "claim_parent_inode",
+        "observed_monotonic_ns",
+        "watchdog_process",
+        "child_process",
+    }
+)
+_LAUNCH_ATTESTATION_PROCESS_KEYS = frozenset(
+    {"pid", "start_identity", "argv", "image_path", "image_sha256"}
+)
+_LAUNCH_ATTESTATION_CHILD_KEYS = _LAUNCH_ATTESTATION_PROCESS_KEYS | frozenset(
+    {
+        "declared_launch_vector",
+        "declared_launch_image_path",
+        "declared_launch_image_sha256",
+    }
+)
+
+
+def _attestation_safe_text(value: object, *, label: str, maximum: int = 256) -> str:
+    if (
+        type(value) is not str
+        or not value
+        or len(value) > maximum
+        or any(
+            character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-_"
+            for character in value
+        )
+    ):
+        raise WatchdogError(f"launch attestation {label} is not a safe string")
+    return value
+
+
+def _attestation_absolute_path(value: object, *, label: str) -> str:
+    if (
+        type(value) is not str
+        or not value
+        or len(value) > 4096
+        or "\x00" in value
+        or not Path(value).is_absolute()
+        or str(Path(value)) != value
+        or any(component in {".", ".."} for component in value.split("/")[1:])
+    ):
+        raise WatchdogError(f"launch attestation {label} is not a canonical absolute path")
+    return value
+
+
+def _attestation_vector(value: object, *, label: str) -> list[str]:
+    if (
+        type(value) is not list
+        or not value
+        or len(value) > MAX_LAUNCH_ATTESTATION_ARGV_ITEMS
+        or any(
+            type(entry) is not str
+            or not entry
+            or len(entry) > MAX_LAUNCH_ATTESTATION_ARGV_ITEM_CHARS
+            or "\x00" in entry
+            for entry in value
+        )
+    ):
+        raise WatchdogError(f"launch attestation {label} is not a bounded argv array")
+    return value
+
+
+def _validate_launch_attestation_v1(value: object) -> dict[str, object]:
+    """Require the exact canonical sidecar-v1 object shape and value types."""
+
+    if type(value) is not dict or set(value) != _LAUNCH_ATTESTATION_KEYS:
+        raise WatchdogError("launch attestation has missing or extra top-level keys")
+    if type(value.get("schema_version")) is not int or value["schema_version"] != 1:
+        raise WatchdogError("launch attestation schema version must be exact integer 1")
+    _attestation_safe_text(value.get("protocol_id"), label="protocol ID")
+    run_id = _validate_claim_run_id(value.get("run_id"))
+    for field_name in (
+        "manifest_sha256",
+        "approval_sha256",
+        "review_sha256",
+        "watchdog_claim_sha256",
+    ):
+        if not _is_sha256(value.get(field_name)):
+            raise WatchdogError(f"launch attestation {field_name} is not lowercase SHA-256")
+    head = value.get("reviewed_git_head")
+    if (
+        type(head) is not str
+        or len(head) != 40
+        or any(character not in "0123456789abcdef" for character in head)
+    ):
+        raise WatchdogError("launch attestation reviewed HEAD is not lowercase SHA-1")
+    _attestation_absolute_path(value.get("physical_root"), label="physical root")
+    receipt_root_relative = _relative_components(
+        value.get("receipt_root_relative"), label="launch attestation receipt root"
+    )
+    if "/".join(receipt_root_relative) != (
+        f"artifacts/cascaded_tanks_abc6_synthetic/{run_id}/receipts"
+    ):
+        raise WatchdogError("launch attestation receipt root is not the fixed run-relative path")
+    for field_name in (
+        "root_device",
+        "root_inode",
+        "receipt_device",
+        "receipt_inode",
+        "claim_parent_device",
+        "claim_parent_inode",
+        "observed_monotonic_ns",
+    ):
+        field_value = value.get(field_name)
+        if type(field_value) is not int or field_value <= 0:
+            raise WatchdogError(f"launch attestation {field_name} must be a positive exact integer")
+
+    for field_name, keys in (
+        ("watchdog_process", _LAUNCH_ATTESTATION_PROCESS_KEYS),
+        ("child_process", _LAUNCH_ATTESTATION_CHILD_KEYS),
+    ):
+        process = value.get(field_name)
+        if type(process) is not dict or set(process) != keys:
+            raise WatchdogError(f"launch attestation {field_name} has missing or extra keys")
+        pid = process.get("pid")
+        if type(pid) is not int or pid <= 0:
+            raise WatchdogError(f"launch attestation {field_name} PID must be a positive exact integer")
+        _attestation_safe_text(
+            process.get("start_identity"), label=f"{field_name} start identity"
+        )
+        _attestation_vector(process.get("argv"), label=f"{field_name} argv")
+        _attestation_absolute_path(
+            process.get("image_path"), label=f"{field_name} image path"
+        )
+        if not _is_sha256(process.get("image_sha256")):
+            raise WatchdogError(f"launch attestation {field_name} image hash is invalid")
+        if field_name == "child_process":
+            _attestation_vector(
+                process.get("declared_launch_vector"),
+                label="declared launch vector",
+            )
+            _attestation_absolute_path(
+                process.get("declared_launch_image_path"),
+                label="declared launch image path",
+            )
+            if not _is_sha256(process.get("declared_launch_image_sha256")):
+                raise WatchdogError("launch attestation declared launch image hash is invalid")
+    if value.get("run_id") != run_id:
+        raise WatchdogError("launch attestation run ID is not canonical")
+    return value
+
+
+def _launch_attestation_value(
+    run_identity: Mapping[str, object],
+    claim_sha256: str,
+    watchdog_identity: launch_authority.ProcessIdentity,
+    child_identity: launch_authority.ProcessIdentity,
+    launch_vector: Sequence[str],
+    launch_image_path: str,
+    launch_image_sha256: str,
+) -> dict[str, object]:
+    try:
+        observed_monotonic_ns = time.monotonic_ns()
+    except Exception as error:
+        raise WatchdogError("launch attestation monotonic capture is unavailable") from error
+    if type(observed_monotonic_ns) is not int or observed_monotonic_ns <= 0:
+        raise WatchdogError("launch attestation monotonic capture is invalid")
+    value: dict[str, object] = {
+        "schema_version": _LAUNCH_ATTESTATION_SCHEMA_VERSION,
+        "protocol_id": run_identity.get("protocol_id"),
+        "run_id": run_identity.get("run_id"),
+        "manifest_sha256": run_identity.get("manifest_sha256"),
+        "approval_sha256": run_identity.get("approval_record_sha256"),
+        "review_sha256": run_identity.get("review_sha256"),
+        "reviewed_git_head": run_identity.get("reviewed_git_head"),
+        "watchdog_claim_sha256": claim_sha256,
+        "physical_root": run_identity.get("repository_root_realpath"),
+        "root_device": run_identity.get("repository_root_device"),
+        "root_inode": run_identity.get("repository_root_inode"),
+        "receipt_root_relative": run_identity.get("receipt_root_relative"),
+        "receipt_device": run_identity.get("receipt_root_device"),
+        "receipt_inode": run_identity.get("receipt_root_inode"),
+        "claim_parent_device": run_identity.get("watchdog_claim_parent_device"),
+        "claim_parent_inode": run_identity.get("watchdog_claim_parent_inode"),
+        "observed_monotonic_ns": observed_monotonic_ns,
+        "watchdog_process": {
+            "pid": watchdog_identity.pid,
+            "start_identity": watchdog_identity.start,
+            "argv": list(watchdog_identity.vector),
+            "image_path": watchdog_identity.image_path,
+            "image_sha256": watchdog_identity.image_sha256,
+        },
+        "child_process": {
+            "pid": child_identity.pid,
+            "start_identity": child_identity.start,
+            "argv": list(child_identity.vector),
+            "image_path": child_identity.image_path,
+            "image_sha256": child_identity.image_sha256,
+            "declared_launch_vector": list(launch_vector),
+            "declared_launch_image_path": launch_image_path,
+            "declared_launch_image_sha256": launch_image_sha256,
+        },
+    }
+    _validate_launch_attestation_v1(value)
+    return value
+
+
+def _publish_launch_attestation_at(
+    directory_fd: int,
+    leaf_name: str,
+    value: dict[str, object],
+) -> _LaunchAttestationSnapshot:
+    """Create, sync, and no-follow read back one immutable sidecar leaf."""
+
+    run_id = _validate_claim_run_id(value.get("run_id"))
+    if leaf_name != f"{run_id}{_LAUNCH_ATTESTATION_SUFFIX}":
+        raise WatchdogError("launch attestation leaf is not the fixed run-ID name")
+    _validate_launch_attestation_v1(value)
+    payload = _canonical_json(value)
+    if len(payload) > MAX_LAUNCH_ATTESTATION_BYTES:
+        raise WatchdogError("launch attestation exceeds its inclusive 64 KiB limit")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            leaf_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | os.O_NOFOLLOW
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=directory_fd,
+        )
+        created_info = os.fstat(descriptor)
+        if not stat.S_ISREG(created_info.st_mode) or created_info.st_size != 0:
+            raise WatchdogError("new launch attestation leaf is not an empty regular file")
+        _write_all(descriptor, payload)
+        os.fsync(descriptor)
+        published_info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(published_info.st_mode)
+            or _launch_attestation_stat_tuple(published_info)
+            != (
+                created_info.st_dev,
+                created_info.st_ino,
+                created_info.st_mode,
+                len(payload),
+            )
+        ):
+            raise WatchdogError("launch attestation file identity changed during publication")
+        os.close(descriptor)
+        descriptor = None
+        os.fsync(directory_fd)
+        raw, decoded, readback_info = _read_canonical_object_at(
+            directory_fd,
+            leaf_name,
+            maximum_bytes=MAX_LAUNCH_ATTESTATION_BYTES,
+            label="launch attestation publication readback",
+        )
+        _validate_launch_attestation_v1(decoded)
+        named_info = os.stat(leaf_name, dir_fd=directory_fd, follow_symlinks=False)
+        if (
+            raw != payload
+            or decoded != value
+            or hashlib.sha256(raw).hexdigest() != hashlib.sha256(payload).hexdigest()
+            or _launch_attestation_stat_tuple(readback_info)
+            != _launch_attestation_stat_tuple(published_info)
+            or _launch_attestation_stat_tuple(named_info)
+            != _launch_attestation_stat_tuple(published_info)
+            or not stat.S_ISREG(named_info.st_mode)
+        ):
+            raise WatchdogError("launch attestation readback bytes or identity differ")
+        return _LaunchAttestationSnapshot.from_stat(
+            leaf_name, hashlib.sha256(raw).hexdigest(), published_info
+        )
+    except FileExistsError as error:
+        raise WatchdogError("launch attestation leaf already exists") from error
+    except WatchdogError:
+        raise
+    except OSError as error:
+        raise WatchdogError("launch attestation could not be durably published") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _launch_attestation_stat_tuple(info: os.stat_result) -> tuple[int, int, int, int]:
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_size)
+
+
+def _verify_launch_attestation_snapshot_at(
+    directory_fd: int,
+    snapshot: _LaunchAttestationSnapshot,
+    *,
+    run_id: str,
+) -> None:
+    if snapshot.leaf != f"{_validate_claim_run_id(run_id)}{_LAUNCH_ATTESTATION_SUFFIX}":
+        raise WatchdogError("retained launch attestation leaf does not match the run ID")
+    raw, decoded, readback_info = _read_canonical_object_at(
+        directory_fd,
+        snapshot.leaf,
+        maximum_bytes=MAX_LAUNCH_ATTESTATION_BYTES,
+        label="retained launch attestation final readback",
+    )
+    _validate_launch_attestation_v1(decoded)
+    named_info = os.stat(snapshot.leaf, dir_fd=directory_fd, follow_symlinks=False)
+    if (
+        hashlib.sha256(raw).hexdigest() != snapshot.sha256
+        or _launch_attestation_stat_tuple(readback_info)
+        != (snapshot.device, snapshot.inode, snapshot.mode, snapshot.size_bytes)
+        or _launch_attestation_stat_tuple(named_info)
+        != (snapshot.device, snapshot.inode, snapshot.mode, snapshot.size_bytes)
+        or not stat.S_ISREG(named_info.st_mode)
+    ):
+        raise WatchdogError("launch attestation differs from its retained publication snapshot")
 
 
 def _require_exact_vector(observed: Sequence[str], expected: Sequence[str]) -> None:
@@ -2161,6 +2528,68 @@ def _validate_launch_grant_identity(
     return source_hashes
 
 
+def _verify_test_attestation_parent_fd(
+    directory_fd: int,
+    run_identity: Mapping[str, object],
+) -> None:
+    """Keep the fake-only descriptor seam bound to the fixed claims parent."""
+
+    if _REPO_ROOT == _TRUSTED_REPOSITORY_ROOT:
+        raise WatchdogError(
+            "private attestation descriptor seam is disabled in the production checkout"
+        )
+    root_value = run_identity.get("repository_root_realpath")
+    if type(root_value) is not str:
+        raise WatchdogError("private attestation test seam lacks a physical root")
+    root_path = Path(root_value)
+    if root_path != _REPO_ROOT or not root_path.is_absolute() or str(root_path) != str(root_path.absolute()):
+        raise WatchdogError("private attestation test seam is outside the isolated checkout")
+    expected_root = (
+        run_identity.get("repository_root_device"),
+        run_identity.get("repository_root_inode"),
+    )
+    expected_parent = (
+        run_identity.get("watchdog_claim_parent_device"),
+        run_identity.get("watchdog_claim_parent_inode"),
+    )
+    if (
+        any(type(item) is not int or item <= 0 for item in expected_root)
+        or any(type(item) is not int or item <= 0 for item in expected_parent)
+    ):
+        raise WatchdogError("private attestation test seam lacks frozen directory identities")
+    try:
+        root_fd = _open_absolute_directory_nofollow(
+            root_path, label="private fake checkout root"
+        )
+        try:
+            root_info = os.fstat(root_fd)
+            pinned_parent_fd = _open_relative_directory_nofollow(
+                root_fd,
+                _CAMPAIGN_CLAIM_PARENT_RELATIVE,
+                label="private fake campaign-fit claims parent",
+            )
+            try:
+                parent_info = os.fstat(pinned_parent_fd)
+                supplied_info = os.fstat(directory_fd)
+                if (
+                    (root_info.st_dev, root_info.st_ino) != expected_root
+                    or (parent_info.st_dev, parent_info.st_ino) != expected_parent
+                    or (supplied_info.st_dev, supplied_info.st_ino) != expected_parent
+                    or not stat.S_ISDIR(supplied_info.st_mode)
+                ):
+                    raise WatchdogError(
+                        "private attestation test descriptor differs from its frozen parent"
+                    )
+            finally:
+                os.close(pinned_parent_fd)
+        finally:
+            os.close(root_fd)
+    except WatchdogError:
+        raise
+    except OSError as error:
+        raise WatchdogError("private attestation test parent is missing or unsafe") from error
+
+
 def _supervise_command(
     *,
     launch_vector: Sequence[str],
@@ -2171,6 +2600,7 @@ def _supervise_command(
     run_identity: dict[str, object],
     claim_project_root: Path | None = None,
     preflight_anchors: _PreflightAnchors | None = None,
+    _test_attestation_claim_parent_fd: int | None = None,
     require_launch_grant: bool = False,
     wall_limit_seconds: float = WALL_LIMIT_SECONDS,
     rss_limit_bytes: int = RSS_LIMIT_BYTES,
@@ -2220,7 +2650,12 @@ def _supervise_command(
     # private process-supervision tests retain their isolated Path fixture.
     receipt_directory_fd: int | None = None
     claim_directory_fd: int | None = None
+    launch_attestation_directory_fd: int | None = None
     if preflight_anchors is not None:
+        if _test_attestation_claim_parent_fd is not None:
+            raise WatchdogError(
+                "private attestation descriptor cannot replace production preflight anchors"
+            )
         expected_receipt = (
             preflight_anchors.receipt_root_path
             / "watchdog-terminal-receipt.json"
@@ -2235,9 +2670,26 @@ def _supervise_command(
         preflight_anchors.verify(require_unused=True)
         receipt_directory_fd = preflight_anchors.receipt_root_fd
         claim_directory_fd = preflight_anchors.watchdog_claim_parent_fd
+        if require_launch_grant:
+            launch_attestation_directory_fd = (
+                preflight_anchors.watchdog_claim_parent_fd
+            )
         if os.listdir(receipt_directory_fd):
             raise WatchdogError("campaign receipt root is not empty before launch")
     else:
+        if require_launch_grant:
+            if _test_attestation_claim_parent_fd is None:
+                raise WatchdogError(
+                    "launch grant requires the pinned campaign-fit claims parent"
+                )
+            _verify_test_attestation_parent_fd(
+                _test_attestation_claim_parent_fd, run_identity
+            )
+            launch_attestation_directory_fd = _test_attestation_claim_parent_fd
+        elif _test_attestation_claim_parent_fd is not None:
+            raise WatchdogError(
+                "private attestation descriptor is only valid for fake grant tests"
+            )
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         if receipt_path.exists() or receipt_path.is_symlink():
             raise WatchdogError("terminal watchdog receipt already exists")
@@ -2364,6 +2816,7 @@ def _supervise_command(
     kill_reap: dict[str, object] | None = None
     observed_child_attestation: dict[str, object] | None = None
     child_image_observations: list[dict[str, object]] = []
+    launch_attestation_snapshot: _LaunchAttestationSnapshot | None = None
     grant_runtime_key: tuple[object, ...] | None = None
     grant_runtime_stable_samples = 0
     grant_attestation_timeout = False
@@ -2494,10 +2947,68 @@ def _supervise_command(
                         if grant_runtime_stable_samples >= GRANT_RUNTIME_STABILITY_SAMPLES:
                             child_launch_path = str(resolved)
                             child_launch_sha256 = _sha256_file(executable)
+                            if launch_attestation_directory_fd is None:
+                                raise WatchdogError(
+                                    "stable grant child has no pinned attestation parent"
+                                )
+                            fresh_child_identity = launch_authority._capture(child.pid)
+                            if fresh_child_identity != child_identity:
+                                raise WatchdogError(
+                                    "child identity changed before launch attestation publication"
+                                )
+                            watchdog_identity = launch_authority._capture(os.getpid())
+                            if watchdog_identity.pid == fresh_child_identity.pid:
+                                raise WatchdogError(
+                                    "watchdog and child process identities are not distinct"
+                                )
+                            if preflight_anchors is not None:
+                                preflight_anchors.verify(require_unused=False)
+                            else:
+                                _verify_test_attestation_parent_fd(
+                                    launch_attestation_directory_fd, run_identity
+                                )
+                            attestation_value = _launch_attestation_value(
+                                run_identity,
+                                claim_sha256,
+                                watchdog_identity,
+                                fresh_child_identity,
+                                launch_vector,
+                                child_launch_path,
+                                child_launch_sha256,
+                            )
+                            run_id = str(run_identity["run_id"])
+                            launch_attestation_snapshot = _publish_launch_attestation_at(
+                                launch_attestation_directory_fd,
+                                f"{run_id}{_LAUNCH_ATTESTATION_SUFFIX}",
+                                attestation_value,
+                            )
+                            # A successful sidecar readback is necessary but not
+                            # sufficient: both processes must still be the exact
+                            # live identities whose facts the sidecar records.
+                            if preflight_anchors is not None:
+                                preflight_anchors.verify(require_unused=False)
+                            else:
+                                _verify_test_attestation_parent_fd(
+                                    launch_attestation_directory_fd, run_identity
+                                )
+                            if (
+                                launch_authority._capture(os.getpid())
+                                != watchdog_identity
+                                or launch_authority._capture(child.pid)
+                                != fresh_child_identity
+                            ):
+                                raise WatchdogError(
+                                    "live process identity changed after launch attestation publication"
+                                )
+                            _verify_launch_attestation_snapshot_at(
+                                launch_attestation_directory_fd,
+                                launch_attestation_snapshot,
+                                run_id=run_id,
+                            )
                             runtime_hashes = tuple(
                                 sorted(
                                     (
-                                        ("child_image_sha256", child_identity.image_sha256),
+                                        ("child_image_sha256", fresh_child_identity.image_sha256),
                                         ("child_launch_image_sha256", child_launch_sha256),
                                         (
                                             "python_version_sha256",
@@ -2506,7 +3017,6 @@ def _supervise_command(
                                     )
                                 )
                             )
-                            run_id = str(run_identity["run_id"])
                             bindings = launch_authority.ABC6AuthorityBindings(
                                 protocol_id=str(run_identity["protocol_id"]),
                                 run_id=run_id,
@@ -2521,15 +3031,15 @@ def _supervise_command(
                                 receipt_inode=int(run_identity["receipt_root_inode"]),
                                 reviewed_git_head=str(run_identity["reviewed_git_head"]),
                                 watchdog_claim_sha256=claim_sha256,
-                                watchdog_pid=os.getpid(),
-                                watchdog_start=launch_authority._process_start(os.getpid()),
-                                child_pid=child_identity.pid,
-                                child_start=child_identity.start,
-                                child_vector=child_identity.vector,
+                                watchdog_pid=watchdog_identity.pid,
+                                watchdog_start=watchdog_identity.start,
+                                child_pid=fresh_child_identity.pid,
+                                child_start=fresh_child_identity.start,
+                                child_vector=fresh_child_identity.vector,
                                 child_launch_image_path=child_launch_path,
                                 child_launch_image_sha256=child_launch_sha256,
-                                child_image_path=child_identity.image_path,
-                                child_image_sha256=child_identity.image_sha256,
+                                child_image_path=fresh_child_identity.image_path,
+                                child_image_sha256=fresh_child_identity.image_sha256,
                                 source_hashes=grant_source_hashes or (),
                                 runtime_hashes=runtime_hashes,
                                 campaign_claim_relative=(
@@ -2846,9 +3356,41 @@ def _supervise_command(
             + f"terminal UTC timestamp unavailable: {type(error).__name__}: {str(error)[:512]}"
         )
         ended_at_utc = timer_started_utc
+    if launch_attestation_directory_fd is not None:
+        try:
+            if launch_attestation_snapshot is None:
+                _stat_absent_at(
+                    launch_attestation_directory_fd,
+                    f"{run_identity.get('run_id')}{_LAUNCH_ATTESTATION_SUFFIX}",
+                    label="unissued launch attestation",
+                )
+            else:
+                if preflight_anchors is not None:
+                    preflight_anchors.verify(require_unused=False)
+                else:
+                    _verify_test_attestation_parent_fd(
+                        launch_attestation_directory_fd, run_identity
+                    )
+                _verify_launch_attestation_snapshot_at(
+                    launch_attestation_directory_fd,
+                    launch_attestation_snapshot,
+                    run_id=str(run_identity.get("run_id", "")),
+                )
+        except Exception as error:
+            terminal_status = "failed"
+            stop_reason = "launch_attestation_changed_before_terminal_receipt"
+            error_text = (
+                "launch attestation terminal readback failed: "
+                f"{type(error).__name__}: {str(error)[:512]}"
+            )
+            monitor_error = (
+                error_text
+                if monitor_error is None
+                else monitor_error + "; " + error_text
+            )
     samples_bytes = _canonical_json(samples)
     body: dict[str, object] = {
-        "schema_version": 3,
+        "schema_version": 4,
         "protocol_id": run_identity.get("protocol_id"),
         "run_id": run_identity.get("run_id"),
         "manifest_sha256": run_identity.get("manifest_sha256"),
@@ -2870,6 +3412,11 @@ def _supervise_command(
         "scorer_claim_parent_inode": run_identity.get("scorer_claim_parent_inode"),
         "watchdog_claim_path": str(claim_path),
         "watchdog_claim_sha256": claim_sha256,
+        "launch_attestation": (
+            None
+            if launch_attestation_snapshot is None
+            else launch_attestation_snapshot.terminal_value()
+        ),
         "bootstrap_grant": (
             None
             if grant_channel is None
@@ -3056,6 +3603,25 @@ def _supervise_command(
             ),
             preflight_anchors=preflight_anchors,
         )
+        if launch_attestation_directory_fd is not None:
+            if launch_attestation_snapshot is None:
+                _stat_absent_at(
+                    launch_attestation_directory_fd,
+                    f"{run_identity.get('run_id')}{_LAUNCH_ATTESTATION_SUFFIX}",
+                    label="unissued launch attestation final readback",
+                )
+            else:
+                if preflight_anchors is not None:
+                    preflight_anchors.verify(require_unused=False)
+                else:
+                    _verify_test_attestation_parent_fd(
+                        launch_attestation_directory_fd, run_identity
+                    )
+                _verify_launch_attestation_snapshot_at(
+                    launch_attestation_directory_fd,
+                    launch_attestation_snapshot,
+                    run_id=str(run_identity.get("run_id", "")),
+                )
         terminal_readback_ack_sha256 = _publish_terminal_readback_ack_at(
             terminal_receipt_fd,
             receipt_path.name,

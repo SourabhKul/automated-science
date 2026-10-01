@@ -46,6 +46,54 @@ _PINNED_BOOTSTRAP_SOURCES = (
     "core/real_data/cascaded_tanks_abc6_replay.py",
     "core/abc_smc_reference.py",
 )
+_ORIGINAL_SUPERVISE_COMMAND = watchdog._supervise_command
+
+
+@pytest.fixture(autouse=True)
+def _private_attestation_parent_fd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Supply the internal pinned-parent seam only inside this fake overlay suite."""
+
+    original = watchdog._supervise_command
+
+    def supervise_with_private_claim_parent(*args: object, **kwargs: object):
+        skip_private_fd = bool(kwargs.pop("_skip_fake_claim_parent_fd", False))
+        if (
+            kwargs.get("require_launch_grant") is not True
+            or kwargs.get("preflight_anchors") is not None
+            or skip_private_fd
+        ):
+            return original(*args, **kwargs)
+        run_identity = kwargs.get("run_identity")
+        if type(run_identity) is not dict:
+            return original(*args, **kwargs)
+        sources = run_identity.get("source_hashes")
+        if not isinstance(sources, dict) or not watchdog._GRANT_BOOTSTRAP_SOURCE_PATHS <= set(sources):
+            return original(*args, **kwargs)
+        root = Path(str(run_identity["repository_root_realpath"]))
+        monkeypatch.setattr(watchdog, "_REPO_ROOT", root)
+        root_fd = watchdog._open_absolute_directory_nofollow(
+            root, label="private stage2a checkout root"
+        )
+        try:
+            parent_fd = watchdog._open_relative_directory_nofollow(
+                root_fd,
+                watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE,
+                label="private stage2a claims parent",
+            )
+        finally:
+            os.close(root_fd)
+        parent_info = os.fstat(parent_fd)
+        run_identity.setdefault("watchdog_claim_parent_device", parent_info.st_dev)
+        run_identity.setdefault("watchdog_claim_parent_inode", parent_info.st_ino)
+        kwargs["_test_attestation_claim_parent_fd"] = parent_fd
+        try:
+            return original(*args, **kwargs)
+        finally:
+            os.close(parent_fd)
+
+    monkeypatch.setattr(watchdog, "_supervise_command", supervise_with_private_claim_parent)
 
 
 def _private_overlay(tmp_path: Path) -> tuple[Path, tuple[tuple[str, str], ...]]:
@@ -73,6 +121,7 @@ def _grant_run_identity(root: Path, sources: tuple[tuple[str, str], ...]):
     )
     root_stat = root.stat()
     receipt_stat = (root / receipt_relative).stat()
+    claim_parent_stat = (root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE).stat()
     return {
         "protocol_id": _FAKE_PROTOCOL,
         "run_id": _FAKE_RUN,
@@ -86,6 +135,8 @@ def _grant_run_identity(root: Path, sources: tuple[tuple[str, str], ...]):
         "repository_root_inode": root_stat.st_ino,
         "receipt_root_device": receipt_stat.st_dev,
         "receipt_root_inode": receipt_stat.st_ino,
+        "watchdog_claim_parent_device": claim_parent_stat.st_dev,
+        "watchdog_claim_parent_inode": claim_parent_stat.st_ino,
         "source_hashes": dict(sources),
         "watchdog_attestation": {"private_fixture": True},
         "watchdog_image_path": str(Path(sys.executable).resolve()),
@@ -141,10 +192,24 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
     release_marker = root / "private-child-release.txt"
     post_gate_samples = 0
     child_processes: list[object] = []
+    attestation_order: list[str] = []
     real_popen = watchdog.subprocess.Popen
     real_snapshot = watchdog._snapshot_process_group
     publication_snapshots = []
     real_publish = authority._PendingGrant.publish
+    real_attestation_publish = watchdog._publish_launch_attestation_at
+
+    attestation_path = (
+        root
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{_FAKE_RUN}{watchdog._LAUNCH_ATTESTATION_SUFFIX}"
+    )
+
+    def record_attestation_publication(directory_fd, leaf_name, value):
+        assert child_processes and child_processes[0].poll() is None
+        snapshot = real_attestation_publish(directory_fd, leaf_name, value)
+        attestation_order.append("attestation")
+        return snapshot
 
     def capture_with_fake_launcher_phase(pid: int):
         identity = original_capture(pid)
@@ -191,6 +256,9 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
         return snapshot
 
     def publish_then_optional_swap(channel, bindings):
+        assert attestation_path.is_file()
+        assert attestation_order == ["attestation"]
+        attestation_order.append("grant")
         snapshot = real_publish(channel, bindings)
         publication_snapshots.append(snapshot)
         if post_send_swap:
@@ -212,6 +280,9 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
         return snapshot
 
     monkeypatch.setattr(authority, "_capture", capture_with_fake_launcher_phase)
+    monkeypatch.setattr(
+        watchdog, "_publish_launch_attestation_at", record_attestation_publication
+    )
     # The wrapper below adds a fake post-send race and therefore sits between
     # publish() and its watchdog caller; bypass only the local callsite guard.
     monkeypatch.setattr(authority, "_watchdog_callsite", lambda: None)
@@ -312,7 +383,26 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
         )
     else:
         assert result["receipt"]["bootstrap_grant"]["descriptor_fd"] == grant_body["grant_fd"]
-    assert result["receipt"]["schema_version"] == 3
+    assert result["receipt"]["schema_version"] == 4
+    assert attestation_order == ["attestation", "grant"]
+    sidecar_raw = attestation_path.read_bytes()
+    sidecar = json.loads(sidecar_raw.decode("ascii"))
+    assert sidecar_raw == watchdog._canonical_json(sidecar)
+    assert set(sidecar) == watchdog._LAUNCH_ATTESTATION_KEYS
+    assert sidecar["schema_version"] == 1
+    assert set(sidecar["watchdog_process"]) == watchdog._LAUNCH_ATTESTATION_PROCESS_KEYS
+    assert set(sidecar["child_process"]) == watchdog._LAUNCH_ATTESTATION_CHILD_KEYS
+    assert type(sidecar["watchdog_process"]["start_identity"]) is str
+    assert type(sidecar["child_process"]["start_identity"]) is str
+    sidecar_info = attestation_path.stat()
+    assert result["receipt"]["launch_attestation"] == {
+        "leaf": attestation_path.name,
+        "sha256": hashlib.sha256(sidecar_raw).hexdigest(),
+        "device": sidecar_info.st_dev,
+        "inode": sidecar_info.st_ino,
+        "mode": sidecar_info.st_mode,
+        "size_bytes": sidecar_info.st_size,
+    }
     assert result["receipt"]["bootstrap_grant"]["delivery_status"] == "delivered"
     grant_child_pid = grant_body["bindings"]["child_pid"]
     assert result["receipt"]["child_launch"]["observed_process"]["pid"] == grant_child_pid
@@ -379,6 +469,10 @@ def test_watchdog_times_out_in_launcher_phase_after_consuming_claim_without_gran
     assert not (receipt_path / "watchdog-child-grant.json").exists()
     campaign_claims = root / "artifacts/evaluations/cascaded_tanks_abc6_campaign_fit/claims"
     assert not list(campaign_claims.glob("*.claim"))
+    assert result["receipt"]["launch_attestation"] is None
+    assert not (
+        campaign_claims / f"{_FAKE_RUN}{watchdog._LAUNCH_ATTESTATION_SUFFIX}"
+    ).exists()
 
 
 def test_grant_channel_setup_failure_happens_before_claim_or_child(
@@ -561,6 +655,10 @@ def test_postclaim_timer_clock_failure_publishes_failed_terminal_without_child(
     assert not (receipt_path / "watchdog-child-grant.json").exists()
     assert result["receipt"]["bootstrap_grant"]["grant_sha256"] is None
     assert not list(campaign_claims.glob("*.claim"))
+    assert result["receipt"]["launch_attestation"] is None
+    assert not (
+        campaign_claims / f"{_FAKE_RUN}{watchdog._LAUNCH_ATTESTATION_SUFFIX}"
+    ).exists()
     assert launches == []
 
 
@@ -937,6 +1035,208 @@ def test_incomplete_grant_sources_fail_before_watchdog_claim_or_child(
                 "receipt_root_relative": "receipts",
                 "source_hashes": {},
             },
+            require_launch_grant=True,
+        )
+    assert not claim_path.exists()
+    assert launches == []
+
+
+def test_child_exit_before_observation_has_no_launch_attestation_or_grant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, source_hashes = _private_overlay(tmp_path)
+    monkeypatch.setattr(watchdog, "_REPO_ROOT", root)
+    receipt_relative = (
+        "artifacts/cascaded_tanks_abc6_synthetic/" + _FAKE_RUN + "/receipts"
+    )
+    receipt_path = root / receipt_relative
+    claim_path = root / "private-watchdog-claims" / f"{_FAKE_RUN}.claim"
+    real_popen = watchdog.subprocess.Popen
+    launched: list[object] = []
+
+    def exit_before_return(*args: object, **kwargs: object):
+        child = real_popen(*args, **kwargs)
+        child.wait(timeout=3.0)
+        launched.append(child)
+        return child
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", exit_before_return)
+    monkeypatch.setattr(authority, "_watchdog_callsite", lambda: None)
+    result = watchdog._supervise_command(
+        launch_vector=[watchdog.PINNED_PYTHON_BIN, "-c", "pass"],
+        observed_executable_path=Path(watchdog.PINNED_PYTHON_APP),
+        observed_executable_sha256=watchdog.PINNED_PYTHON_APP_SHA256,
+        claim_path=claim_path,
+        receipt_path=receipt_path / "watchdog-terminal-receipt.json",
+        run_identity=_grant_run_identity(root, source_hashes),
+        wall_limit_seconds=1.0,
+        sample_interval_seconds=0.01,
+        terminate_grace_seconds=0.1,
+        kill_reap_grace_seconds=0.1,
+        require_launch_grant=True,
+    )
+
+    parent = root / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+    assert launched and launched[0].returncode == 0
+    assert claim_path.is_file()
+    assert result["receipt"]["schema_version"] == 4
+    assert result["receipt"]["launch_attestation"] is None
+    assert result["receipt"]["bootstrap_grant"]["delivery_status"] == "not_attempted"
+    assert result["receipt"]["child_launch"]["observed_process"] is None
+    assert not (parent / f"{_FAKE_RUN}{watchdog._LAUNCH_ATTESTATION_SUFFIX}").exists()
+    assert not (receipt_path / authority.GRANT_RECORD).exists()
+
+
+@pytest.mark.parametrize("fault", ["swap", "symlink", "write_readback", "identity_mismatch"])
+def test_launch_attestation_failures_consume_claim_and_withhold_grant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    root, source_hashes = _private_overlay(tmp_path)
+    monkeypatch.setattr(watchdog, "_REPO_ROOT", root)
+    receipt_relative = (
+        "artifacts/cascaded_tanks_abc6_synthetic/" + _FAKE_RUN + "/receipts"
+    )
+    receipt_path = root / receipt_relative
+    claim_path = root / "private-watchdog-claims" / f"{_FAKE_RUN}.claim"
+    attestation_path = (
+        root
+        / watchdog._CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{_FAKE_RUN}{watchdog._LAUNCH_ATTESTATION_SUFFIX}"
+    )
+    real_attestation_publish = watchdog._publish_launch_attestation_at
+    real_read_canonical = watchdog._read_canonical_object_at
+    real_capture = authority._capture
+    real_grant_publish = authority._PendingGrant.publish
+    attestation_published = False
+    grant_publish_calls: list[object] = []
+
+    def publish_with_fault(directory_fd, leaf_name, value):
+        nonlocal attestation_published
+        snapshot = real_attestation_publish(directory_fd, leaf_name, value)
+        attestation_published = True
+        if fault == "swap":
+            attestation_path.write_bytes(b"replacement sidecar")
+        elif fault == "symlink":
+            replacement = root / "replacement-sidecar.json"
+            replacement.write_bytes(b"replacement sidecar")
+            attestation_path.unlink()
+            attestation_path.symlink_to(replacement)
+        return snapshot
+
+    def fail_sidecar_readback(directory_fd, leaf_name, *, maximum_bytes, label, snapshot=None):
+        if fault == "write_readback" and label == "launch attestation publication readback":
+            raise watchdog.WatchdogError("private injected launch-attestation readback failure")
+        return real_read_canonical(
+            directory_fd,
+            leaf_name,
+            maximum_bytes=maximum_bytes,
+            label=label,
+            snapshot=snapshot,
+        )
+
+    def capture_with_identity_change(pid: int):
+        identity = real_capture(pid)
+        if fault == "identity_mismatch" and attestation_published and pid != os.getpid():
+            return replace(identity, start=identity.start + ":changed")
+        return identity
+
+    def count_grant_publications(channel, bindings):
+        grant_publish_calls.append(bindings)
+        return real_grant_publish(channel, bindings)
+
+    monkeypatch.setattr(watchdog, "_publish_launch_attestation_at", publish_with_fault)
+    monkeypatch.setattr(watchdog, "_read_canonical_object_at", fail_sidecar_readback)
+    monkeypatch.setattr(authority, "_capture", capture_with_identity_change)
+    monkeypatch.setattr(authority, "_watchdog_callsite", lambda: None)
+    monkeypatch.setattr(authority._PendingGrant, "publish", count_grant_publications)
+
+    supervise_args = {
+        "launch_vector": [
+            watchdog.PINNED_PYTHON_BIN,
+            "-c",
+            "import time; time.sleep(0.4)",
+        ],
+        "observed_executable_path": Path(watchdog.PINNED_PYTHON_APP),
+        "observed_executable_sha256": watchdog.PINNED_PYTHON_APP_SHA256,
+        "claim_path": claim_path,
+        "receipt_path": receipt_path / "watchdog-terminal-receipt.json",
+        "run_identity": _grant_run_identity(root, source_hashes),
+        "wall_limit_seconds": 1.0,
+        "sample_interval_seconds": 0.01,
+        "terminate_grace_seconds": 0.1,
+        "kill_reap_grace_seconds": 0.1,
+        "require_launch_grant": True,
+    }
+
+    if fault in {"swap", "symlink", "write_readback"}:
+        with pytest.raises(watchdog.WatchdogError, match="launch attestation"):
+            watchdog._supervise_command(**supervise_args)
+    else:
+        result = watchdog._supervise_command(**supervise_args)
+        assert result["receipt"]["status"] == "failed"
+        assert result["receipt"]["schema_version"] == 4
+        assert result["receipt"]["launch_attestation"] is not None
+        assert result["terminal_readback_ack_published"] is True
+
+    assert claim_path.is_file()
+    assert not (receipt_path / authority.GRANT_RECORD).exists()
+    assert grant_publish_calls == []
+    if fault in {"swap", "symlink"}:
+        terminal_path = receipt_path / "watchdog-terminal-receipt.json"
+        assert terminal_path.is_file()
+        terminal = json.loads(terminal_path.read_text("ascii"))
+        assert terminal["schema_version"] == 4
+        if not attestation_path.is_symlink():
+            assert terminal["launch_attestation"]["sha256"] != hashlib.sha256(
+                attestation_path.read_bytes()
+            ).hexdigest()
+        assert not (receipt_path / watchdog._TERMINAL_READBACK_ACK_FILENAME).exists()
+    elif fault == "write_readback":
+        assert attestation_path.exists()
+        terminal_path = receipt_path / "watchdog-terminal-receipt.json"
+        assert terminal_path.is_file()
+        terminal = json.loads(terminal_path.read_text("ascii"))
+        assert terminal["launch_attestation"] is None
+        assert not (receipt_path / watchdog._TERMINAL_READBACK_ACK_FILENAME).exists()
+    else:
+        sidecar = json.loads(attestation_path.read_text("ascii"))
+        assert result["receipt"]["launch_attestation"]["sha256"] == hashlib.sha256(
+            attestation_path.read_bytes()
+        ).hexdigest()
+        assert "identity changed after launch attestation" in str(
+            result["receipt"]["monitor_error"]
+        )
+        assert sidecar["child_process"]["start_identity"].endswith(":changed") is False
+
+
+def test_supervisor_grant_without_preflight_or_private_fd_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, source_hashes = _private_overlay(tmp_path)
+    monkeypatch.setattr(watchdog, "_REPO_ROOT", root)
+    receipt_path = root / (
+        "artifacts/cascaded_tanks_abc6_synthetic/" + _FAKE_RUN + "/receipts"
+    )
+    claim_path = root / "private-watchdog-claims" / f"{_FAKE_RUN}.claim"
+    launches: list[object] = []
+    monkeypatch.setattr(
+        watchdog.subprocess,
+        "Popen",
+        lambda *args, **kwargs: launches.append((args, kwargs)),
+    )
+    with pytest.raises(
+        watchdog.WatchdogError,
+        match="launch grant requires the pinned campaign-fit claims parent",
+    ):
+        _ORIGINAL_SUPERVISE_COMMAND(
+            launch_vector=[watchdog.PINNED_PYTHON_BIN, "-c", "pass"],
+            observed_executable_path=Path(watchdog.PINNED_PYTHON_APP),
+            observed_executable_sha256=watchdog.PINNED_PYTHON_APP_SHA256,
+            claim_path=claim_path,
+            receipt_path=receipt_path / "watchdog-terminal-receipt.json",
+            run_identity=_grant_run_identity(root, source_hashes),
             require_launch_grant=True,
         )
     assert not claim_path.exists()
