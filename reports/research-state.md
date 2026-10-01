@@ -1,6 +1,44 @@
 # Automated science: current research state
 
-Updated: 2026-09-30T23:31Z. This file records observed state, not inferred execution.
+Updated: 2026-10-01T00:29Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: bounded grant correction synced; production remains HOLD
+
+The independently reviewed six-file terminal-v3 grant-record correction was
+pushed non-force to `main` as `4156b499f3360ba7c9034a1b61da6deba23b7c27`.
+The sole Luna Git owner matched exact hashes, fetched and confirmed
+`HEAD == origin/main == FETCH_HEAD`. This closes the scoped component Git
+handoff. Production replay still lacks an audited caller with complete frozen
+source/runtime/role provenance and independently captured process-start IDs.
+The reserved ABC6 synthetic run remains UNUSED/HOLD. See
+`reports/research-ledger/2026-10-01T0029Z.md`.
+
+## Latest checkpoint: independent component GO, production provenance still HOLD
+
+Independent Luna max matched all six final grant-record correction hashes and
+reproduced **130/130** pinned Python 3.14 fake-only focused tests in both the
+working tree and a clean `origin/main` overlay. It cleared only the bounded
+terminal-v3 record-binding component for Git sync. A sole Luna Git owner is
+now checking/pushing those six files; the result is pending. The reviewer
+kept production replay HOLD because nested claim fields, full source/runtime
+and role provenance, and independent process-start attestations are still
+unresolved. Reserved synthetic `ct-abc6-20260928-v1` remains UNUSED/HOLD;
+no prospective/real held-out targets or new ABC/Qwen run were accessed. See
+`reports/research-ledger/2026-10-01T0028Z.md`.
+
+## Latest checkpoint: ABC6 grant correction authored; independent code review pending
+
+The reviewed HOLD/design documents and historical author ledger are synced
+non-force at `6bc818e2bca3a3a970b9c26a58694c0b422b219b` and
+`69f6e1fa4eb011dc8a1aebfc83c90bb582e44cb9`, each with fresh
+`HEAD == origin/main` verification. A Luna max author implemented the bounded
+terminal-v3 grant-record correction in six unstaged source/test files and
+reported **124/124** fake-only focused tests passing in the current checkout
+and a clean overlay. This is author evidence only; an independent Luna max
+review of exact bytes and adversarial probes is underway. The already-pushed
+preclaim component stays HOLD, production source pins stay closed, and the
+reserved synthetic campaign is UNUSED/HOLD. See
+`reports/research-ledger/2026-10-01T0000Z.md`.
 
 ## Latest checkpoint: ABC6 grant-record correction in bounded fake-only implementation
 
