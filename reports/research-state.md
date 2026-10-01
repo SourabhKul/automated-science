@@ -1,6 +1,25 @@
 # Automated science: current research state
 
-Updated: 2026-10-01T04:55Z. This file records observed state, not inferred execution.
+Updated: 2026-10-01T05:34Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: launch-attestation Stage A reviewed and synced; campaign HOLD
+
+Independent Luna max cleared only the fake-only watchdog Stage A launch-attestation
+publication/terminal-v4 component. It reproduced 80 focused tests in the
+working tree and 80 in a clean HEAD overlay under Python 3.14.3, with bounded
+schema/no-overwrite probes. The sole Luna Git owner pushed the exact three
+reviewed source/test paths non-force as `985ab257851a431e319ed9b270c8a0fd7304903c`;
+a fresh fetch verified clean `main == origin/main`. The four independently
+reviewed planning/state/ledger docs had already synced as
+`2d56a13f4b442994298db9c6ec68fba36a163a1a`.
+
+Production replay and launch remain HOLD: strict nested-claim/v4 replay,
+campaign-fit's capability-bound sole-grant-leaf exception, complete
+source/runtime/role closure, an expected-binding caller, immutable manifest,
+approval, and separate launch GO are absent. Source pins remain closed. The
+reserved `ct-abc6-20260928-v1` is UNUSED/HOLD; no prospective targets,
+real tank Qwen/ABC, or official test were accessed. See
+`reports/research-ledger/2026-10-01T0534Z.md`.
 
 ## Latest checkpoint: launch-attestation design GO; fake-only Stage A assigned
 
