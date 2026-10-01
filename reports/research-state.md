@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-10-01T09:35Z. This file records observed state, not inferred execution.
+Updated: 2026-10-01T14:38Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: grant-leaf conflict specified; fake-only repair assigned
+
+Read-only Luna monitoring at `14:26:54Z` found no ABC6 watchdog/runner or
+reserved-run process or artifact. The exact fixed Qwen model was listed by
+oMLX HTTP 200; data occupied 6.2 MB, artifacts 61 MB, and 414 GiB was free.
+Fresh fetch verified clean `main == origin/main == FETCH_HEAD ==
+374047457660c8aff297c3e02aad1ba9f751a9e4`.
+
+A separate Luna audit found four campaign-fit empty-root scans after the
+watchdog grant record, not three. It identified a starting sixteen-path
+execution/replay source inventory (the earlier fifteen plus executed
+`core/real_data/__init__.py`), incomplete runtime/role binding, and no
+production expected-binding caller. Primary wrote
+`reports/cascaded-tanks-abc6-preclaim-grant-leaf-protocol-2026-10-01.md`.
+An independent Luna reviewer initially held the draft for the scan count,
+grant file identity, entrypoint capability order and race/liveness wording;
+after correction it gave design GO for **fake-only** implementation. A Luna
+max author is implementing this bounded exception; no code result/review/Git
+sync exists yet. Source pins, public v4 classification, immutable manifest,
+approval and launch stay HOLD. Reserved `ct-abc6-20260928-v1` UNUSED/HOLD.
+See `reports/research-ledger/2026-10-01T1438Z.md`.
 
 ## Latest checkpoint: bounded fake-only replay Stage B1 reviewed and synced
 
