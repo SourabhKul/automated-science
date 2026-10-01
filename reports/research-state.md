@@ -1,6 +1,24 @@
 # Automated science: current research state
 
-Updated: 2026-10-01T06:16Z. This file records observed state, not inferred execution.
+Updated: 2026-10-01T09:35Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: bounded fake-only replay Stage B1 reviewed and synced
+
+Independent Luna max reviewed the exact two-file B1 claim/sidecar evidence-link
+helper, reproduced 99 focused tests in both current and clean-HEAD-overlay
+Python 3.14.3 environments, and confirmed public replay still rejects terminal
+v4. Additional fake probes rejected a mismatched regular-file mode and a
+symlinked claims-parent ancestor. A sole Luna Git owner pushed only the two
+reviewed source/test files non-force as
+`e9793031d3915e359147b772670cd4dabc7e0a80`; post-push fresh fetch
+verified clean `main == origin/main == FETCH_HEAD`. The `09:24Z` read-only
+snapshot found no matching ABC6 watchdog, runner or reserved-run process, or reserved claim, marker, sidecar, receipt,
+checkpoint or log; exact Qwen was listed by oMLX. This is component evidence
+only. Production expected-binding construction, four-state terminal-v4
+classification, source/runtime/role closure, the campaign-fit grant-leaf
+exception, manifest/approval and separate launch GO remain HOLD. The reserved
+synthetic run is UNUSED/HOLD. See
+`reports/research-ledger/2026-10-01T0935Z.md`.
 
 ## Latest checkpoint: bounded replay Stage B1 authored; independent code review pending
 
