@@ -1,6 +1,27 @@
 # Automated science: current research state
 
-Updated: 2026-10-01T14:38Z. This file records observed state, not inferred execution.
+Updated: 2026-10-01T19:39Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: capability-bound grant leaf independently reviewed and synced
+
+Independent Luna max reviewed the exact six-file fake-only repair that passes
+the received live training authority into campaign-fit, calls `begin_training()`
+at the public entrypoint before any root scan, and checks the sole pinned grant
+leaf at all four preclaim scans. Direct callers still require an empty root.
+The reviewer reproduced **122/122** focused tests under Python 3.14.3 in both
+the working tree and clean-HEAD overlay, and additional fake mutations before
+each scan failed before claim. The sole Luna Git owner pushed only the six
+reviewed paths non-force as `5db04706f5bab0b641636518e2b647ffec371aca`;
+fresh fetch verified clean `main == origin/main`. The non-atomic directory
+listing/claim boundary retains a trusted local-owner assumption.
+
+The reviewer's read-only `19:27–19:37Z` checks found no ABC6/campaign Python process or
+reserved-run file; exact Qwen was listed by oMLX HTTP 200, data was 6.2 MB,
+artifacts 61 MB and free space 414 GiB. Runner/forecast/scorer source pins,
+full source/runtime/role closure, production expected bindings, four-state
+terminal-v4 replay, immutable manifest/review/approval, and distinct launch
+GO remain HOLD. The reserved synthetic run remains UNUSED/HOLD. See
+`reports/research-ledger/2026-10-01T1939Z.md`.
 
 ## Latest checkpoint: grant-leaf conflict specified; fake-only repair assigned
 
