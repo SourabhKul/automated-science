@@ -1,6 +1,46 @@
 # Automated science: current research state
 
-Updated: 2026-10-01T05:34Z. This file records observed state, not inferred execution.
+Updated: 2026-10-01T06:16Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: bounded replay Stage B1 authored; independent code review pending
+
+The fake-only Stage B1 helper and adversarial tests are implemented locally.
+The helper accepts a separate typed fixture expectation, validates the exact
+watchdog claim and nested runtime attestation, and binds the fixed sidecar to
+the terminal-v4 reference using anchored no-follow reads and exact file
+identity. It is not called by public replay; terminal-v4 classification and
+the production expected-binding builder remain closed. The source and test
+remain unstaged for independent code review:
+
+- `core/real_data/cascaded_tanks_abc6_replay.py` SHA-256
+  `1fcd78114e089cd6423e567a45bc3b6fa45ad5503b3d1753d0d9f5ad481f4102`
+- `tests/test_cascaded_tanks_abc6_replay_stage_b1.py` SHA-256
+  `2a92433633a79b9f2dd90b350e0471ebda4fc8e26011a17929b3bda0cd8f4772`
+
+Under the pinned Python 3.14.3 runtime, the B1, historical replay, and Stage A
+grant-handoff suites passed **99/99** in the current checkout and **99/99** in
+a clean `git archive HEAD` overlay at `f44c6a2c31212f8b7d001ea5926c1093faeacf36`.
+These are author verification results only; exact-byte independent code review
+is pending. No ABC/Qwen run, prospective-target or real-target access
+occurred. Fixture claims existed only inside temporary test roots; no reserved
+or real-run claim or grant was created. The reserved synthetic run remains
+UNUSED/HOLD.
+
+## Previous checkpoint: bounded replay Stage B1 designed; implementation assigned
+
+An independent Luna max audit confirmed that the Stage A watchdog writes
+terminal v4 but public replay still accepts only v3, checks only part of the
+watchdog claim, and does not verify the new sidecar. Primary froze a separate
+fake-only B1 component in
+`reports/cascaded-tanks-abc6-replay-stage-b1-protocol-2026-10-01.md`.
+The independent design reviewer initially held the draft because current
+frozen replay identity lacks decoded manifest/approval/role inputs and the
+claim lacks process-start IDs. After correction to use independently built
+typed fake expectations and leave production identity construction closed,
+the reviewer gave bounded design GO. A Luna max author is implementing B1;
+exact-byte code review and Git sync are pending. Public v4 classification,
+the reserved campaign and all real/held-out targets remain HOLD. See
+`reports/research-ledger/2026-10-01T0550Z.md`.
 
 ## Latest checkpoint: launch-attestation Stage A reviewed and synced; campaign HOLD
 
