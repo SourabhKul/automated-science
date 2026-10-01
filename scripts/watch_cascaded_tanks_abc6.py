@@ -2318,6 +2318,7 @@ def _supervise_command(
             grant_channel.close()
         raise
     grant_sha256: str | None = None
+    grant_delivery_status = "not_attempted"
 
     # The claim timestamp is a truthful fallback when child-timer setup fails
     # immediately after the claim. The monotonic timer remains unset until the
@@ -2439,6 +2440,7 @@ def _supervise_command(
                 )
                 if observed_child_attestation is None:
                     observed_child_attestation = {
+                        "pid": child.pid,
                         "observed_live_argv": live_argv,
                         "observed_executable_path": str(live_exe),
                         "observed_executable_sha256": live_exe_sha256,
@@ -2545,7 +2547,16 @@ def _supervise_command(
                                 scorer_source_path="core/real_data/cascaded_tanks_abc6_scoring.py",
                                 scorer_function="score_deferred_abc6_synthetic",
                             )
-                            grant_sha256 = grant_channel.publish(bindings)
+                            try:
+                                publication_snapshot = grant_channel.publish(bindings)
+                            except BaseException:
+                                grant_delivery_status = "failed"
+                                retained_snapshot = grant_channel.publication_snapshot
+                                if retained_snapshot is not None:
+                                    grant_sha256 = retained_snapshot.grant_sha256
+                                raise
+                            grant_sha256 = publication_snapshot.grant_sha256
+                            grant_delivery_status = "delivered"
                         elif time.monotonic() >= grant_attestation_deadline:
                             grant_attestation_timeout = True
                             raise WatchdogError(
@@ -2713,6 +2724,32 @@ def _supervise_command(
         if stop_reason == "child_exited_with_live_process_group_members":
             stop_reason = "child_exited_with_live_process_group_members"
 
+    grant_snapshot = (
+        None if grant_channel is None else grant_channel.publication_snapshot
+    )
+    if grant_snapshot is not None:
+        # Compare the terminal-time anchored readback with the immutable
+        # publication-time value. Never learn the expected digest here.
+        grant_sha256 = grant_snapshot.grant_sha256
+        try:
+            launch_authority.verify_grant_record_snapshot(grant_snapshot)
+        except Exception as error:
+            stop_reason = "watchdog_monitoring_error"
+            prior_error = "" if monitor_error is None else monitor_error + "; "
+            monitor_error = (
+                prior_error
+                + "published grant receipt failed terminal readback: "
+                + f"{type(error).__name__}: {str(error)[:512]}"
+            )
+            if watchdog_intervention is None:
+                try:
+                    record_watchdog_intervention("watchdog_stop", stop_reason)
+                except Exception as intervention_error:
+                    monitor_error += (
+                        "; intervention snapshot failed: "
+                        + f"{type(intervention_error).__name__}: {str(intervention_error)[:512]}"
+                    )
+
     if timer_started is None:
         elapsed_total: float | None = 0.0
     else:
@@ -2811,7 +2848,7 @@ def _supervise_command(
         ended_at_utc = timer_started_utc
     samples_bytes = _canonical_json(samples)
     body: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "protocol_id": run_identity.get("protocol_id"),
         "run_id": run_identity.get("run_id"),
         "manifest_sha256": run_identity.get("manifest_sha256"),
@@ -2841,6 +2878,10 @@ def _supervise_command(
                 "environment_locator": _GRANT_FD_ENV,
                 "descriptor_fd": grant_fd,
                 "grant_sha256": grant_sha256,
+                "grant_record_sha256": (
+                    None if grant_snapshot is None else grant_snapshot.record_sha256
+                ),
+                "delivery_status": grant_delivery_status,
                 "digest_receipt_leaf": launch_authority.GRANT_RECORD,
             }
         ),

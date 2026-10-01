@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import stat
+import sys
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ import pytest
 import numpy as np
 
 from core.real_data import (
+    cascaded_tanks_abc6_authority as authority,
     cascaded_tanks_abc6_campaign_fit as campaign_fit,
     cascaded_tanks_abc6_cases as cases,
     cascaded_tanks_abc6_receipt_io as receipt_io,
@@ -55,6 +57,16 @@ def _private_ids(monkeypatch) -> None:
     for module in (campaign_fit, cases, scoring):
         monkeypatch.setattr(module, "PROTOCOL_ID", _FAKE_PROTOCOL)
         monkeypatch.setattr(module, "RUN_ID", _FAKE_RUN)
+    monkeypatch.setattr(
+        campaign_fit,
+        "RECEIPT_ROOT_RELATIVE",
+        f"artifacts/cascaded_tanks_abc6_synthetic/{_FAKE_RUN}/receipts",
+    )
+    monkeypatch.setattr(
+        cases,
+        "RECEIPT_ROOT_RELATIVE",
+        f"artifacts/cascaded_tanks_abc6_synthetic/{_FAKE_RUN}/receipts",
+    )
 
 
 def _private_root_fixture(tmp_path: Path, monkeypatch):
@@ -382,7 +394,7 @@ def _publish_fake_watchdog_terminal(
         observed_sha = "e" * 64
         observed_utc = "2026-09-30T00:00:00.000000Z"
         terminal = {
-            "schema_version": 2,
+            "schema_version": 3,
             "protocol_id": _FAKE_PROTOCOL,
             "run_id": _FAKE_RUN,
             "manifest_sha256": execution.campaign_result.manifest_sha256,
@@ -634,6 +646,7 @@ def _run_fake_pre_campaign_terminal(
             "declared_executable_sha256": "d" * 64,
             "observed_process": (
                 {
+                    "pid": 12345,
                     "observed_live_argv": declared_vector,
                     "observed_executable_path": observed_path,
                     "observed_executable_sha256": observed_sha,
@@ -704,7 +717,7 @@ def _run_fake_pre_campaign_terminal(
             stop_reason = "watchdog_monitoring_error"
             return_code = None
         terminal = {
-            "schema_version": 2,
+            "schema_version": 3,
             "protocol_id": _FAKE_PROTOCOL,
             "run_id": _FAKE_RUN,
             "manifest_sha256": manifest_sha256,
@@ -718,12 +731,20 @@ def _run_fake_pre_campaign_terminal(
                 / f"{_FAKE_RUN}.watchdog.claim"
             ),
             "watchdog_claim_sha256": claim_sha256,
+            "watchdog_process_excluded_from_runner_tree": {
+                "excluded": True,
+                "pid": 12344,
+                "observed_image_path": "/private/fake-watchdog-Python.app/Contents/MacOS/Python",
+                "observed_image_sha256": "c" * 64,
+            },
             "bootstrap_grant": (
                 {
                     "transport": "inherited-anonymous-unix-stream-socket",
                     "environment_locator": "ABC6_GRANT_FD",
                     "descriptor_fd": 10,
                     "grant_sha256": None,
+                    "grant_record_sha256": None,
+                    "delivery_status": "not_attempted",
                     "digest_receipt_leaf": replay.GRANT_RECORD_FILENAME,
                 }
                 if bootstrap_grant and not child
@@ -822,6 +843,133 @@ def _run_fake_pre_campaign_terminal(
     return root, receipts, marker, frozen
 
 
+def _install_fake_child_grant(
+    root: Path,
+    receipts: Path,
+    frozen: replay.ABC6FrozenReplayIdentity,
+    *,
+    record_fd: int = 10,
+    descriptor_fd: int = 10,
+    mutate_bindings=None,
+    mutate_expected_bindings=None,
+    terminal_record_digest: bool = True,
+):
+    """Install a typed fake grant and separately supplied frozen expectation."""
+
+    identity = frozen.receipt_root_identity
+    observed_vector = (
+        "/private/fake-python3.14", "-c", "private fake child"
+    )
+    launch_path = observed_vector[0]
+    child_path = "/private/fake-Python.app/Contents/MacOS/Python"
+    source_paths = tuple(
+        sorted(
+            set(replay._INTEGRATED_SOURCE_PATHS)
+            | {
+                "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
+                "core/real_data/cascaded_tanks_abc6_cases.py",
+            }
+        )
+    )
+    for index, path in enumerate(source_paths):
+        source_file = root / path
+        if not source_file.exists():
+            source_file.parent.mkdir(parents=True, exist_ok=True)
+            source_file.write_bytes(f"private fake binding source {index}\n".encode("ascii"))
+    source_hashes = tuple(
+        sorted(
+            (
+                path,
+                hashlib.sha256((root / path).read_bytes()).hexdigest(),
+            )
+            for path in source_paths
+        )
+    )
+    expected = authority.ABC6AuthorityBindings(
+        protocol_id=frozen.protocol_id,
+        run_id=frozen.run_id,
+        manifest_sha256=frozen.manifest_sha256,
+        approval_sha256=frozen.approval_record_sha256,
+        review_sha256="f" * 64,
+        physical_root=identity.repository_root_realpath,
+        receipt_root_relative=identity.receipt_root_relative,
+        root_device=identity.repository_root_device,
+        root_inode=identity.repository_root_inode,
+        receipt_device=identity.receipt_root_device,
+        receipt_inode=identity.receipt_root_inode,
+        reviewed_git_head=frozen.reviewed_git_head,
+        watchdog_claim_sha256=frozen.watchdog_claim_sha256,
+        watchdog_pid=12344,
+        watchdog_start="fake-watchdog-start",
+        child_pid=12345,
+        child_start="fake-child-start",
+        child_vector=observed_vector,
+        child_launch_image_path=launch_path,
+        child_launch_image_sha256="d" * 64,
+        child_image_path=child_path,
+        child_image_sha256="e" * 64,
+        source_hashes=source_hashes,
+        runtime_hashes=tuple(
+            sorted(
+                (
+                    ("child_image_sha256", "e" * 64),
+                    ("child_launch_image_sha256", "d" * 64),
+                    (
+                        "python_version_sha256",
+                        hashlib.sha256(sys.version.encode()).hexdigest(),
+                    ),
+                )
+            )
+        ),
+        campaign_claim_relative=(
+            f"{campaign_fit.CAMPAIGN_CLAIM_PARENT_RELATIVE}/{frozen.run_id}.claim"
+        ),
+        runner_source_path="scripts/run_cascaded_tanks_abc6_synthetic.py",
+        runner_function="run_cascaded_tanks_abc6_synthetic",
+        campaign_source_path="core/real_data/cascaded_tanks_abc6_campaign_fit.py",
+        campaign_function="run_abc6_training_campaign_with_evidence",
+        case_source_path="core/real_data/cascaded_tanks_abc6_cases.py",
+        case_function="get_training_case_data",
+        scorer_source_path="core/real_data/cascaded_tanks_abc6_scoring.py",
+        scorer_function="score_deferred_abc6_synthetic",
+    )
+    expected_payload = expected.payload()
+    if mutate_expected_bindings is not None:
+        mutate_expected_bindings(expected_payload)
+        expected = authority.ABC6AuthorityBindings.from_payload(expected_payload)
+        expected_payload = expected.payload()
+    record_bindings = dict(expected_payload)
+    if mutate_bindings is not None:
+        mutate_bindings(record_bindings)
+    record = {
+        "schema_version": 1,
+        "grant_sha256": "5" * 64,
+        "grant_fd": record_fd,
+        "bindings_sha256": hashlib.sha256(
+            replay._canonical_json(record_bindings)
+        ).hexdigest(),
+        "bindings": record_bindings,
+    }
+    raw = replay._canonical_json(record)
+    (receipts / replay.GRANT_RECORD_FILENAME).write_bytes(raw)
+    bootstrap = {
+        "transport": "inherited-anonymous-unix-stream-socket",
+        "environment_locator": "ABC6_GRANT_FD",
+        "descriptor_fd": descriptor_fd,
+        "grant_sha256": "5" * 64,
+        "grant_record_sha256": (
+            hashlib.sha256(raw).hexdigest() if terminal_record_digest else None
+        ),
+        "delivery_status": "delivered",
+        "digest_receipt_leaf": replay.GRANT_RECORD_FILENAME,
+    }
+    _rewrite_fake_terminal(
+        receipts,
+        lambda terminal: terminal.update(bootstrap_grant=bootstrap),
+    )
+    return replace(frozen, expected_child_grant_bindings=expected), expected, raw
+
+
 def test_full_fake_score_chain_replays_complete_but_not_scientifically_ready(
     tmp_path, monkeypatch
 ):
@@ -898,6 +1046,251 @@ def test_attested_nonzero_child_without_campaign_claim_is_failed(tmp_path, monke
     assert gate.failure_stage == "runner_failed_before_campaign_claim"
     assert gate.marker_present is False
     assert gate.terminal_status == "failed"
+
+
+def test_typed_child_grant_publication_digest_control_replays_failed(tmp_path, monkeypatch):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, expected, raw = _install_fake_child_grant(root, receipts, frozen)
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert hashlib.sha256(raw).hexdigest() == json.loads(
+        (receipts / replay.TERMINAL_FILENAME).read_text("ascii")
+    )["bootstrap_grant"]["grant_record_sha256"]
+    assert expected == frozen.expected_child_grant_bindings
+    assert gate.classification == "failed", gate
+
+
+@pytest.mark.parametrize(
+    "mutated_pids",
+    [
+        {"watchdog_pid": 54321},
+        {"child_pid": 54322},
+        {"watchdog_pid": 54321, "child_pid": 54322},
+    ],
+)
+def test_self_consistent_grant_pids_must_match_terminal_process_ids(
+    tmp_path, monkeypatch, mutated_pids
+):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+
+    frozen, expected, raw = _install_fake_child_grant(
+        root,
+        receipts,
+        frozen,
+        mutate_expected_bindings=lambda payload: payload.update(mutated_pids),
+    )
+    terminal = json.loads((receipts / replay.TERMINAL_FILENAME).read_text("ascii"))
+    record = json.loads((receipts / replay.GRANT_RECORD_FILENAME).read_text("ascii"))
+    assert hashlib.sha256(raw).hexdigest() == terminal["bootstrap_grant"][
+        "grant_record_sha256"
+    ]
+    assert record["bindings"] == expected.payload()
+    assert terminal["watchdog_process_excluded_from_runner_tree"]["pid"] == 12344
+    assert terminal["child_launch"]["observed_process"]["pid"] == 12345
+    assert terminal["kill_and_reap"]["process_group_id"] == 12345
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+@pytest.mark.parametrize("field", ["declared_executable_path", "declared_executable_sha256"])
+def test_grant_launcher_identity_must_match_terminal(
+    tmp_path, monkeypatch, field
+):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(root, receipts, frozen)
+    bad_value = (
+        "/private/fake-other-python3.14"
+        if field == "declared_executable_path"
+        else "9" * 64
+    )
+    _rewrite_fake_terminal(
+        receipts,
+        lambda terminal: terminal["child_launch"].update({field: bad_value}),
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+def test_durable_grant_with_failed_delivery_is_unreplayable(tmp_path, monkeypatch):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, expected, raw_grant = _install_fake_child_grant(root, receipts, frozen)
+    _rewrite_fake_terminal(
+        receipts,
+        lambda terminal: terminal["bootstrap_grant"].update(
+            delivery_status="failed"
+        ),
+    )
+
+    terminal_raw = (receipts / replay.TERMINAL_FILENAME).read_bytes()
+    terminal = json.loads(terminal_raw.decode("ascii"))
+    acknowledgement = json.loads(
+        (receipts / replay.TERMINAL_ACK_FILENAME).read_text("ascii")
+    )
+    assert expected == frozen.expected_child_grant_bindings
+    assert hashlib.sha256(raw_grant).hexdigest() == terminal["bootstrap_grant"][
+        "grant_record_sha256"
+    ]
+    assert acknowledgement["terminal_receipt"]["sha256"] == hashlib.sha256(
+        terminal_raw
+    ).hexdigest()
+    assert (receipts / replay.GRANT_RECORD_FILENAME).is_file()
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+def test_original_mismatched_fd_self_hashed_binding_probe_is_unreplayable(
+    tmp_path, monkeypatch
+):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(
+        root,
+        receipts,
+        frozen,
+        record_fd=11,
+        descriptor_fd=10,
+        mutate_bindings=lambda payload: payload.update(review_sha256="9" * 64),
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+def test_grant_record_fd_must_match_terminal_descriptor(tmp_path, monkeypatch):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(
+        root, receipts, frozen, record_fd=11, descriptor_fd=10
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+def test_self_hashed_arbitrary_grant_bindings_do_not_replace_expected_object(
+    tmp_path, monkeypatch
+):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(
+        root,
+        receipts,
+        frozen,
+        mutate_bindings=lambda payload: payload.update(review_sha256="9" * 64),
+    )
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+def test_grant_record_requires_separate_expected_bindings(tmp_path, monkeypatch):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(root, receipts, frozen)
+
+    gate = replay.verify_abc6_postscore_evidence(
+        replace(frozen, expected_child_grant_bindings=None)
+    )
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+@pytest.mark.parametrize("digest_state", ["missing_record", "null_terminal_digest"])
+def test_terminal_and_grant_record_digest_presence_must_match(
+    tmp_path, monkeypatch, digest_state
+):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(
+        root,
+        receipts,
+        frozen,
+        terminal_record_digest=digest_state != "null_terminal_digest",
+    )
+    if digest_state == "missing_record":
+        (receipts / replay.GRANT_RECORD_FILENAME).unlink()
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+def test_grant_record_changed_after_terminal_publication_is_unreplayable(
+    tmp_path, monkeypatch
+):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(root, receipts, frozen)
+    record_path = receipts / replay.GRANT_RECORD_FILENAME
+    changed = json.loads(record_path.read_text("ascii"))
+    changed["grant_sha256"] = "6" * 64
+    record_path.write_bytes(replay._canonical_json(changed))
+
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "child_grant"
+
+
+def test_grant_record_replacement_after_first_read_is_revalidated(
+    tmp_path, monkeypatch
+):
+    root, receipts, _marker, frozen = _run_fake_pre_campaign_terminal(
+        tmp_path, monkeypatch, child=True, outcome="child_failure"
+    )
+    frozen, _expected, _raw = _install_fake_child_grant(root, receipts, frozen)
+    original_read = replay._ReadSession.read
+    replaced = False
+
+    def read_then_replace(self, parent, filename, **kwargs):
+        nonlocal replaced
+        result = original_read(self, parent, filename, **kwargs)
+        if filename == replay.GRANT_RECORD_FILENAME and not replaced:
+            path = receipts / filename
+            replacement = receipts / "private-replacement.tmp"
+            replacement.write_bytes(result[0])
+            replacement.replace(path)
+            replaced = True
+        return result
+
+    monkeypatch.setattr(replay._ReadSession, "read", read_then_replace)
+    gate = replay.verify_abc6_postscore_evidence(frozen)
+
+    assert replaced is True
+    assert gate.classification == "unreplayable", gate
+    assert gate.failure_stage == "final_identity_revalidation"
 
 
 def test_attested_child_budget_stop_before_campaign_claim_is_incomplete(

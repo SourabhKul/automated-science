@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Final, Literal
 
 from core.real_data import (
+    cascaded_tanks_abc6_authority as grant_authority,
     cascaded_tanks_abc6_campaign_fit as campaign_fit,
     cascaded_tanks_abc6_cases as cases,
     cascaded_tanks_abc6_receipt_io as receipt_io,
@@ -47,6 +48,8 @@ _BOOTSTRAP_GRANT_FIELDS: Final = frozenset(
         "environment_locator",
         "descriptor_fd",
         "grant_sha256",
+        "grant_record_sha256",
+        "delivery_status",
         "digest_receipt_leaf",
     }
 )
@@ -93,7 +96,11 @@ class ABC6FrozenReplayIdentity:
     not from the score receipt being checked.  The current production campaign
     manifest does not yet contain this three-file allowlist, which keeps a
     production caller from constructing a valid identity until that separate
-    review and source-pin migration are complete.
+    review and source-pin migration are complete. When a child-grant record is
+    present, ``expected_child_grant_bindings`` must also be independently
+    constructed from the frozen manifest/review/approval, pinned root, verified
+    watchdog claim and separately captured child-process attestation. It is
+    never inferred from the terminal, grant record or score receipt.
     """
 
     receipt_root_identity: campaign_fit.ABC6ReceiptRootIdentity = field(
@@ -106,6 +113,7 @@ class ABC6FrozenReplayIdentity:
     reviewed_git_head: str
     watchdog_claim_sha256: str
     integrated_source_hashes: tuple[tuple[str, str], ...]
+    expected_child_grant_bindings: grant_authority.ABC6AuthorityBindings | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -141,6 +149,13 @@ class ABC6FrozenReplayIdentity:
         ):
             raise ValueError(
                 "integrated source hashes must cover the frozen runner/forecast/scorer order"
+            )
+        if self.expected_child_grant_bindings is not None and not isinstance(
+            self.expected_child_grant_bindings,
+            grant_authority.ABC6AuthorityBindings,
+        ):
+            raise TypeError(
+                "expected_child_grant_bindings must be a separately supplied typed authority binding"
             )
 
 
@@ -728,6 +743,10 @@ def _verify_pre_campaign_child_state(
         raise _Reject("terminal_child_attestation", "terminal child launch snapshot is malformed")
     observed = launch.get("observed_process")
     if observed is None:
+        if ctx.frozen.expected_child_grant_bindings is not None:
+            raise _Reject(
+                "child_grant", "prechild replay cannot carry expected child grant bindings"
+            )
         if (
             launch.get("image_observations") != []
             or terminal.get("process_return_code") is not None
@@ -747,6 +766,8 @@ def _verify_pre_campaign_child_state(
                 or type(bootstrap.get("descriptor_fd")) is not int
                 or bootstrap["descriptor_fd"] < 0
                 or bootstrap.get("grant_sha256") is not None
+                or bootstrap.get("grant_record_sha256") is not None
+                or bootstrap.get("delivery_status") != "not_attempted"
                 or bootstrap.get("digest_receipt_leaf") != GRANT_RECORD_FILENAME
             ):
                 raise _Reject(
@@ -773,7 +794,6 @@ def _verify_pre_campaign_child_state(
         raise _Reject(
             "terminal_child_reap", "observed child has no retained process return code"
         )
-    _verify_child_grant_record(ctx, terminal)
     ctx.require_directory_entries(
         ctx.receipt,
         allowed={TERMINAL_FILENAME, TERMINAL_ACK_FILENAME, GRANT_RECORD_FILENAME},
@@ -795,12 +815,24 @@ def _verify_child_grant_record(
     )
     bootstrap = terminal.get("bootstrap_grant")
     if not present:
-        if type(bootstrap) is dict and bootstrap.get("grant_sha256") is not None:
-            raise _Reject("child_grant", "terminal grant digest has no durable grant record")
-        if bootstrap is not None and type(bootstrap) is not dict:
-            raise _Reject("child_grant", "terminal bootstrap grant is malformed")
+        if ctx.frozen.expected_child_grant_bindings is not None:
+            raise _Reject(
+                "child_grant", "expected child bindings were supplied without a durable grant record"
+            )
+        if bootstrap is not None and (
+            type(bootstrap) is not dict
+            or set(bootstrap) != _BOOTSTRAP_GRANT_FIELDS
+            or bootstrap.get("transport") != "inherited-anonymous-unix-stream-socket"
+            or bootstrap.get("environment_locator") != "ABC6_GRANT_FD"
+            or type(bootstrap.get("descriptor_fd")) is not int
+            or bootstrap.get("grant_sha256") is not None
+            or bootstrap.get("grant_record_sha256") is not None
+            or bootstrap.get("delivery_status") != "not_attempted"
+            or bootstrap.get("digest_receipt_leaf") != GRANT_RECORD_FILENAME
+        ):
+            raise _Reject("child_grant", "terminal claims a grant without a durable grant record")
         return
-    _raw, grant, _identity = ctx.read(
+    raw, grant, _identity = ctx.read(
         ctx.receipt,
         GRANT_RECORD_FILENAME,
         maximum_bytes=MAX_CLAIM_BYTES,
@@ -808,9 +840,11 @@ def _verify_child_grant_record(
         stage="child_grant",
     )
     bindings = grant.get("bindings")
+    expected_bindings = ctx.frozen.expected_child_grant_bindings
     if (
         set(grant)
         != {"schema_version", "grant_sha256", "grant_fd", "bindings_sha256", "bindings"}
+        or type(grant.get("schema_version")) is not int
         or grant.get("schema_version") != 1
         or not _is_sha256(grant.get("grant_sha256"))
         or type(grant.get("grant_fd")) is not int
@@ -825,10 +859,90 @@ def _verify_child_grant_record(
         or bootstrap.get("environment_locator") != "ABC6_GRANT_FD"
         or type(bootstrap.get("descriptor_fd")) is not int
         or bootstrap["descriptor_fd"] < 0
+        or grant.get("grant_fd") != bootstrap.get("descriptor_fd")
         or bootstrap.get("grant_sha256") != grant.get("grant_sha256")
+        or not _is_sha256(bootstrap.get("grant_record_sha256"))
+        or hashlib.sha256(raw).hexdigest() != bootstrap.get("grant_record_sha256")
+        or bootstrap.get("delivery_status") != "delivered"
         or bootstrap.get("digest_receipt_leaf") != GRANT_RECORD_FILENAME
     ):
         raise _Reject("child_grant", "durable child grant record does not match its terminal link")
+    if expected_bindings is None:
+        raise _Reject(
+            "child_grant", "durable grant record has no separately frozen expected bindings"
+        )
+    try:
+        typed_bindings = grant_authority.ABC6AuthorityBindings.from_payload(bindings)
+    except Exception as error:
+        raise _Reject("child_grant", "grant bindings failed the authority schema") from error
+    if typed_bindings.payload() != expected_bindings.payload():
+        raise _Reject(
+            "child_grant", "durable child grant differs from separately frozen expected bindings"
+        )
+    watchdog_process = terminal.get("watchdog_process_excluded_from_runner_tree")
+    launch = terminal.get("child_launch")
+    observed = launch.get("observed_process") if type(launch) is dict else None
+    reap = terminal.get("kill_and_reap")
+    if (
+        type(expected_bindings.watchdog_pid) is not int
+        or type(expected_bindings.child_pid) is not int
+        or type(watchdog_process) is not dict
+        or watchdog_process.get("excluded") is not True
+        or type(watchdog_process.get("pid")) is not int
+        or watchdog_process["pid"] != expected_bindings.watchdog_pid
+        or type(launch) is not dict
+        or type(launch.get("declared_executable_path")) is not str
+        or launch["declared_executable_path"]
+        != expected_bindings.child_launch_image_path
+        or not _is_sha256(launch.get("declared_executable_sha256"))
+        or launch["declared_executable_sha256"]
+        != expected_bindings.child_launch_image_sha256
+        or type(observed) is not dict
+        or type(observed.get("pid")) is not int
+        or observed["pid"] != expected_bindings.child_pid
+        or type(reap) is not dict
+        or type(reap.get("process_group_id")) is not int
+        or reap["process_group_id"] != expected_bindings.child_pid
+    ):
+        raise _Reject(
+            "child_grant",
+            "terminal watchdog, child, process-group, or launcher identity differs from expected grant bindings",
+        )
+    root_identity = ctx.frozen.receipt_root_identity
+    expected_source_hashes = dict(expected_bindings.source_hashes)
+    if (
+        expected_bindings.protocol_id != ctx.frozen.protocol_id
+        or expected_bindings.run_id != ctx.frozen.run_id
+        or expected_bindings.manifest_sha256 != ctx.frozen.manifest_sha256
+        or expected_bindings.approval_sha256 != ctx.frozen.approval_record_sha256
+        or expected_bindings.reviewed_git_head != ctx.frozen.reviewed_git_head
+        or expected_bindings.watchdog_claim_sha256 != ctx.frozen.watchdog_claim_sha256
+        or expected_bindings.watchdog_pid == expected_bindings.child_pid
+        or expected_bindings.physical_root != root_identity.repository_root_realpath
+        or expected_bindings.root_device != root_identity.repository_root_device
+        or expected_bindings.root_inode != root_identity.repository_root_inode
+        or expected_bindings.receipt_root_relative != root_identity.receipt_root_relative
+        or expected_bindings.receipt_device != root_identity.receipt_root_device
+        or expected_bindings.receipt_inode != root_identity.receipt_root_inode
+        or tuple(
+            (path, expected_source_hashes.get(path))
+            for path in _INTEGRATED_SOURCE_PATHS
+        )
+        != ctx.frozen.integrated_source_hashes
+    ):
+        raise _Reject(
+            "child_grant", "expected child bindings differ from the frozen run identity"
+        )
+    if (
+        observed.get("observed_live_argv") != list(expected_bindings.child_vector)
+        or observed.get("observed_executable_path") != expected_bindings.child_image_path
+        or observed.get("observed_executable_sha256")
+        != expected_bindings.child_image_sha256
+        or observed.get("verified_image_role") != "observed_python_app_image"
+    ):
+        raise _Reject(
+            "child_grant", "terminal process attestation differs from expected child bindings"
+        )
 
 
 def _classify_no_campaign_claim(
@@ -1680,7 +1794,7 @@ def _verify_terminal(
     capture = terminal.get("intervention_capture")
     if (
         type(terminal.get("schema_version")) is not int
-        or terminal.get("schema_version") != 2
+        or terminal.get("schema_version") != 3
         or terminal.get("protocol_id") != ctx.frozen.protocol_id
         or terminal.get("run_id") != ctx.frozen.run_id
         or terminal.get("manifest_sha256") != ctx.frozen.manifest_sha256
@@ -1714,6 +1828,10 @@ def _verify_terminal(
         )
     ):
         raise _Reject("terminal_receipt", "terminal identity differs from frozen watchdog claim")
+    # Bind any durable grant before operational classification on both the
+    # preclaim and post-marker paths. The separately supplied expected object
+    # is the authority for every value, never the terminal or grant record.
+    _verify_child_grant_record(ctx, terminal)
     fit_gate = terminal.get("fit_phase_gate")
     if type(fit_gate) is not dict:
         raise _Reject("terminal_fit_gate", "terminal receipt has no fit-phase gate")

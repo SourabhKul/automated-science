@@ -310,8 +310,8 @@ def _issue_fake_grant(monkeypatch, root: Path, receipt_relative: str, source_pat
         channel.close()
         raise
     binding = _bindings(root, receipt_relative, child_identity)
-    grant_digest = channel.publish(binding)
-    return channel, process, grant_digest, binding
+    grant_snapshot = channel.publish(binding)
+    return channel, process, grant_snapshot, binding
 
 
 def test_fake_child_traverses_one_use_training_and_scoring_once(tmp_path, monkeypatch):
@@ -324,7 +324,7 @@ def test_fake_child_traverses_one_use_training_and_scoring_once(tmp_path, monkey
     assert child.returncode == 0, stderr
     result = json.loads(stdout)
     metadata = result["metadata"]
-    assert metadata["grant_sha256"] == grant_digest
+    assert metadata["grant_sha256"] == grant_digest.grant_sha256
     assert metadata["run_id"] == "private-authority-test-v1"
     assert metadata["child_launch_image_path"] == binding.child_launch_image_path
     assert metadata["child_launch_image_sha256"] == binding.child_launch_image_sha256
@@ -341,7 +341,10 @@ def test_fake_child_traverses_one_use_training_and_scoring_once(tmp_path, monkey
     assert result["duplicate_score_rejected"] is True
     grant_record = (receipt / authority.GRANT_RECORD).read_text()
     assert "secret_hex" not in grant_record
-    assert grant_digest in grant_record
+    assert grant_digest.grant_sha256 in grant_record
+    assert hashlib.sha256(grant_record.encode("ascii")).hexdigest() == grant_digest.record_sha256
+    assert grant_digest == channel.publication_snapshot
+    authority.verify_grant_record_snapshot(grant_digest)
     assert binding.watchdog_claim_sha256 in grant_record
     assert "secret_hex" not in json.dumps(metadata)
 

@@ -123,8 +123,11 @@ def test_runner_rejects_direct_api_missing_and_non_socket_grants(
     assert calls == []
 
 
+@pytest.mark.parametrize("post_send_swap", [False, True])
 def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    post_send_swap: bool,
 ) -> None:
     root, source_hashes = _private_overlay(tmp_path)
     monkeypatch.setattr(watchdog, "_REPO_ROOT", root)
@@ -140,6 +143,8 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
     child_processes: list[object] = []
     real_popen = watchdog.subprocess.Popen
     real_snapshot = watchdog._snapshot_process_group
+    publication_snapshots = []
+    real_publish = authority._PendingGrant.publish
 
     def capture_with_fake_launcher_phase(pid: int):
         identity = original_capture(pid)
@@ -185,7 +190,32 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
                     snapshot = real_snapshot(process_group_id)
         return snapshot
 
+    def publish_then_optional_swap(channel, bindings):
+        snapshot = real_publish(channel, bindings)
+        publication_snapshots.append(snapshot)
+        if post_send_swap:
+            received_marker = (
+                Path(bindings.physical_root) / "private-grant-received.txt"
+            )
+            deadline = watchdog.time.monotonic() + 1.0
+            while not received_marker.exists() and watchdog.time.monotonic() < deadline:
+                watchdog.time.sleep(0.005)
+            assert received_marker.is_file(), "fake child did not receive the grant frame"
+            record_path = (
+                Path(bindings.physical_root)
+                / bindings.receipt_root_relative
+                / authority.GRANT_RECORD
+            )
+            record = json.loads(record_path.read_text("ascii"))
+            record["grant_fd"] += 1
+            record_path.write_bytes(authority._json(record))
+        return snapshot
+
     monkeypatch.setattr(authority, "_capture", capture_with_fake_launcher_phase)
+    # The wrapper below adds a fake post-send race and therefore sits between
+    # publish() and its watchdog caller; bypass only the local callsite guard.
+    monkeypatch.setattr(authority, "_watchdog_callsite", lambda: None)
+    monkeypatch.setattr(authority._PendingGrant, "publish", publish_then_optional_swap)
     monkeypatch.setattr(watchdog.subprocess, "Popen", track_fake_child)
     monkeypatch.setattr(
         watchdog, "_snapshot_process_group", snapshot_then_release_after_gate
@@ -216,7 +246,12 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
         "from pathlib import Path\n"
         "import time\n"
         "from scripts import run_cascaded_tanks_abc6_synthetic as r\n"
-        "authority = r._receive_launch_authority()\n"
+        "try:\n"
+        "    authority = r._receive_launch_authority()\n"
+            "except BaseException as error:\n"
+            "    Path('private-grant-error.txt').write_text(repr(error))\n"
+            "    raise\n"
+            "Path('private-grant-received.txt').write_text('received')\n"
         "try:\n"
         "    r.run_cascaded_tanks_abc6_synthetic('private-manifest.json','5'*64,'private-receipts',launch_authority=authority)\n"
         "except r.ABC6SyntheticRunnerPreflightError as error:\n"
@@ -247,7 +282,15 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
         require_launch_grant=True,
     )
     assert result["receipt"]["status"] == "failed"
-    assert result["receipt"]["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
+    if post_send_swap:
+        assert result["receipt"]["stop_reason"] == "watchdog_monitoring_error"
+        assert publication_snapshots
+        assert result["receipt"]["bootstrap_grant"]["grant_record_sha256"] == (
+            publication_snapshots[0].record_sha256
+        )
+        assert result["receipt"]["bootstrap_grant"]["delivery_status"] == "delivered"
+    else:
+        assert result["receipt"]["stop_reason"] == "child_exited_with_invalid_pre_score_gate"
     assert release_marker.is_file() and post_gate_samples >= 5
     assert "integrated source pin gate is closed" in (
         root / "private-runner-stop.txt"
@@ -262,7 +305,22 @@ def test_watchdog_waits_through_launcher_then_closed_source_pin_gate(
     grant_body = json.loads(grant_receipt.read_text("ascii"))
     assert grant_body["grant_fd"] >= 3
     assert grant_body["grant_sha256"] == result["receipt"]["bootstrap_grant"]["grant_sha256"]
-    assert result["receipt"]["bootstrap_grant"]["descriptor_fd"] == grant_body["grant_fd"]
+    if post_send_swap:
+        assert grant_body["grant_fd"] != result["receipt"]["bootstrap_grant"]["descriptor_fd"]
+        assert hashlib.sha256(grant_receipt.read_bytes()).hexdigest() != (
+            result["receipt"]["bootstrap_grant"]["grant_record_sha256"]
+        )
+    else:
+        assert result["receipt"]["bootstrap_grant"]["descriptor_fd"] == grant_body["grant_fd"]
+    assert result["receipt"]["schema_version"] == 3
+    assert result["receipt"]["bootstrap_grant"]["delivery_status"] == "delivered"
+    grant_child_pid = grant_body["bindings"]["child_pid"]
+    assert result["receipt"]["child_launch"]["observed_process"]["pid"] == grant_child_pid
+    assert result["receipt"]["kill_and_reap"]["process_group_id"] == grant_child_pid
+    if not post_send_swap:
+        assert result["receipt"]["bootstrap_grant"]["grant_record_sha256"] == hashlib.sha256(
+            grant_receipt.read_bytes()
+        ).hexdigest()
     assert launcher_observations
     assert max(launcher_observations.values()) >= 4
     assert len(child_processes) == 1
@@ -703,9 +761,9 @@ def test_persistent_utc_failure_after_grant_keeps_monotonic_intervention_event(
 
     def write_grant_record_then_mark(bindings, digest, grant_fd):
         nonlocal grant_published
-        real_grant_record(bindings, digest, grant_fd)
+        snapshot = real_grant_record(bindings, digest, grant_fd)
         grant_published = True
-        return None
+        return snapshot
 
     def fail_utc_after_grant() -> str:
         nonlocal utc_failures
@@ -742,6 +800,10 @@ def test_persistent_utc_failure_after_grant_keeps_monotonic_intervention_event(
     assert receipt["status"] == "failed"
     assert receipt["stop_reason"] == "watchdog_monitoring_error"
     assert receipt["bootstrap_grant"]["grant_sha256"] is not None
+    assert receipt["bootstrap_grant"]["delivery_status"] == "delivered"
+    assert receipt["bootstrap_grant"]["grant_record_sha256"] == hashlib.sha256(
+        (receipt_path / authority.GRANT_RECORD).read_bytes()
+    ).hexdigest()
     assert receipt["watchdog_intervention"] == {
         "type": "watchdog_stop",
         "stage": "watchdog_monitoring_error",
@@ -799,8 +861,9 @@ def test_unavailable_monotonic_event_after_child_start_is_retained_and_reaped(
 
     def write_grant_then_fault_monotonic_ns(bindings, digest, grant_fd):
         nonlocal grant_record_written
-        real_grant_record(bindings, digest, grant_fd)
+        snapshot = real_grant_record(bindings, digest, grant_fd)
         grant_record_written = True
+        return snapshot
 
     def fail_after_grant_record() -> int:
         if grant_record_written:
@@ -836,7 +899,11 @@ def test_unavailable_monotonic_event_after_child_start_is_retained_and_reaped(
         "failure_kind": "monotonic_unavailable",
     }
     assert receipt["watchdog_intervention"] is None
-    assert receipt["bootstrap_grant"]["grant_sha256"] is None
+    assert receipt["bootstrap_grant"]["grant_sha256"] is not None
+    assert receipt["bootstrap_grant"]["delivery_status"] == "failed"
+    assert receipt["bootstrap_grant"]["grant_record_sha256"] == hashlib.sha256(
+        (receipt_path / authority.GRANT_RECORD).read_bytes()
+    ).hexdigest()
     assert receipt["kill_and_reap"]["child_reaped"] is True
     assert receipt["kill_and_reap"]["membership_verification"] == "verified_empty"
     assert receipt["kill_and_reap"]["tracked_process_group_reaped"] is True

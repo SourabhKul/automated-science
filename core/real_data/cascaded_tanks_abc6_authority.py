@@ -106,6 +106,17 @@ class ProcessIdentity:
     image_id: _FileId
 
 
+@dataclass(frozen=True, slots=True)
+class GrantRecordSnapshot:
+    """Publication-time identity retained before a child grant is delivered."""
+
+    record_sha256: str
+    grant_sha256: str
+    grant_fd: int
+    file_identity: _FileId
+    bindings: "ABC6AuthorityBindings"
+
+
 def _process_start(pid: int) -> str:
     if sys.platform == "darwin":
         class BsdInfo(ctypes.Structure):
@@ -479,7 +490,10 @@ def _watchdog_callsite() -> None:
 
 
 class _PendingGrant:
-    __slots__ = ("_seal", "_writer", "_child", "_child_fd", "_parent", "_used", "_lock")
+    __slots__ = (
+        "_seal", "_writer", "_child", "_child_fd", "_parent", "_used",
+        "_lock", "_publication_snapshot",
+    )
 
     def __init__(self, seal: object, writer: socket.socket, child: socket.socket, parent: ProcessIdentity):
         if seal is not _PENDING_SEAL:
@@ -488,6 +502,7 @@ class _PendingGrant:
         self._child_fd = child.fileno()
         self._used = False
         self._lock = threading.Lock()
+        self._publication_snapshot: GrantRecordSnapshot | None = None
 
     @property
     def child_fd(self) -> int:
@@ -498,7 +513,13 @@ class _PendingGrant:
     def close_child_copy(self) -> None:
         self._child.close()
 
-    def publish(self, bindings: ABC6AuthorityBindings) -> str:
+    @property
+    def publication_snapshot(self) -> GrantRecordSnapshot | None:
+        """Retain the durable snapshot even if delivery later fails."""
+
+        return self._publication_snapshot
+
+    def publish(self, bindings: ABC6AuthorityBindings) -> GrantRecordSnapshot:
         _watchdog_callsite()
         with self._lock:
             if self._used:
@@ -533,7 +554,10 @@ class _PendingGrant:
         secret = secrets.token_bytes(32)
         digest = _sha(secret)
         grant_fd = self._child_fd
-        _write_grant_record(bindings, digest, grant_fd)
+        snapshot = _write_grant_record(bindings, digest, grant_fd)
+        # This assignment deliberately precedes any frame construction or
+        # socket operation. A failed delivery must not erase durable evidence.
+        self._publication_snapshot = snapshot
         now = time.monotonic_ns()
         frame = _json({
             "schema_version": 1,
@@ -564,7 +588,7 @@ class _PendingGrant:
             self._writer.shutdown(socket.SHUT_WR)
         except OSError as error:
             raise ABC6AuthorityError("grant channel could not be sealed") from error
-        return digest
+        return snapshot
 
     def close(self) -> None:
         self._writer.close()
@@ -596,7 +620,7 @@ def _write_all(fd: int, data: bytes) -> None:
 
 def _write_grant_record(
     bindings: ABC6AuthorityBindings, digest: str, grant_fd: int
-) -> None:
+) -> GrantRecordSnapshot:
     root_fd = _open_root(bindings.physical_root)
     receipt_fd = -1
     try:
@@ -614,15 +638,84 @@ def _write_grant_record(
             "bindings_sha256": _sha(_json(bindings.payload())),
             "bindings": bindings.payload(),
         })
-        fd = os.open(GRANT_RECORD, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=receipt_fd)
+        fd = os.open(
+            GRANT_RECORD,
+            os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=receipt_fd,
+        )
         try:
+            initial_identity = _FileId.of(os.fstat(fd))
             _write_all(fd, metadata)
             os.fsync(fd)
+            os.lseek(fd, 0, os.SEEK_SET)
+            raw, file_identity = _read_fd(fd, MAX_FRAME_BYTES, "published grant receipt")
+            named_identity = _FileId.of(
+                os.stat(GRANT_RECORD, dir_fd=receipt_fd, follow_symlinks=False)
+            )
+            if (
+                raw != metadata
+                or _sha(raw) != _sha(metadata)
+                or _FileId.of(os.fstat(fd)) != file_identity
+                or named_identity != file_identity
+                or file_identity.device != initial_identity.device
+                or file_identity.inode != initial_identity.inode
+            ):
+                raise ABC6AuthorityError("published grant receipt could not be identity-bound")
+            os.fsync(receipt_fd)
         finally:
             os.close(fd)
-        os.fsync(receipt_fd)
+        snapshot = GrantRecordSnapshot(
+            record_sha256=_sha(metadata),
+            grant_sha256=digest,
+            grant_fd=grant_fd,
+            file_identity=file_identity,
+            bindings=bindings,
+        )
     except OSError as error:
         raise ABC6AuthorityError("one-use grant digest receipt could not be published") from error
+    finally:
+        if receipt_fd >= 0:
+            os.close(receipt_fd)
+        os.close(root_fd)
+    return snapshot
+
+
+def verify_grant_record_snapshot(snapshot: GrantRecordSnapshot) -> None:
+    """Re-read a published grant under pinned no-follow root and compare it."""
+
+    if not isinstance(snapshot, GrantRecordSnapshot):
+        raise ABC6AuthorityError("grant publication snapshot is unavailable")
+    bindings = snapshot.bindings
+    root_fd = _open_root(bindings.physical_root)
+    receipt_fd = -1
+    try:
+        root = os.fstat(root_fd)
+        if (root.st_dev, root.st_ino) != (bindings.root_device, bindings.root_inode):
+            raise ABC6AuthorityError("grant root identity changed after publication")
+        receipt_fd = _open_beneath(root_fd, bindings.receipt_root_relative, directory=True)
+        receipt = os.fstat(receipt_fd)
+        if (receipt.st_dev, receipt.st_ino) != (
+            bindings.receipt_device,
+            bindings.receipt_inode,
+        ):
+            raise ABC6AuthorityError("grant receipt root changed after publication")
+        fd = os.open(GRANT_RECORD, _flags(), dir_fd=receipt_fd)
+        try:
+            raw, file_identity = _read_fd(fd, MAX_FRAME_BYTES, "published grant receipt")
+            named_identity = _FileId.of(
+                os.stat(GRANT_RECORD, dir_fd=receipt_fd, follow_symlinks=False)
+            )
+        finally:
+            os.close(fd)
+        if (
+            _sha(raw) != snapshot.record_sha256
+            or file_identity != snapshot.file_identity
+            or named_identity != snapshot.file_identity
+        ):
+            raise ABC6AuthorityError("published grant receipt changed after delivery")
+    except OSError as error:
+        raise ABC6AuthorityError("published grant receipt is unavailable after delivery") from error
     finally:
         if receipt_fd >= 0:
             os.close(receipt_fd)
