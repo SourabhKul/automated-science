@@ -1,6 +1,35 @@
 # Automated science: current research state
 
-Updated: 2026-10-01T00:29Z. This file records observed state, not inferred execution.
+Updated: 2026-10-01T04:55Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: launch-attestation design GO; fake-only Stage A assigned
+
+Independent Luna max cleared the revised, exact-schema claims-parent
+launch-attestation and terminal-v4 design for **bounded fake-only
+implementation**. It explicitly kept the campaign-fit grant-leaf exception,
+nested-claim/v4 replay, complete source/runtime provenance, immutable
+manifest/approval and launch GO separate and closed. A Luna max author is
+implementing only publication/readback and fake tests; no code review or Git
+sync exists yet for Stage A. The `04:24Z` read-only monitor found exact Qwen
+available, no ABC6 process or reserved artifacts, and clean fetched
+`main == origin/main == 2b55018a074540e9b1ff4ab680624d016bc6f50a`.
+Reserved synthetic run UNUSED/HOLD. See
+`reports/research-ledger/2026-10-01T0455Z.md` and
+`reports/cascaded-tanks-abc6-production-provenance-proposal-2026-10-01.md`.
+
+## Latest checkpoint: production provenance contract proposed; no run launched
+
+Luna max read-only monitoring at `04:24–04:28Z` found no ABC6 process or
+reserved run artifact, verified the exact fixed Qwen model at `/v1/models`,
+and fresh-fetched clean `main == origin/main == FETCH_HEAD ==
+2b55018a074540e9b1ff4ab680624d016bc6f50a`. A bounded code audit
+confirmed that no production replay identity builder exists and that full
+source/runtime/role pins and live process-start evidence remain unclosed.
+Primary drafted a claims-parent launch-attestation/terminal-v4 proposal in
+`reports/cascaded-tanks-abc6-production-provenance-proposal-2026-10-01.md`;
+independent Luna design review is pending. No code/experiment/target access
+occurred. The reserved synthetic run remains UNUSED/HOLD. See
+`reports/research-ledger/2026-10-01T0436Z.md`.
 
 ## Latest checkpoint: bounded grant correction synced; production remains HOLD
 
