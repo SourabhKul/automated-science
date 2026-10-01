@@ -87,6 +87,165 @@ ReplayClassification = Literal[
     "unreplayable",
 ]
 
+_STAGE_B1_SCORER_CLAIM_PARENT_RELATIVE: Final = (
+    "artifacts/evaluations/cascaded_tanks_abc6_scoring/claims"
+)
+_STAGE_B1_MAX_LAUNCH_ATTESTATION_BYTES: Final = 64 * 1024
+_STAGE_B1_WATCHDOG_CLAIM_KEYS: Final = frozenset(
+    {
+        "schema_version",
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "approval_record_sha256",
+        "reviewed_git_head",
+        "repository_root_realpath",
+        "receipt_root_relative",
+        "repository_root_device",
+        "repository_root_inode",
+        "receipt_root_device",
+        "receipt_root_inode",
+        "watchdog_claim_parent_device",
+        "watchdog_claim_parent_inode",
+        "scorer_claim_parent_device",
+        "scorer_claim_parent_inode",
+        "claimed_at_utc",
+        "declared_child_launch_vector",
+        "declared_child_executable_path",
+        "declared_child_executable_resolved_path",
+        "declared_child_executable_sha256",
+        "accepted_observed_child_argv0",
+        "expected_observed_child_argv_tail",
+        "expected_observed_child_image_path",
+        "expected_observed_child_image_sha256",
+        "watchdog_attestation",
+        "claim_semantics",
+    }
+)
+_STAGE_B1_WATCHDOG_ATTESTATION_KEYS: Final = frozenset(
+    {
+        "declared_launch_vector",
+        "declared_python_bin",
+        "declared_python_bin_resolved_path",
+        "declared_python_bin_sha256",
+        "observed_live_argv",
+        "observed_python_app_image_path",
+        "observed_python_app_image_sha256",
+        "python_version",
+        "psutil_version",
+        "psutil_module_path",
+        "psutil_module_sha256",
+        "original_exec_alias_attestable_from_process_apis",
+    }
+)
+_STAGE_B1_LAUNCH_ATTESTATION_KEYS: Final = frozenset(
+    {
+        "schema_version",
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "approval_sha256",
+        "review_sha256",
+        "reviewed_git_head",
+        "watchdog_claim_sha256",
+        "physical_root",
+        "root_device",
+        "root_inode",
+        "receipt_root_relative",
+        "receipt_device",
+        "receipt_inode",
+        "claim_parent_device",
+        "claim_parent_inode",
+        "observed_monotonic_ns",
+        "watchdog_process",
+        "child_process",
+    }
+)
+_STAGE_B1_PROCESS_KEYS: Final = frozenset(
+    {"pid", "start_identity", "argv", "image_path", "image_sha256"}
+)
+_STAGE_B1_CHILD_PROCESS_KEYS: Final = _STAGE_B1_PROCESS_KEYS | frozenset(
+    {
+        "declared_launch_vector",
+        "declared_launch_image_path",
+        "declared_launch_image_sha256",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ABC6StageB1WatchdogRuntimeExpectation:
+    """Independently declared fake-fixture values for the watchdog runtime."""
+
+    declared_launch_vector: tuple[str, ...]
+    declared_python_bin: str
+    declared_python_bin_resolved_path: str
+    declared_python_bin_sha256: str
+    observed_live_argv: tuple[str, ...]
+    observed_python_app_image_path: str
+    observed_python_app_image_sha256: str
+    python_version: str
+    psutil_version: str
+    psutil_module_path: str
+    psutil_module_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class ABC6StageB1ProcessExpectation:
+    """Fixture process identity, supplied only when captured independently."""
+
+    pid: int | None = None
+    start_identity: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ABC6StageB1Expectation:
+    """Typed, independent fixture bindings for the isolated Stage B1 helper.
+
+    This deliberately has no production builder and is not consumed by the
+    public replay entrypoint. Tests must construct it from fixture manifest,
+    approval, root anchors and separately declared launch/runtime facts.
+    """
+
+    protocol_id: str
+    run_id: str
+    manifest_sha256: str
+    approval_record_sha256: str
+    review_sha256: str
+    reviewed_git_head: str
+    watchdog_claim_sha256: str
+    repository_root_realpath: str
+    repository_root_device: int
+    repository_root_inode: int
+    receipt_root_relative: str
+    receipt_root_device: int
+    receipt_root_inode: int
+    watchdog_claim_parent_device: int
+    watchdog_claim_parent_inode: int
+    scorer_claim_parent_device: int
+    scorer_claim_parent_inode: int
+    child_declared_launch_vector: tuple[str, ...]
+    child_declared_executable_path: str
+    child_declared_executable_resolved_path: str
+    child_declared_executable_sha256: str
+    child_accepted_observed_argv0: tuple[str, ...]
+    child_expected_observed_argv_tail: tuple[str, ...]
+    child_expected_observed_image_path: str
+    child_expected_observed_image_sha256: str
+    watchdog_runtime: ABC6StageB1WatchdogRuntimeExpectation
+    watchdog_process: ABC6StageB1ProcessExpectation | None = None
+    child_process: ABC6StageB1ProcessExpectation | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ABC6StageB1Verification:
+    """Structural link result; it never classifies a campaign outcome."""
+
+    status: Literal["evidence_linked", "unreplayable"]
+    detail: str
+    claim_sha256: str | None = None
+    launch_attestation_sha256: str | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class ABC6FrozenReplayIdentity:
@@ -624,6 +783,704 @@ def _verify_claims(
 
     _watchdog_sha, watchdog_claim = _verify_watchdog_claim(ctx)
     return campaign_claim_sha, receipt_claim, watchdog_claim
+
+
+def _stage_b1_expected_attestation(
+    runtime: ABC6StageB1WatchdogRuntimeExpectation,
+) -> dict[str, object]:
+    if type(runtime) is not ABC6StageB1WatchdogRuntimeExpectation:
+        raise _Reject("stage_b1_expectation", "watchdog runtime expectation is unavailable")
+    scalar_text = (
+        runtime.declared_python_bin,
+        runtime.declared_python_bin_resolved_path,
+        runtime.observed_python_app_image_path,
+        runtime.python_version,
+        runtime.psutil_version,
+        runtime.psutil_module_path,
+    )
+    if any(type(value) is not str or not value for value in scalar_text):
+        raise _Reject("stage_b1_expectation", "watchdog runtime text is incomplete")
+    for value in (runtime.declared_python_bin, runtime.declared_python_bin_resolved_path,
+                  runtime.observed_python_app_image_path, runtime.psutil_module_path):
+        if not _stage_b1_absolute_path(value):
+            raise _Reject("stage_b1_expectation", "watchdog runtime path is not canonical")
+    if not _is_sha256(runtime.declared_python_bin_sha256) or not _is_sha256(
+        runtime.observed_python_app_image_sha256
+    ) or not _is_sha256(runtime.psutil_module_sha256):
+        raise _Reject("stage_b1_expectation", "watchdog runtime digest is invalid")
+    for vector in (runtime.declared_launch_vector, runtime.observed_live_argv):
+        if not _stage_b1_expected_vector(vector):
+            raise _Reject("stage_b1_expectation", "watchdog runtime argv is incomplete")
+    return {
+        "declared_launch_vector": list(runtime.declared_launch_vector),
+        "declared_python_bin": runtime.declared_python_bin,
+        "declared_python_bin_resolved_path": runtime.declared_python_bin_resolved_path,
+        "declared_python_bin_sha256": runtime.declared_python_bin_sha256,
+        "observed_live_argv": list(runtime.observed_live_argv),
+        "observed_python_app_image_path": runtime.observed_python_app_image_path,
+        "observed_python_app_image_sha256": runtime.observed_python_app_image_sha256,
+        "python_version": runtime.python_version,
+        "psutil_version": runtime.psutil_version,
+        "psutil_module_path": runtime.psutil_module_path,
+        "psutil_module_sha256": runtime.psutil_module_sha256,
+        "original_exec_alias_attestable_from_process_apis": False,
+    }
+
+
+def _stage_b1_expected_vector(value: object) -> bool:
+    return (
+        type(value) is tuple
+        and bool(value)
+        and len(value) <= 256
+        and all(
+            type(entry) is str and bool(entry) and len(entry) <= 4096 and "\x00" not in entry
+            for entry in value
+        )
+    )
+
+
+def _stage_b1_json_vector(value: object) -> bool:
+    return (
+        type(value) is list
+        and bool(value)
+        and len(value) <= 256
+        and all(
+            type(entry) is str and bool(entry) and len(entry) <= 4096 and "\x00" not in entry
+            for entry in value
+        )
+    )
+
+
+def _stage_b1_absolute_path(value: object) -> bool:
+    return (
+        type(value) is str
+        and bool(value)
+        and len(value) <= 4096
+        and "\x00" not in value
+        and Path(value).is_absolute()
+        and str(Path(value)) == value
+        and all(part not in {".", ".."} for part in value.split("/")[1:])
+    )
+
+
+def _stage_b1_safe_text(value: object, *, maximum: int = 256) -> bool:
+    return (
+        type(value) is str
+        and bool(value)
+        and len(value) <= maximum
+        and all(
+            character in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-_"
+            for character in value
+        )
+    )
+
+
+def _stage_b1_validate_expectation(
+    expected: ABC6StageB1Expectation | None,
+) -> dict[str, object]:
+    if type(expected) is not ABC6StageB1Expectation:
+        raise _Reject(
+            "stage_b1_expectation",
+            "independent typed expectation is unavailable; terminal-v4 evidence is unreplayable",
+        )
+    if (
+        not _stage_b1_safe_text(expected.protocol_id)
+        or not _stage_b1_safe_text(expected.run_id)
+        or expected.run_id in {".", ".."}
+        or not _is_sha256(expected.manifest_sha256)
+        or not _is_sha256(expected.approval_record_sha256)
+        or not _is_sha256(expected.review_sha256)
+        or not _is_sha256(expected.watchdog_claim_sha256)
+        or type(expected.reviewed_git_head) is not str
+        or len(expected.reviewed_git_head) != 40
+        or any(char not in "0123456789abcdef" for char in expected.reviewed_git_head)
+        or not _stage_b1_absolute_path(expected.repository_root_realpath)
+        or type(expected.receipt_root_relative) is not str
+        or not expected.receipt_root_relative
+        or expected.receipt_root_relative != campaign_fit.RECEIPT_ROOT_RELATIVE
+        or Path(expected.receipt_root_relative).is_absolute()
+        or str(Path(expected.receipt_root_relative)) != expected.receipt_root_relative
+        or "\\" in expected.receipt_root_relative
+        or any(part in {"", ".", ".."} for part in expected.receipt_root_relative.split("/"))
+    ):
+        raise _Reject("stage_b1_expectation", "independent fixture identity is incomplete")
+    for value in (
+        expected.repository_root_device,
+        expected.repository_root_inode,
+        expected.receipt_root_device,
+        expected.receipt_root_inode,
+        expected.watchdog_claim_parent_device,
+        expected.watchdog_claim_parent_inode,
+        expected.scorer_claim_parent_device,
+        expected.scorer_claim_parent_inode,
+    ):
+        if type(value) is not int or value < 0:
+            raise _Reject("stage_b1_expectation", "independent directory identity is invalid")
+    if any(
+        value <= 0
+        for value in (
+            expected.repository_root_inode,
+            expected.receipt_root_inode,
+            expected.watchdog_claim_parent_inode,
+            expected.scorer_claim_parent_inode,
+        )
+    ):
+        raise _Reject("stage_b1_expectation", "independent directory inode is invalid")
+    if (
+        not _stage_b1_expected_vector(expected.child_declared_launch_vector)
+        or not _stage_b1_absolute_path(expected.child_declared_executable_path)
+        or not _stage_b1_absolute_path(expected.child_declared_executable_resolved_path)
+        or not _is_sha256(expected.child_declared_executable_sha256)
+        or type(expected.child_accepted_observed_argv0) is not tuple
+        or not expected.child_accepted_observed_argv0
+        or any(not _stage_b1_absolute_path(value) for value in expected.child_accepted_observed_argv0)
+        or type(expected.child_expected_observed_argv_tail) is not tuple
+        or any(
+            type(value) is not str or not value or len(value) > 4096 or "\x00" in value
+            for value in expected.child_expected_observed_argv_tail
+        )
+        or not _stage_b1_absolute_path(expected.child_expected_observed_image_path)
+        or not _is_sha256(expected.child_expected_observed_image_sha256)
+        or expected.child_declared_launch_vector[0] != expected.child_declared_executable_path
+        or tuple(expected.child_declared_launch_vector[1:])
+        != expected.child_expected_observed_argv_tail
+    ):
+        raise _Reject("stage_b1_expectation", "independent child launch facts are incomplete")
+    for process in (expected.watchdog_process, expected.child_process):
+        if process is not None:
+            if type(process) is not ABC6StageB1ProcessExpectation:
+                raise _Reject("stage_b1_expectation", "process expectation has the wrong type")
+            if process.pid is not None and (type(process.pid) is not int or process.pid <= 0):
+                raise _Reject("stage_b1_expectation", "independent process PID is invalid")
+            if process.start_identity is not None and not _stage_b1_safe_text(
+                process.start_identity
+            ):
+                raise _Reject("stage_b1_expectation", "independent process start identity is invalid")
+    attestation = _stage_b1_expected_attestation(expected.watchdog_runtime)
+    return attestation
+
+
+def _stage_b1_expected_claim_fields(
+    expected: ABC6StageB1Expectation,
+    runtime: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "protocol_id": expected.protocol_id,
+        "run_id": expected.run_id,
+        "manifest_sha256": expected.manifest_sha256,
+        "approval_record_sha256": expected.approval_record_sha256,
+        "reviewed_git_head": expected.reviewed_git_head,
+        "repository_root_realpath": expected.repository_root_realpath,
+        "receipt_root_relative": expected.receipt_root_relative,
+        "repository_root_device": expected.repository_root_device,
+        "repository_root_inode": expected.repository_root_inode,
+        "receipt_root_device": expected.receipt_root_device,
+        "receipt_root_inode": expected.receipt_root_inode,
+        "watchdog_claim_parent_device": expected.watchdog_claim_parent_device,
+        "watchdog_claim_parent_inode": expected.watchdog_claim_parent_inode,
+        "scorer_claim_parent_device": expected.scorer_claim_parent_device,
+        "scorer_claim_parent_inode": expected.scorer_claim_parent_inode,
+        "declared_child_launch_vector": list(expected.child_declared_launch_vector),
+        "declared_child_executable_path": expected.child_declared_executable_path,
+        "declared_child_executable_resolved_path": expected.child_declared_executable_resolved_path,
+        "declared_child_executable_sha256": expected.child_declared_executable_sha256,
+        "accepted_observed_child_argv0": list(expected.child_accepted_observed_argv0),
+        "expected_observed_child_argv_tail": list(expected.child_expected_observed_argv_tail),
+        "expected_observed_child_image_path": expected.child_expected_observed_image_path,
+        "expected_observed_child_image_sha256": expected.child_expected_observed_image_sha256,
+        "watchdog_attestation": runtime,
+        "claim_semantics": "consumed_once_no_resume",
+    }
+
+
+def _stage_b1_validate_claim(
+    raw: bytes,
+    claim: dict[str, object],
+    expected: ABC6StageB1Expectation,
+    runtime: dict[str, object],
+) -> None:
+    if set(claim) != _STAGE_B1_WATCHDOG_CLAIM_KEYS:
+        raise _Reject("stage_b1_claim", "watchdog claim has missing or extra fields")
+    if type(claim.get("schema_version")) is not int or claim["schema_version"] != 1:
+        raise _Reject("stage_b1_claim", "watchdog claim schema version is invalid")
+    for name in (
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "approval_record_sha256",
+        "reviewed_git_head",
+        "repository_root_realpath",
+        "receipt_root_relative",
+        "declared_child_executable_path",
+        "declared_child_executable_resolved_path",
+        "claim_semantics",
+    ):
+        if type(claim.get(name)) is not str:
+            raise _Reject("stage_b1_claim", f"watchdog claim field {name} has the wrong type")
+    for name in (
+        "repository_root_device",
+        "repository_root_inode",
+        "receipt_root_device",
+        "receipt_root_inode",
+        "watchdog_claim_parent_device",
+        "watchdog_claim_parent_inode",
+        "scorer_claim_parent_device",
+        "scorer_claim_parent_inode",
+    ):
+        if type(claim.get(name)) is not int:
+            raise _Reject("stage_b1_claim", f"watchdog claim field {name} is not an exact integer")
+    for name in (
+        "declared_child_launch_vector",
+        "accepted_observed_child_argv0",
+        "expected_observed_child_argv_tail",
+    ):
+        if not _stage_b1_json_vector(claim.get(name)):
+            raise _Reject("stage_b1_claim", f"watchdog claim field {name} is not a bounded vector")
+    for name in (
+        "declared_child_executable_sha256",
+        "expected_observed_child_image_sha256",
+    ):
+        if not _is_sha256(claim.get(name)):
+            raise _Reject("stage_b1_claim", f"watchdog claim field {name} is not lowercase SHA-256")
+    for name in (
+        "declared_child_executable_path",
+        "declared_child_executable_resolved_path",
+        "expected_observed_child_image_path",
+    ):
+        if not _stage_b1_absolute_path(claim.get(name)):
+            raise _Reject("stage_b1_claim", f"watchdog claim field {name} is not a canonical path")
+    if (
+        type(claim.get("claimed_at_utc")) is not str
+        or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z", claim["claimed_at_utc"])
+        is None
+    ):
+        raise _Reject("stage_b1_claim", "watchdog claim timestamp has an invalid exact shape")
+    try:
+        claimed = datetime.fromisoformat(str(claim["claimed_at_utc"]).replace("Z", "+00:00"))
+    except ValueError as error:
+        raise _Reject("stage_b1_claim", "watchdog claim timestamp is invalid") from error
+    if claimed.tzinfo != timezone.utc:
+        raise _Reject("stage_b1_claim", "watchdog claim timestamp is not UTC")
+    nested = claim.get("watchdog_attestation")
+    if type(nested) is not dict or set(nested) != _STAGE_B1_WATCHDOG_ATTESTATION_KEYS:
+        raise _Reject("stage_b1_claim", "nested watchdog attestation has missing or extra fields")
+    if (
+        type(nested.get("declared_launch_vector")) is not list
+        or not _stage_b1_json_vector(nested.get("declared_launch_vector"))
+        or type(nested.get("observed_live_argv")) is not list
+        or not _stage_b1_json_vector(nested.get("observed_live_argv"))
+    ):
+        raise _Reject("stage_b1_claim", "nested watchdog attestation argv is invalid")
+    for name in (
+        "declared_python_bin",
+        "declared_python_bin_resolved_path",
+        "observed_python_app_image_path",
+        "python_version",
+        "psutil_version",
+        "psutil_module_path",
+    ):
+        if type(nested.get(name)) is not str or not nested.get(name):
+            raise _Reject("stage_b1_claim", f"nested watchdog attestation field {name} is invalid")
+    for name in (
+        "declared_python_bin",
+        "declared_python_bin_resolved_path",
+        "observed_python_app_image_path",
+        "psutil_module_path",
+    ):
+        if not _stage_b1_absolute_path(nested.get(name)):
+            raise _Reject("stage_b1_claim", f"nested watchdog attestation path {name} is invalid")
+    for name in (
+        "declared_python_bin_sha256",
+        "observed_python_app_image_sha256",
+        "psutil_module_sha256",
+    ):
+        if not _is_sha256(nested.get(name)):
+            raise _Reject("stage_b1_claim", f"nested watchdog attestation field {name} is invalid")
+    if type(nested.get("original_exec_alias_attestable_from_process_apis")) is not bool:
+        raise _Reject("stage_b1_claim", "nested watchdog attestation boolean has the wrong type")
+    if _canonical_json(claim) != raw:
+        raise _Reject("stage_b1_claim", "watchdog claim is not exact canonical JSON")
+    claim_identity = {key: value for key, value in claim.items() if key != "claimed_at_utc"}
+    if claim_identity != _stage_b1_expected_claim_fields(expected, runtime):
+        raise _Reject(
+            "stage_b1_claim",
+            "watchdog claim differs from independent manifest, approval, root, launch or runtime facts",
+        )
+
+
+def _stage_b1_file_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _stage_b1_read_leaf(
+    parent: cases._DirectoryAnchor,
+    leaf: str,
+    *,
+    maximum_bytes: int,
+    label: str,
+    stage: str,
+) -> tuple[bytes, tuple[int, int, int, int, int, int]]:
+    if leaf in {"", ".", ".."} or Path(leaf).name != leaf:
+        raise _Reject(stage, f"{label} is not a fixed leaf")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            leaf,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=parent.descriptor,
+        )
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > maximum_bytes:
+            raise _Reject(stage, f"{label} is not a bounded regular file")
+        pieces: list[bytes] = []
+        size = 0
+        while True:
+            chunk = os.read(descriptor, min(65536, maximum_bytes + 1 - size))
+            if not chunk:
+                break
+            pieces.append(chunk)
+            size += len(chunk)
+            if size > maximum_bytes:
+                raise _Reject(stage, f"{label} exceeds its byte bound")
+        after = os.fstat(descriptor)
+        named = os.stat(leaf, dir_fd=parent.descriptor, follow_symlinks=False)
+    except _Reject:
+        raise
+    except FileNotFoundError as error:
+        raise _Reject(stage, f"{label} is missing") from error
+    except OSError as error:
+        raise _Reject(stage, f"{label} is missing or unsafe") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    before_identity = _stage_b1_file_identity(before)
+    if (
+        before_identity != _stage_b1_file_identity(after)
+        or before_identity != _stage_b1_file_identity(named)
+        or size != before.st_size
+    ):
+        raise _Reject(stage, f"{label} changed while being read")
+    return b"".join(pieces), before_identity
+
+
+def _stage_b1_verify_anchor(
+    root: cases._DirectoryAnchor,
+    supplied: cases._DirectoryAnchor,
+    relative: str,
+    *,
+    expected_device: int,
+    expected_inode: int,
+    label: str,
+) -> None:
+    if type(root) is not cases._DirectoryAnchor or type(supplied) is not cases._DirectoryAnchor:
+        raise _Reject("stage_b1_anchor", f"{label} is not a typed directory anchor")
+    try:
+        cases._verify_directory_anchor_path(root, label="Stage B1 physical root")
+        cases._verify_directory_anchor_path(supplied, label=f"Stage B1 {label}")
+        reopened = cases._open_relative_directory_anchor(root, relative, label=f"Stage B1 {label}")
+    except Exception as error:
+        raise _Reject("stage_b1_anchor", f"{label} ancestry is missing or unsafe") from error
+    try:
+        info = os.fstat(supplied.descriptor)
+        reopened_info = os.fstat(reopened.descriptor)
+        if (
+            supplied.path != root.path.joinpath(*relative.split("/"))
+            or (info.st_dev, info.st_ino) != (expected_device, expected_inode)
+            or (reopened_info.st_dev, reopened_info.st_ino) != (expected_device, expected_inode)
+            or (supplied.device, supplied.inode) != (expected_device, expected_inode)
+        ):
+            raise _Reject("stage_b1_anchor", f"{label} differs from independent directory identity")
+    finally:
+        reopened.close()
+
+
+def _stage_b1_validate_sidecar(
+    raw: bytes,
+    sidecar: dict[str, object],
+    expected: ABC6StageB1Expectation,
+) -> None:
+    if type(sidecar) is not dict or set(sidecar) != _STAGE_B1_LAUNCH_ATTESTATION_KEYS:
+        raise _Reject("stage_b1_sidecar", "launch attestation has missing or extra fields")
+    if type(sidecar.get("schema_version")) is not int or sidecar["schema_version"] != 1:
+        raise _Reject("stage_b1_sidecar", "launch attestation schema version is invalid")
+    for name in (
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "approval_sha256",
+        "review_sha256",
+        "reviewed_git_head",
+        "watchdog_claim_sha256",
+        "physical_root",
+        "receipt_root_relative",
+    ):
+        if type(sidecar.get(name)) is not str:
+            raise _Reject("stage_b1_sidecar", f"launch attestation field {name} has the wrong type")
+    for name in (
+        "root_device",
+        "root_inode",
+        "receipt_device",
+        "receipt_inode",
+        "claim_parent_device",
+        "claim_parent_inode",
+        "observed_monotonic_ns",
+    ):
+        if type(sidecar.get(name)) is not int or sidecar[name] <= 0:
+            raise _Reject("stage_b1_sidecar", f"launch attestation field {name} is not a positive exact integer")
+    for name in ("manifest_sha256", "approval_sha256", "review_sha256", "watchdog_claim_sha256"):
+        if not _is_sha256(sidecar.get(name)):
+            raise _Reject("stage_b1_sidecar", f"launch attestation field {name} is not lowercase SHA-256")
+    if (
+        not _stage_b1_absolute_path(sidecar.get("physical_root"))
+        or not _stage_b1_absolute_path(expected.repository_root_realpath)
+        or type(sidecar.get("receipt_root_relative")) is not str
+    ):
+        raise _Reject("stage_b1_sidecar", "launch attestation root path is invalid")
+    watchdog = sidecar.get("watchdog_process")
+    child = sidecar.get("child_process")
+    if type(watchdog) is not dict or set(watchdog) != _STAGE_B1_PROCESS_KEYS:
+        raise _Reject("stage_b1_sidecar", "watchdog process attestation has missing or extra fields")
+    if type(child) is not dict or set(child) != _STAGE_B1_CHILD_PROCESS_KEYS:
+        raise _Reject("stage_b1_sidecar", "child process attestation has missing or extra fields")
+    for label, process in (("watchdog", watchdog), ("child", child)):
+        if type(process.get("pid")) is not int or process["pid"] <= 0:
+            raise _Reject("stage_b1_sidecar", f"{label} process PID is not a positive exact integer")
+        if not _stage_b1_safe_text(process.get("start_identity")):
+            raise _Reject("stage_b1_sidecar", f"{label} process start identity is invalid")
+        if not _stage_b1_json_vector(process.get("argv")):
+            raise _Reject("stage_b1_sidecar", f"{label} process argv is invalid")
+        if not _stage_b1_absolute_path(process.get("image_path")):
+            raise _Reject("stage_b1_sidecar", f"{label} process image path is invalid")
+        if not _is_sha256(process.get("image_sha256")):
+            raise _Reject("stage_b1_sidecar", f"{label} process image digest is invalid")
+    if (
+        not _stage_b1_json_vector(child.get("declared_launch_vector"))
+        or not _stage_b1_absolute_path(child.get("declared_launch_image_path"))
+        or not _is_sha256(child.get("declared_launch_image_sha256"))
+    ):
+        raise _Reject("stage_b1_sidecar", "child declared launch binding is invalid")
+    expected_processes = (
+        (watchdog, expected.watchdog_process, "watchdog"),
+        (child, expected.child_process, "child"),
+    )
+    for observed, process_expectation, label in expected_processes:
+        if process_expectation is not None:
+            if process_expectation.pid is not None and observed["pid"] != process_expectation.pid:
+                raise _Reject("stage_b1_sidecar", f"{label} process PID differs from independent fixture data")
+            if (
+                process_expectation.start_identity is not None
+                and observed["start_identity"] != process_expectation.start_identity
+            ):
+                raise _Reject("stage_b1_sidecar", f"{label} start identity differs from independent fixture data")
+    runtime = expected.watchdog_runtime
+    if (
+        watchdog["argv"] != list(runtime.observed_live_argv)
+        or watchdog["image_path"] != runtime.observed_python_app_image_path
+        or watchdog["image_sha256"] != runtime.observed_python_app_image_sha256
+        or child["argv"][0] not in expected.child_accepted_observed_argv0
+        or child["argv"][1:] != list(expected.child_expected_observed_argv_tail)
+        or child["image_path"] != expected.child_expected_observed_image_path
+        or child["image_sha256"] != expected.child_expected_observed_image_sha256
+        or child["declared_launch_vector"] != list(expected.child_declared_launch_vector)
+        or child["declared_launch_image_path"] != expected.child_declared_executable_resolved_path
+        or child["declared_launch_image_sha256"] != expected.child_declared_executable_sha256
+    ):
+        raise _Reject("stage_b1_sidecar", "process vectors or images differ from independent fixture data")
+    common = {
+        "protocol_id": expected.protocol_id,
+        "run_id": expected.run_id,
+        "manifest_sha256": expected.manifest_sha256,
+        "approval_sha256": expected.approval_record_sha256,
+        "review_sha256": expected.review_sha256,
+        "reviewed_git_head": expected.reviewed_git_head,
+        "watchdog_claim_sha256": expected.watchdog_claim_sha256,
+        "physical_root": expected.repository_root_realpath,
+        "root_device": expected.repository_root_device,
+        "root_inode": expected.repository_root_inode,
+        "receipt_root_relative": expected.receipt_root_relative,
+        "receipt_device": expected.receipt_root_device,
+        "receipt_inode": expected.receipt_root_inode,
+        "claim_parent_device": expected.watchdog_claim_parent_device,
+        "claim_parent_inode": expected.watchdog_claim_parent_inode,
+    }
+    if any(sidecar.get(name) != value for name, value in common.items()):
+        raise _Reject("stage_b1_sidecar", "launch attestation differs from independent identity bindings")
+    if _canonical_json(sidecar) != raw:
+        raise _Reject("stage_b1_sidecar", "launch attestation is not exact canonical JSON")
+
+
+def _stage_b1_verify(
+    root: cases._DirectoryAnchor,
+    receipt: cases._DirectoryAnchor,
+    claim_parent: cases._DirectoryAnchor,
+    scorer_claim_parent: cases._DirectoryAnchor,
+    terminal: object,
+    expected: ABC6StageB1Expectation,
+) -> tuple[str, str]:
+    runtime = _stage_b1_validate_expectation(expected)
+    if (
+        type(terminal) is not dict
+        or type(terminal.get("schema_version")) is not int
+        or terminal["schema_version"] != 4
+    ):
+        raise _Reject("stage_b1_terminal", "terminal is not exact schema-v4 evidence")
+    reference = terminal.get("launch_attestation")
+    reference_keys = {"leaf", "sha256", "device", "inode", "mode", "size_bytes"}
+    if type(reference) is not dict or set(reference) != reference_keys:
+        raise _Reject(
+            "stage_b1_reference",
+            "terminal launch_attestation reference has missing or extra fields",
+        )
+    if (
+        type(reference.get("leaf")) is not str
+        or reference["leaf"] != f"{expected.run_id}.launch-attestation.json"
+        or not _is_sha256(reference.get("sha256"))
+        or any(type(reference.get(name)) is not int for name in ("device", "inode", "mode", "size_bytes"))
+        or reference["device"] < 0
+        or reference["inode"] <= 0
+        or reference["mode"] <= 0
+        or reference["size_bytes"] <= 0
+        or reference["size_bytes"] > _STAGE_B1_MAX_LAUNCH_ATTESTATION_BYTES
+        or not stat.S_ISREG(reference["mode"])
+    ):
+        raise _Reject("stage_b1_reference", "terminal launch_attestation reference has invalid exact types or values")
+    if terminal.get("watchdog_claim_sha256") != expected.watchdog_claim_sha256:
+        raise _Reject("stage_b1_reference", "terminal watchdog claim digest differs from independent input")
+    if (
+        root.path != Path(expected.repository_root_realpath)
+        or (root.device, root.inode)
+        != (expected.repository_root_device, expected.repository_root_inode)
+    ):
+        raise _Reject("stage_b1_anchor", "physical root differs from independent fixture identity")
+    if (
+        receipt.path != root.path.joinpath(*expected.receipt_root_relative.split("/"))
+        or (receipt.device, receipt.inode)
+        != (expected.receipt_root_device, expected.receipt_root_inode)
+    ):
+        raise _Reject("stage_b1_anchor", "receipt root differs from independent fixture identity")
+    _stage_b1_verify_anchor(
+        root,
+        receipt,
+        expected.receipt_root_relative,
+        expected_device=expected.receipt_root_device,
+        expected_inode=expected.receipt_root_inode,
+        label="receipt root",
+    )
+    _stage_b1_verify_anchor(
+        root,
+        claim_parent,
+        campaign_fit.CAMPAIGN_CLAIM_PARENT_RELATIVE,
+        expected_device=expected.watchdog_claim_parent_device,
+        expected_inode=expected.watchdog_claim_parent_inode,
+        label="watchdog claim parent",
+    )
+    _stage_b1_verify_anchor(
+        root,
+        scorer_claim_parent,
+        _STAGE_B1_SCORER_CLAIM_PARENT_RELATIVE,
+        expected_device=expected.scorer_claim_parent_device,
+        expected_inode=expected.scorer_claim_parent_inode,
+        label="scorer claim parent",
+    )
+    claim_leaf = f"{expected.run_id}.watchdog.claim"
+    claim_raw, claim_identity = _stage_b1_read_leaf(
+        claim_parent,
+        claim_leaf,
+        maximum_bytes=MAX_CLAIM_BYTES,
+        label="watchdog one-use claim",
+        stage="stage_b1_claim",
+    )
+    claim_sha256 = hashlib.sha256(claim_raw).hexdigest()
+    if claim_sha256 != expected.watchdog_claim_sha256:
+        raise _Reject("stage_b1_claim", "watchdog claim raw digest differs from independent input")
+    claim = _decode_canonical(claim_raw, label="watchdog one-use claim", stage="stage_b1_claim")
+    _stage_b1_validate_claim(claim_raw, claim, expected, runtime)
+    sidecar_leaf = str(reference["leaf"])
+    sidecar_raw, sidecar_identity = _stage_b1_read_leaf(
+        claim_parent,
+        sidecar_leaf,
+        maximum_bytes=_STAGE_B1_MAX_LAUNCH_ATTESTATION_BYTES,
+        label="launch attestation sidecar",
+        stage="stage_b1_sidecar",
+    )
+    if (
+        len(sidecar_raw) != reference["size_bytes"]
+        or sidecar_identity[:4]
+        != (reference["device"], reference["inode"], reference["mode"], reference["size_bytes"])
+        or hashlib.sha256(sidecar_raw).hexdigest() != reference["sha256"]
+    ):
+        raise _Reject(
+            "stage_b1_sidecar",
+            "launch attestation bytes or (device,inode,mode,size) differ from terminal reference",
+        )
+    sidecar = _decode_canonical(
+        sidecar_raw, label="launch attestation sidecar", stage="stage_b1_sidecar"
+    )
+    _stage_b1_validate_sidecar(sidecar_raw, sidecar, expected)
+    claim_raw_after, claim_identity_after = _stage_b1_read_leaf(
+        claim_parent,
+        claim_leaf,
+        maximum_bytes=MAX_CLAIM_BYTES,
+        label="watchdog one-use claim revalidation",
+        stage="stage_b1_revalidation",
+    )
+    sidecar_raw_after, sidecar_identity_after = _stage_b1_read_leaf(
+        claim_parent,
+        sidecar_leaf,
+        maximum_bytes=_STAGE_B1_MAX_LAUNCH_ATTESTATION_BYTES,
+        label="launch attestation revalidation",
+        stage="stage_b1_revalidation",
+    )
+    if claim_raw_after != claim_raw or claim_identity_after != claim_identity:
+        raise _Reject("stage_b1_revalidation", "watchdog claim changed during B1 verification")
+    if sidecar_raw_after != sidecar_raw or sidecar_identity_after != sidecar_identity:
+        raise _Reject("stage_b1_revalidation", "launch attestation changed during B1 verification")
+    return claim_sha256, str(reference["sha256"])
+
+
+def verify_abc6_stage_b1_launch_evidence(
+    root: cases._DirectoryAnchor,
+    receipt: cases._DirectoryAnchor,
+    claim_parent: cases._DirectoryAnchor,
+    scorer_claim_parent: cases._DirectoryAnchor,
+    terminal: object,
+    expected: ABC6StageB1Expectation | None,
+) -> ABC6StageB1Verification:
+    """Structurally link fake-fixture claim/sidecar evidence under pinned anchors.
+
+    A successful result proves only that supplied bytes, fixed paths, exact
+    structures, file identities and independently supplied fixture values
+    agree. It does not classify a run or authorize production replay. Missing
+    independent expectations and every malformed or unstable input return an
+    explicit ``unreplayable`` result.
+    """
+
+    try:
+        if expected is None:
+            raise _Reject(
+                "stage_b1_expectation",
+                "independent typed expectation is unavailable; terminal-v4 evidence is unreplayable",
+            )
+        claim_sha256, sidecar_sha256 = _stage_b1_verify(
+            root, receipt, claim_parent, scorer_claim_parent, terminal, expected
+        )
+        return ABC6StageB1Verification(
+            status="evidence_linked",
+            detail="Exact fixture claim and launch attestation links match independent inputs.",
+            claim_sha256=claim_sha256,
+            launch_attestation_sha256=sidecar_sha256,
+        )
+    except Exception as error:
+        detail = error.args[0] if isinstance(error, _Reject) and error.args else "B1 evidence could not be verified"
+        return ABC6StageB1Verification(status="unreplayable", detail=str(detail))
 
 
 def _verify_watchdog_claim(
