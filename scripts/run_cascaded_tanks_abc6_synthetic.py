@@ -499,7 +499,10 @@ def run_cascaded_tanks_abc6_synthetic(
     # Exactly one public claimed campaign call. It performs strict manifest
     # preflight before consuming its O_EXCL run claim.
     execution = campaign_fit.run_abc6_training_campaign_with_evidence(
-        manifest_path, manifest_sha256, receipt_path
+        manifest_path,
+        manifest_sha256,
+        receipt_path,
+        launch_authority=launch_authority,
     )
     if not isinstance(execution, campaign_fit.ABC6TrainingCampaignExecution):
         raise ABC6SyntheticRunnerIntegrityError(

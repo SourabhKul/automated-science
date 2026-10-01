@@ -39,6 +39,7 @@ from typing import Final, Literal, cast
 
 import numpy as np
 
+from core.real_data import cascaded_tanks_abc6_authority as authority_module
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data import cascaded_tanks_abc6_receipt_io as receipt_io
 from core.real_data import cascaded_tanks_abc6_training as training
@@ -1197,6 +1198,9 @@ def _open_receipt_root_identity(
     repository_root_realpath: str,
     receipt_root_relative: str,
     requested_receipt_directory: str | os.PathLike[str],
+    *,
+    training_session: authority_module.ABC6TrainingSession | None = None,
+    manifest_sha256: str | None = None,
 ) -> ABC6ReceiptRootIdentity:
     relative = _validate_receipt_root_relative(receipt_root_relative)
     expected_path = Path(repository_root_realpath) / relative
@@ -1231,15 +1235,67 @@ def _open_receipt_root_identity(
         raise
     try:
         identity.verify()
-        if os.listdir(identity._receipt_root_fd):
-            raise ABC6CampaignPreflightError(
-                "run output directory must be empty before the one-use claim"
-            )
+        _check_preclaim_receipt_root(
+            identity,
+            identity._receipt_root_fd,
+            training_session,
+            scan="root-open",
+            manifest_sha256=manifest_sha256,
+        )
         os.fsync(identity._receipt_root_fd)
     except BaseException:
         identity.close()
         raise
     return identity
+
+
+def _check_preclaim_receipt_root(
+    receipt_root_identity: ABC6ReceiptRootIdentity,
+    receipt_directory_fd: int,
+    training_session: authority_module.ABC6TrainingSession | None,
+    *,
+    scan: str,
+    manifest_sha256: str | None = None,
+) -> None:
+    """Apply direct empty-only or supervised pinned-grant preclaim policy."""
+
+    # The directory listing and later O_EXCL claim are separate operations.
+    # This methods-control gate assumes the trusted local run owns its receipt
+    # root; it does not serialize or defeat an untrusted concurrent writer.
+    try:
+        receipt_root_identity.verify()
+        if training_session is None:
+            if os.listdir(receipt_directory_fd):
+                raise ABC6CampaignPreflightError(
+                    "run output directory must be empty before the one-use claim"
+                )
+            return
+        if type(training_session) is not authority_module.ABC6TrainingSession:
+            raise ABC6CampaignPreflightError(
+                "campaign preclaim requires a sealed training session"
+            )
+        if not isinstance(manifest_sha256, str) or len(manifest_sha256) != 64:
+            raise ABC6CampaignPreflightError(
+                "supervised campaign preclaim has no verified manifest digest"
+            )
+        training_session.verify_preclaim_root(
+            receipt_root_identity._repository_root_fd,
+            receipt_directory_fd,
+            scan=scan,
+            repository_root_realpath=receipt_root_identity.repository_root_realpath,
+            receipt_root_relative=receipt_root_identity.receipt_root_relative,
+            protocol_id=PROTOCOL_ID,
+            run_id=RUN_ID,
+            manifest_sha256=manifest_sha256,
+        )
+    except authority_module.ABC6AuthorityError as error:
+        raise ABC6CampaignPreflightError(
+            f"supervised campaign preclaim failed at {scan}: {error}"
+        ) from error
+    except OSError as error:
+        raise ABC6CampaignPreflightError(
+            f"campaign receipt-root scan failed at {scan}"
+        ) from error
 
 
 def _manifest_identity() -> dict[str, object]:
@@ -1827,15 +1883,19 @@ def _claim_run(
     receipt_directory_fd: int,
     receipt_root_identity: ABC6ReceiptRootIdentity,
     require_fixed_claim_path: bool,
+    training_session: authority_module.ABC6TrainingSession | None = None,
 ) -> str:
     if receipt_directory != receipt_root_identity.receipt_root_path:
         raise ABC6CampaignPreflightError(
             "campaign receipt path differs from its anchored receipt root"
         )
-    if os.listdir(receipt_directory_fd):
-        raise ABC6CampaignPreflightError(
-            "run output directory must be empty before the one-use claim"
-        )
+    _check_preclaim_receipt_root(
+        receipt_root_identity,
+        receipt_directory_fd,
+        training_session,
+        scan="claim-entry",
+        manifest_sha256=manifest_sha256,
+    )
     claim_parent_relative, claim_filename, claim_relative = (
         _relative_file_parts_under_checkout(
             receipt_root_identity.repository_root_realpath,
@@ -1879,11 +1939,13 @@ def _claim_run(
     try:
         # Recheck the opened tree and receipt before the irreversible global
         # claim. Every subsequent write still uses the retained directory FDs.
-        receipt_root_identity.verify()
-        if os.listdir(receipt_directory_fd):
-            raise ABC6CampaignPreflightError(
-                "run output directory must be empty before the one-use claim"
-            )
+        _check_preclaim_receipt_root(
+            receipt_root_identity,
+            receipt_directory_fd,
+            training_session,
+            scan="pre-durable-claim",
+            manifest_sha256=manifest_sha256,
+        )
         verification_root_fd = receipt_root_identity.duplicate_repository_root_fd()
         try:
             current_claim_parent_fd = _open_relative_directory_nofollow(
@@ -2205,6 +2267,7 @@ def _execute_campaign(
     require_reviewed_runtime: bool,
     claim_registry_path: Path,
     capture_training_evidence: bool = False,
+    training_session: authority_module.ABC6TrainingSession | None = None,
 ) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
     """Preflight the manifest/path, then execute against its anchored root."""
 
@@ -2221,6 +2284,8 @@ def _execute_campaign(
             str(manifest["repository_root_realpath"]),
             str(manifest["receipt_root_relative"]),
             receipt_directory,
+            training_session=training_session,
+            manifest_sha256=verified_manifest_sha256,
         )
     finally:
         os.close(repository_root_fd)
@@ -2234,6 +2299,7 @@ def _execute_campaign(
             claim_registry_path=claim_registry_path,
             capture_training_evidence=capture_training_evidence,
             require_fixed_claim_path=require_reviewed_runtime,
+            training_session=training_session,
         )
         if isinstance(result, ABC6TrainingCampaignExecution):
             transferred = True
@@ -2251,6 +2317,7 @@ def _execute_campaign_after_preflight(
     claim_registry_path: Path,
     capture_training_evidence: bool,
     require_fixed_claim_path: bool,
+    training_session: authority_module.ABC6TrainingSession | None = None,
 ) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
     """Claim once, then keep writes anchored to the opened receipt directory."""
 
@@ -2258,10 +2325,13 @@ def _execute_campaign_after_preflight(
     directory = receipt_identity.receipt_root_path
     receipt_directory_fd = receipt_identity.duplicate_receipt_root_fd_for_durable_write()
     try:
-        if os.listdir(receipt_directory_fd):
-            raise ABC6CampaignPreflightError(
-                "run output directory must be empty before the one-use claim"
-            )
+        _check_preclaim_receipt_root(
+            receipt_identity,
+            receipt_directory_fd,
+            training_session,
+            scan="execution-preclaim",
+            manifest_sha256=verified_manifest_sha256,
+        )
         claim_sha256 = _claim_run(
             directory,
             verified_manifest_sha256,
@@ -2269,6 +2339,7 @@ def _execute_campaign_after_preflight(
             receipt_directory_fd=receipt_directory_fd,
             receipt_root_identity=receipt_identity,
             require_fixed_claim_path=require_fixed_claim_path,
+            training_session=training_session,
         )
         try:
             receipt_identity.verify()
@@ -2707,6 +2778,8 @@ def run_abc6_training_campaign_with_evidence(
     manifest_path: str | os.PathLike[str],
     manifest_sha256: str,
     receipt_directory: str | os.PathLike[str],
+    *,
+    launch_authority: authority_module.ABC6LaunchAuthority | None = None,
 ) -> ABC6TrainingCampaignExecution:
     """Run the claimed 24-case campaign and return its exact in-memory evidence.
 
@@ -2717,6 +2790,21 @@ def run_abc6_training_campaign_with_evidence(
     failure remains terminal and returns no execution object.
     """
 
+    training_session = None
+    if launch_authority is not None:
+        if type(launch_authority) is not authority_module.ABC6LaunchAuthority:
+            raise ABC6CampaignPreflightError(
+                "supervised campaign requires the received launch authority"
+            )
+        try:
+            # This is deliberately the first supervised action in the public
+            # entrypoint: begin_training() checks this exact role/source/function.
+            training_session = launch_authority.begin_training()
+        except authority_module.ABC6AuthorityError as error:
+            raise ABC6CampaignPreflightError(
+                f"supervised campaign training authority was rejected: {error}"
+            ) from error
+
     result = _execute_campaign(
         manifest_path,
         manifest_sha256,
@@ -2725,6 +2813,7 @@ def run_abc6_training_campaign_with_evidence(
         require_reviewed_runtime=True,
         claim_registry_path=_PROJECT_RUN_CLAIM_PATH,
         capture_training_evidence=True,
+        training_session=training_session,
     )
     if not isinstance(result, ABC6TrainingCampaignExecution):  # pragma: no cover.
         raise AssertionError("evidence campaign did not return its training evidence")

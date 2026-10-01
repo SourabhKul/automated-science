@@ -78,6 +78,7 @@ def fake_case(authority_value, permit, index):
     return duplicate_rejected, receipts
 
 def fake_campaign(authority_value):
+    session = authority_value.begin_training()
     claim_body = {
         "schema_version": 1,
         "protocol_id": PROTOCOL,
@@ -91,7 +92,6 @@ def fake_campaign(authority_value):
     write_bytes(ROOT / CLAIM, claim_raw)
     claim_sha = hashlib.sha256(claim_raw).hexdigest()
 
-    session = authority_value.begin_training()
     duplicate_index_rejected = False
     case_receipts = []
     duplicate_consume_rejected = []
@@ -147,6 +147,9 @@ def fake_campaign(authority_value):
     forecast_sha = hashlib.sha256(forecast_raw).hexdigest()
     return case_receipts, summary_sha, forecast_sha, duplicate_index_rejected, duplicate_consume_rejected
 
+def fake_wrong_campaign(authority_value):
+    return authority_value.begin_training()
+
 def fake_scorer(authority_value, score_permit):
     metadata = score_permit.consume()
     duplicate_score_rejected = False
@@ -166,8 +169,21 @@ def fake_runner(authority_value):
     except a.ABC6AuthorityError:
         repeated_activation_rejected = True
     metadata, duplicate_score = fake_scorer(authority_value, score_permit)
+    grant_record = authority_value._grant_record
     return {
         "metadata": metadata,
+        "grant_record_snapshot": {
+            "record_sha256": grant_record.record_sha256,
+            "file_identity": [
+                grant_record.file_identity.device,
+                grant_record.file_identity.inode,
+                grant_record.file_identity.size,
+                grant_record.file_identity.mtime_ns,
+                grant_record.file_identity.ctime_ns,
+            ],
+            "file_mode": grant_record.file_mode,
+            "regular_file": grant_record.regular_file,
+        },
         "duplicate_index_rejected": duplicate_index,
         "duplicate_case_consumes_rejected": all(duplicate_consumes),
         "repeated_activation_rejected": repeated_activation_rejected,
@@ -186,6 +202,15 @@ def main():
             print(json.dumps({"changed_process_rejected": True}, sort_keys=True))
             return 0
         print(json.dumps({"changed_process_rejected": False}, sort_keys=True))
+        return 2
+    if mode in ("wrong-source", "wrong-function"):
+        entry = fake_campaign if mode == "wrong-source" else fake_wrong_campaign
+        try:
+            entry(authority_value)
+        except a.ABC6AuthorityError:
+            print(json.dumps({"wrong_entrypoint_rejected": True}, sort_keys=True))
+            return 0
+        print(json.dumps({"wrong_entrypoint_rejected": False}, sort_keys=True))
         return 2
     print(json.dumps(fake_runner(authority_value), sort_keys=True))
     return 0
@@ -293,11 +318,18 @@ def _wire(
     return struct.pack("!I", len(raw)) + raw
 
 
-def _issue_fake_grant(monkeypatch, root: Path, receipt_relative: str, source_path: Path):
+def _issue_fake_grant(
+    monkeypatch,
+    root: Path,
+    receipt_relative: str,
+    source_path: Path,
+    *,
+    mode: str = "valid",
+):
     monkeypatch.setattr(authority, "_watchdog_callsite", lambda: None)
     channel = authority._new_watchdog_grant_channel()
     child_fd = channel.child_fd
-    vector = [sys.executable, "-S", str(source_path), str(child_fd), "valid"]
+    vector = [sys.executable, "-S", str(source_path), str(child_fd), mode]
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
     process = subprocess.Popen(vector, pass_fds=(child_fd,), cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -324,6 +356,19 @@ def test_fake_child_traverses_one_use_training_and_scoring_once(tmp_path, monkey
     assert child.returncode == 0, stderr
     result = json.loads(stdout)
     metadata = result["metadata"]
+    grant_receipt_stat = grant_digest.file_identity
+    assert result["grant_record_snapshot"] == {
+        "record_sha256": grant_digest.record_sha256,
+        "file_identity": [
+            grant_receipt_stat.device,
+            grant_receipt_stat.inode,
+            grant_receipt_stat.size,
+            grant_receipt_stat.mtime_ns,
+            grant_receipt_stat.ctime_ns,
+        ],
+        "file_mode": 0o600,
+        "regular_file": True,
+    }
     assert metadata["grant_sha256"] == grant_digest.grant_sha256
     assert metadata["run_id"] == "private-authority-test-v1"
     assert metadata["child_launch_image_path"] == binding.child_launch_image_path
@@ -370,6 +415,25 @@ def test_changed_process_identity_fails_before_training(tmp_path, monkeypatch):
     channel.close()
     assert child.returncode == 0, stderr
     assert json.loads(stdout)["changed_process_rejected"] is True
+
+
+@pytest.mark.parametrize("mode", ("wrong-source", "wrong-function"))
+def test_training_authority_rejects_wrong_campaign_source_or_function(
+    tmp_path, monkeypatch, mode
+):
+    source = _fake_child_source().encode("utf-8")
+    root, receipt_relative, _receipt = _make_fake_root(tmp_path, source)
+    script = root / "fake_child.py"
+    if mode == "wrong-source":
+        script = root / "copied_fake_child.py"
+        script.write_bytes(source)
+    channel, child, _snapshot, _binding = _issue_fake_grant(
+        monkeypatch, root, receipt_relative, script, mode=mode
+    )
+    stdout, stderr = child.communicate(timeout=10)
+    channel.close()
+    assert child.returncode == 0, stderr
+    assert json.loads(stdout)["wrong_entrypoint_rejected"] is True
 
 
 def test_launch_and_runtime_image_bindings_are_checked_independently(tmp_path):

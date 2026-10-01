@@ -33,6 +33,12 @@ MAX_IMAGE_BYTES: Final = 512 * 1024 * 1024
 GRANT_TTL_NS: Final = 5_000_000_000
 GRANT_WAIT_NS: Final = 5_000_000_000
 GRANT_RECORD: Final = "watchdog-child-grant.json"
+_PRECLAIM_SCAN_ORDER: Final = (
+    "root-open",
+    "execution-preclaim",
+    "claim-entry",
+    "pre-durable-claim",
+)
 CASE_COUNT: Final = 24
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _GIT = re.compile(r"^[0-9a-f]{40}$")
@@ -115,6 +121,16 @@ class GrantRecordSnapshot:
     grant_fd: int
     file_identity: _FileId
     bindings: "ABC6AuthorityBindings"
+
+
+@dataclass(frozen=True, slots=True)
+class _ReceivedGrantRecord:
+    """Child-receipt identity retained for every supervised preclaim check."""
+
+    record_sha256: str
+    file_identity: _FileId
+    file_mode: int
+    regular_file: bool
 
 
 def _process_start(pid: int) -> str:
@@ -804,16 +820,37 @@ class _State:
 class ABC6LaunchAuthority:
     """Opaque in-memory capability tied to one live child process."""
 
-    __slots__ = ("_seal", "_bindings", "_grant_digest", "_grant_fd", "_root_fd", "_receipt_fd", "_identity", "_state")
+    __slots__ = (
+        "_seal",
+        "_bindings",
+        "_grant_digest",
+        "_grant_fd",
+        "_grant_record",
+        "_root_fd",
+        "_receipt_fd",
+        "_identity",
+        "_state",
+    )
 
     def __new__(cls, seal: object = None, *_args: object, **_kwargs: object):
         if cls is not ABC6LaunchAuthority or seal is not _AUTHORITY_SEAL:
             raise TypeError("launch authority is minted only by a verified inherited grant")
         return super().__new__(cls)
 
-    def __init__(self, seal: object, bindings: ABC6AuthorityBindings, grant_digest: str, grant_fd: int, root_fd: int, receipt_fd: int, identity: ProcessIdentity):
+    def __init__(
+        self,
+        seal: object,
+        bindings: ABC6AuthorityBindings,
+        grant_digest: str,
+        grant_fd: int,
+        grant_record: _ReceivedGrantRecord,
+        root_fd: int,
+        receipt_fd: int,
+        identity: ProcessIdentity,
+    ):
         self._seal, self._bindings, self._grant_digest = seal, bindings, grant_digest
         self._grant_fd = grant_fd
+        self._grant_record = grant_record
         self._root_fd, self._receipt_fd, self._identity = root_fd, receipt_fd, identity
         self._state = _State()
 
@@ -859,6 +896,118 @@ class ABC6LaunchAuthority:
                 raise ABC6AuthorityError("training phase is one-use")
             self._state.training_started = True
         return ABC6TrainingSession(_SESSION_SEAL, self)
+
+    def _verify_training_preclaim_root(
+        self,
+        repository_root_fd: int,
+        receipt_root_fd: int,
+        *,
+        repository_root_realpath: str,
+        receipt_root_relative: str,
+        protocol_id: str,
+        run_id: str,
+        manifest_sha256: str,
+    ) -> None:
+        """Verify the campaign's opened root and the exact received grant leaf."""
+
+        self._assert_live()
+        bindings = self._bindings
+        if (
+            repository_root_realpath != bindings.physical_root
+            or receipt_root_relative != bindings.receipt_root_relative
+            or protocol_id != bindings.protocol_id
+            or run_id != bindings.run_id
+            or manifest_sha256 != bindings.manifest_sha256
+        ):
+            raise ABC6AuthorityError(
+                "campaign preclaim identity differs from the received grant bindings"
+            )
+        try:
+            root_info = os.fstat(repository_root_fd)
+            receipt_info = os.fstat(receipt_root_fd)
+            authority_root_info = os.fstat(self._root_fd)
+            authority_receipt_info = os.fstat(self._receipt_fd)
+        except (OSError, TypeError, ValueError) as error:
+            raise ABC6AuthorityError("campaign preclaim root descriptor is unavailable") from error
+        if (
+            not stat.S_ISDIR(root_info.st_mode)
+            or not stat.S_ISDIR(receipt_info.st_mode)
+            or (root_info.st_dev, root_info.st_ino)
+            != (bindings.root_device, bindings.root_inode)
+            or (receipt_info.st_dev, receipt_info.st_ino)
+            != (bindings.receipt_device, bindings.receipt_inode)
+            or (authority_root_info.st_dev, authority_root_info.st_ino)
+            != (root_info.st_dev, root_info.st_ino)
+            or (authority_receipt_info.st_dev, authority_receipt_info.st_ino)
+            != (receipt_info.st_dev, receipt_info.st_ino)
+        ):
+            raise ABC6AuthorityError(
+                "campaign preclaim descriptors differ from the authority-pinned root"
+            )
+
+        try:
+            if set(os.listdir(receipt_root_fd)) != {GRANT_RECORD}:
+                raise ABC6AuthorityError(
+                    "supervised receipt root must contain only the pinned grant leaf"
+                )
+            fd = os.open(GRANT_RECORD, _flags(), dir_fd=receipt_root_fd)
+        except OSError as error:
+            raise ABC6AuthorityError(
+                "pinned watchdog grant leaf is missing or unsafe"
+            ) from error
+        try:
+            before = os.fstat(fd)
+            snapshot = self._grant_record
+            if (
+                not snapshot.regular_file
+                or not stat.S_ISREG(before.st_mode)
+                or stat.S_IMODE(before.st_mode) != snapshot.file_mode
+            ):
+                raise ABC6AuthorityError(
+                    "pinned watchdog grant leaf type or mode changed"
+                )
+            raw, file_identity = _read_fd(
+                fd, MAX_FRAME_BYTES, "pinned watchdog grant leaf"
+            )
+            after = os.fstat(fd)
+            named = os.stat(
+                GRANT_RECORD,
+                dir_fd=receipt_root_fd,
+                follow_symlinks=False,
+            )
+        except OSError as error:
+            raise ABC6AuthorityError(
+                "pinned watchdog grant leaf could not be read safely"
+            ) from error
+        finally:
+            os.close(fd)
+
+        expected_identity = snapshot.file_identity
+        if (
+            _FileId.of(after) != expected_identity
+            or file_identity != expected_identity
+            or _FileId.of(named) != expected_identity
+            or not stat.S_ISREG(named.st_mode)
+            or stat.S_IMODE(named.st_mode) != snapshot.file_mode
+            or _sha(raw) != snapshot.record_sha256
+        ):
+            raise ABC6AuthorityError(
+                "pinned watchdog grant leaf identity or digest changed"
+            )
+
+        expected = _json(
+            {
+                "schema_version": 1,
+                "grant_sha256": self._grant_digest,
+                "grant_fd": self._grant_fd,
+                "bindings_sha256": _sha(_json(bindings.payload())),
+                "bindings": bindings.payload(),
+            }
+        )
+        if raw != expected:
+            raise ABC6AuthorityError(
+                "pinned watchdog grant leaf payload differs from live authority"
+            )
 
     def consume_runner_startup(self) -> None:
         """Consume the one-use authenticated runner entry before preflight."""
@@ -972,14 +1121,24 @@ class ABC6LaunchAuthority:
 
 def _read_grant_record(
     receipt_fd: int, bindings: ABC6AuthorityBindings, digest: str, grant_fd: int
-) -> None:
+) -> _ReceivedGrantRecord:
     try:
         fd = os.open(GRANT_RECORD, _flags(), dir_fd=receipt_fd)
     except OSError as error:
         raise ABC6AuthorityError("watchdog grant digest receipt is missing or unsafe") from error
     try:
-        raw, _ = _read_fd(fd, MAX_FRAME_BYTES, "watchdog grant receipt")
-        if _FileId.of(os.fstat(fd)) != _FileId.of(os.stat(GRANT_RECORD, dir_fd=receipt_fd, follow_symlinks=False)):
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or stat.S_IMODE(before.st_mode) != 0o600:
+            raise ABC6AuthorityError("watchdog grant receipt has an unsafe file type or mode")
+        raw, file_identity = _read_fd(fd, MAX_FRAME_BYTES, "watchdog grant receipt")
+        after = os.fstat(fd)
+        named = os.stat(GRANT_RECORD, dir_fd=receipt_fd, follow_symlinks=False)
+        if (
+            _FileId.of(after) != file_identity
+            or _FileId.of(named) != file_identity
+            or not stat.S_ISREG(named.st_mode)
+            or stat.S_IMODE(named.st_mode) != stat.S_IMODE(before.st_mode)
+        ):
             raise ABC6AuthorityError("watchdog grant receipt name changed during read")
     finally:
         os.close(fd)
@@ -996,6 +1155,12 @@ def _read_grant_record(
     }
     if type(value) is not dict or _json(value) != raw or value != expected:
         raise ABC6AuthorityError("watchdog grant receipt does not match the received secret and bindings")
+    return _ReceivedGrantRecord(
+        record_sha256=_sha(raw),
+        file_identity=file_identity,
+        file_mode=stat.S_IMODE(before.st_mode),
+        regular_file=True,
+    )
 
 
 def receive_child_grant(fd: int) -> ABC6LaunchAuthority:
@@ -1036,12 +1201,15 @@ def receive_child_grant(fd: int) -> ABC6LaunchAuthority:
                 raise ABC6AuthorityError("pinned source identity differs from the grant")
         if _sha(sys.version.encode()) != dict(bindings.runtime_hashes)["python_version_sha256"]:
             raise ABC6AuthorityError("Python runtime differs from the grant")
-        _read_grant_record(receipt_fd, bindings, _sha(bytes(secret)), fd)
+        grant_record = _read_grant_record(
+            receipt_fd, bindings, _sha(bytes(secret)), fd
+        )
         authority = ABC6LaunchAuthority(
             _AUTHORITY_SEAL,
             bindings,
             _sha(bytes(secret)),
             fd,
+            grant_record,
             root_fd,
             receipt_fd,
             identity,
@@ -1061,7 +1229,7 @@ def receive_child_grant(fd: int) -> ABC6LaunchAuthority:
 
 
 class ABC6TrainingSession:
-    __slots__ = ("_seal", "_authority")
+    __slots__ = ("_seal", "_authority", "_receipt_scan_index", "_receipt_scan_failed")
 
     def __new__(cls, seal: object = None, *_args: object, **_kwargs: object):
         if cls is not ABC6TrainingSession or seal is not _SESSION_SEAL:
@@ -1072,6 +1240,50 @@ class ABC6TrainingSession:
         if seal is not _SESSION_SEAL or authority._seal is not _AUTHORITY_SEAL:
             raise TypeError("invalid training session")
         self._seal, self._authority = seal, authority
+        self._receipt_scan_index = 0
+        self._receipt_scan_failed = False
+
+    def verify_preclaim_root(
+        self,
+        repository_root_fd: int,
+        receipt_root_fd: int,
+        *,
+        scan: str,
+        repository_root_realpath: str,
+        receipt_root_relative: str,
+        protocol_id: str,
+        run_id: str,
+        manifest_sha256: str,
+    ) -> None:
+        """Authorize one ordered scan of the sole pinned grant leaf."""
+
+        authority = self._authority
+        if (
+            self._seal is not _SESSION_SEAL
+            or authority._seal is not _AUTHORITY_SEAL
+            or self._receipt_scan_failed
+            or not authority._state.training_started
+            or self._receipt_scan_index >= len(_PRECLAIM_SCAN_ORDER)
+            or scan != _PRECLAIM_SCAN_ORDER[self._receipt_scan_index]
+        ):
+            self._receipt_scan_failed = True
+            raise ABC6AuthorityError(
+                "training session is stale, replayed, or out of preclaim order"
+            )
+        self._receipt_scan_index += 1
+        try:
+            authority._verify_training_preclaim_root(
+                repository_root_fd,
+                receipt_root_fd,
+                repository_root_realpath=repository_root_realpath,
+                receipt_root_relative=receipt_root_relative,
+                protocol_id=protocol_id,
+                run_id=run_id,
+                manifest_sha256=manifest_sha256,
+            )
+        except BaseException:
+            self._receipt_scan_failed = True
+            raise
 
     def issue_case_permit(self, index: int) -> "ABC6TrainingPermit":
         authority = self._authority

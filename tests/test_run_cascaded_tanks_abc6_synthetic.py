@@ -199,7 +199,8 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
     events = []
     campaign_calls = []
 
-    def fake_campaign(*args):
+    def fake_campaign(*args, **kwargs):
+        assert kwargs == {"launch_authority": test_authority}
         campaign_calls.append(args)
         events.append("campaign")
         return _execute_private_training(
@@ -398,10 +399,14 @@ def test_preopen_artifacts_symlink_fails_before_claim_marker_or_materializer(
     monkeypatch.setattr(
         campaign_fit,
         "run_abc6_training_campaign_with_evidence",
-        lambda *args: (
-            campaign_calls.append(args),
-            _execute_private_training(*args, claim_registry),
-        )[1],
+        lambda *args, **kwargs: (
+            pytest.fail("runner did not pass the received launch authority")
+            if kwargs != {"launch_authority": test_authority}
+            else (
+                campaign_calls.append(args),
+                _execute_private_training(*args, claim_registry),
+            )[1]
+        ),
     )
     monkeypatch.setattr(
         cases,
@@ -442,7 +447,8 @@ def test_postopen_artifacts_swap_cannot_redirect_forecast_readback_or_reveal(
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     campaign_calls = []
 
-    def fake_campaign(*args):
+    def fake_campaign(*args, **kwargs):
+        assert kwargs == {"launch_authority": test_authority}
         campaign_calls.append(args)
         return _execute_private_training(
             args[0], args[1], args[2], claim_registry
@@ -528,7 +534,8 @@ def test_missing_incomplete_case_receipt_fails_before_scorer_or_materializer(
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     campaign_calls = []
 
-    def fake_campaign(*args):
+    def fake_campaign(*args, **kwargs):
+        assert kwargs == {"launch_authority": test_authority}
         campaign_calls.append(args)
         execution = _execute_private_training(
             args[0], args[1], args[2], claim_registry
