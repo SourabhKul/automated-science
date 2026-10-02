@@ -1,6 +1,39 @@
 # Automated science: current research state
 
-Updated: 2026-10-02T01:03Z. This file records observed state, not inferred execution.
+Updated: 2026-10-02T01:43Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: fake-only source/role closure component reviewed and synced
+
+An independent Luna reviewer matched the exact twelve-file diff SHA-256
+`742efb9bb613645995d5cf6b1bd6cb0fae9de68b8198fc908f072a17194df23c`
+and cleared **only** the source/role schema component for sync. It now requires
+the exact sixteen-key external manifest/grant source roster, fifteen-key
+static reviewed map excluding campaign-fit's self-digest, and four fixed
+runner/campaign/case/scorer role pairs. The persisted integrated source
+record remains the intentional three paths. Source hashing uses anchored
+no-follow reads and preclaim revalidation; fake leaf/ancestor symlink and
+replacement probes fail before any claim. Production static pins remain
+`None`, deliberately keeping launch preclaim closed. The sole Luna Git owner
+pushed exactly those twelve reviewed paths non-force to `main` as
+`a2276e7fbd562666a4d2311224f3fd1aa9bcf1c7`, whose parent is the
+reviewed-docs commit `d8846411ffe0e9dd96c14e55d176e389e2da1ee0`.
+Fresh fetch verified clean `HEAD == origin/main == FETCH_HEAD` at the content
+commit. Earlier docs sync staged only the source/role design, state and ledger.
+
+The independent 296-case fake-only batch returned **295 passed, one failed**
+both on the current checkout and clean-HEAD-plus-exact-diff overlay. The
+failing watchdog subprocess test differed, but both receipts show a
+successful child exit classified as live process-group members before a
+verified-empty reap. The changed watchdog path did not enter that supervision
+branch. Preserve this possible pre-existing PGID timing race as a material
+validation limitation; do not report a fully passing batch. No production
+manifest, approval or launch GO follows from component sync. Direct-call
+one-use permits, typed native runtime binding, production source hashes,
+source-backed replay expectations and terminal-v4 classification remain HOLD.
+The reserved synthetic campaign remains UNUSED/HOLD with no protocol
+prospective targets or real tank Qwen/ABC/held-out access. Silverbox
+multisine remains consumed without score. See
+`reports/research-ledger/2026-10-02T0143Z.md`.
 
 ## Latest checkpoint: source/role schema design cleared for fake-only work
 
