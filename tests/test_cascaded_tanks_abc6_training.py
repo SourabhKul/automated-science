@@ -7,6 +7,7 @@ import json
 import math
 
 import numpy as np
+import pytest
 
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data import cascaded_tanks_abc6_training as training
@@ -82,7 +83,14 @@ def test_public_entry_point_uses_only_frozen_production_controls(monkeypatch) ->
         return sentinel
 
     monkeypatch.setattr(training, "_run_one_case", capture_controls)
-    result = training.run_abc6_training_case(bundle.data_for_case(0))
+    with pytest.raises(TypeError, match="sealed authorized case data"):
+        training.run_abc6_training_case(bundle.data_for_case(0))
+    result = training._run_one_case_with_bounded_controls_for_test(
+        bundle.data_for_case(0),
+        calibration_draws=256,
+        target_samples=48,
+        max_attempts_per_population=4096,
+    )
 
     assert result is sentinel
     assert observed == [(256, 48, 4096)]

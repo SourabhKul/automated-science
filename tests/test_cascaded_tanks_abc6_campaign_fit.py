@@ -8,6 +8,7 @@ import os
 import shutil
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,10 +17,10 @@ from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data import cascaded_tanks_abc6_training as training
 from core.real_data.cascaded_tanks_abc6_cases import (
-    ABC6TrainingBundle,
-    ABC6TrainingCaseData,
     TRAINING_INPUT_L,
     TRAINING_INPUT_S,
+    ABC6TrainingBundle,
+    ABC6TrainingCaseData,
 )
 from core.real_data.cascaded_tanks_models import TankState
 from core.real_data.cascaded_tanks_pattern_search import (
@@ -483,91 +484,67 @@ def test_public_status_only_entrypoint_keeps_compact_result_contract(
     )
     observed = {}
 
-    def fake_execute(*args, **kwargs):
+    authority_value = object()
+
+    def fake_evidence(*args, **kwargs):
         observed["args"] = args
         observed["kwargs"] = kwargs
-        return expected
+        return SimpleNamespace(campaign_result=expected)
 
-    monkeypatch.setattr(campaign, "_execute_campaign", fake_execute)
-    claim_path = tmp_path / "private-claim-registry" / "claim"
-    monkeypatch.setattr(campaign, "_PROJECT_RUN_CLAIM_PATH", claim_path)
+    monkeypatch.setattr(
+        campaign, "run_abc6_training_campaign_with_evidence", fake_evidence
+    )
 
     result = campaign.run_abc6_training_campaign(
-        tmp_path / "private-manifest.json", "d" * 64, tmp_path / "private-output"
+        tmp_path / "private-manifest.json",
+        "d" * 64,
+        tmp_path / "private-output",
+        launch_authority=authority_value,
     )
 
     assert result is expected
     assert type(result) is campaign.ABC6CampaignResult
-    assert observed["kwargs"]["capture_training_evidence"] is False
-    assert observed["kwargs"]["fit_callable"] is campaign.training.run_abc6_training_case
-    assert observed["kwargs"]["require_reviewed_runtime"] is True
-    assert observed["kwargs"]["claim_registry_path"] == claim_path
+    assert observed["args"] == (
+        tmp_path / "private-manifest.json",
+        "d" * 64,
+        tmp_path / "private-output",
+    )
+    assert observed["kwargs"] == {"launch_authority": authority_value}
 
 
 def test_public_evidence_entrypoint_uses_reviewed_claimed_execution_path(
     tmp_path, monkeypatch
 ) -> None:
-    output = _receipt_root(tmp_path)
-    bundle = _fake_training_bundle()
-    results = tuple(
-        _fake_result(bundle.data_for_case(index)) for index in range(cases.CASE_COUNT)
+    sentinel = object()
+    monkeypatch.setattr(
+        campaign,
+        "_execute_campaign",
+        lambda *_args, **_kwargs: pytest.fail("missing authority reached campaign execution"),
     )
-    statuses = tuple(
-        campaign.ABC6CaseStatus(
-            case_index=index,
-            case_id=case.case_id,
-            fit_status="complete",
-            baseline_status="complete",
-            fit_receipt_sha256="a" * 64,
-            baseline_receipt_sha256="b" * 64,
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="launch authority"):
+        campaign.run_abc6_training_campaign_with_evidence(
+            tmp_path / "private-manifest.json",
+            "f" * 64,
+            tmp_path / "private-output",
+            launch_authority=sentinel,
         )
-        for index, case in enumerate(cases.CASE_ROSTER)
+
+
+def test_public_evidence_entrypoint_requires_non_null_authority_before_execution(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        campaign,
+        "_execute_campaign",
+        lambda *_args, **_kwargs: pytest.fail("missing authority reached campaign execution"),
     )
-    expected = campaign.ABC6TrainingCampaignExecution(
-        campaign_result=campaign.ABC6CampaignResult(
-            protocol_id=campaign.PROTOCOL_ID,
-            run_id=campaign.RUN_ID,
-            manifest_sha256="c" * 64,
-            claim_sha256="d" * 64,
-            status="complete",
-            case_statuses=statuses,
-            summary_path=output / campaign.SUMMARY_FILENAME,
-            summary_sha256="e" * 64,
-        ),
-        evidence_manifest_path=output / campaign.EVIDENCE_MANIFEST_FILENAME,
-        evidence_manifest_sha256="f" * 64,
-        receipt_root_identity=_test_receipt_identity(tmp_path),
-        _training_bundle=bundle,
-        _training_results=results,
-    )
-    observed = {}
-
-    def fake_execute(*args, **kwargs):
-        observed["args"] = args
-        observed["kwargs"] = kwargs
-        return expected
-
-    monkeypatch.setattr(campaign, "_execute_campaign", fake_execute)
-    claim_path = tmp_path / "private-claim-registry" / "claim"
-    monkeypatch.setattr(campaign, "_PROJECT_RUN_CLAIM_PATH", claim_path)
-
-    execution = campaign.run_abc6_training_campaign_with_evidence(
-        tmp_path / "private-manifest.json", "f" * 64, tmp_path / "private-output"
-    )
-
-    assert execution is expected
-    assert execution._training_bundle is bundle
-    assert all(
-        captured is expected
-        for captured, expected in zip(
-            execution._training_results, results, strict=True
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="launch authority"):
+        campaign.run_abc6_training_campaign_with_evidence(
+            tmp_path / "private-manifest.json",
+            "f" * 64,
+            tmp_path / "private-output",
+            launch_authority=None,
         )
-    )
-    assert not hasattr(execution, "training_results")
-    assert observed["kwargs"]["capture_training_evidence"] is True
-    assert observed["kwargs"]["fit_callable"] is campaign.training.run_abc6_training_case
-    assert observed["kwargs"]["require_reviewed_runtime"] is True
-    assert observed["kwargs"]["claim_registry_path"] == claim_path
 
 
 def test_verified_execution_requires_anchored_receipt_identity(

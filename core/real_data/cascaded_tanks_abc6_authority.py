@@ -26,7 +26,6 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Final
 
-
 MAX_FRAME_BYTES: Final = 64 * 1024
 MAX_SOURCE_BYTES: Final = 16 * 1024 * 1024
 MAX_IMAGE_BYTES: Final = 512 * 1024 * 1024
@@ -870,6 +869,10 @@ class _State:
         self.training_started = False
         self.issued: set[int] = set()
         self.consumed: set[int] = set()
+        self.training_bundle: object | None = None
+        self.execution_registration_attempted = False
+        self.training_execution: object | None = None
+        self.training_execution_binding: tuple[object, ...] | None = None
         self.activation_attempted = False
         self.activated = False
         self.score_consumed = False
@@ -951,10 +954,111 @@ class ABC6LaunchAuthority:
         self._assert_live()
         _require_role(self, "campaign")
         with self._state.lock:
+            if not self._state.runner_entry_consumed:
+                raise ABC6AuthorityError(
+                    "runner startup must be consumed before training can begin"
+                )
             if self._state.training_started or self._state.activation_attempted:
                 raise ABC6AuthorityError("training phase is one-use")
             self._state.training_started = True
         return ABC6TrainingSession(_SESSION_SEAL, self)
+
+    def register_training_execution(self, execution: object) -> None:
+        """Register the exact completed campaign object once for later handoff."""
+
+        self._assert_live()
+        _require_role(self, "campaign")
+        with self._state.lock:
+            if self._state.execution_registration_attempted:
+                raise ABC6AuthorityError(
+                    "training execution registration is one-use"
+                )
+            self._state.execution_registration_attempted = True
+            if (
+                not self._state.training_started
+                or self._state.issued != set(range(CASE_COUNT))
+                or self._state.consumed != set(range(CASE_COUNT))
+            ):
+                raise ABC6AuthorityError(
+                    "training execution requires all 24 issued and consumed case permits"
+                )
+            # Retain this attempted object even if its binding check fails so
+            # cleanup remains identity-safe and no substitute can be retried.
+            self._state.training_execution = execution
+            binding = self._training_execution_binding(execution)
+            self._state.training_execution_binding = binding
+
+    def _training_execution_binding(self, execution: object) -> tuple[object, ...]:
+        """Validate and return the immutable grant/run/manifest/root binding."""
+
+        from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign
+
+        if type(execution) is not campaign.ABC6TrainingCampaignExecution:
+            raise ABC6AuthorityError(
+                "training handoff requires the exact campaign execution type"
+            )
+        if (
+            execution._seal is not campaign._TRAINING_EXECUTION_SEAL
+            or execution._authority is not self
+            or execution._grant_sha256 != self._grant_digest
+        ):
+            raise ABC6AuthorityError(
+                "training execution is not sealed to this launch grant"
+            )
+        result = execution.campaign_result
+        identity = execution.receipt_root_identity
+        bindings = self._bindings
+        if (
+            execution._run_id != bindings.run_id
+            or execution._manifest_sha256 != bindings.manifest_sha256
+            or result.run_id != bindings.run_id
+            or result.manifest_sha256 != bindings.manifest_sha256
+            or result.protocol_id != bindings.protocol_id
+            or identity.repository_root_realpath != bindings.physical_root
+            or identity.receipt_root_relative != bindings.receipt_root_relative
+            or identity.repository_root_device != bindings.root_device
+            or identity.repository_root_inode != bindings.root_inode
+            or identity.receipt_root_device != bindings.receipt_device
+            or identity.receipt_root_inode != bindings.receipt_inode
+            or self._state.training_bundle is not execution._training_bundle
+        ):
+            raise ABC6AuthorityError(
+                "training execution differs from the grant's run, manifest, or root"
+            )
+        identity.verify()
+        return (
+            id(execution),
+            self._grant_digest,
+            result.run_id,
+            result.manifest_sha256,
+            identity.repository_root_realpath,
+            identity.repository_root_device,
+            identity.repository_root_inode,
+            identity.receipt_root_relative,
+            identity.receipt_root_device,
+            identity.receipt_root_inode,
+        )
+
+    def _assert_registered_training_execution(self, execution: object) -> None:
+        """Reject copied or reconstructed execution values at the handoff."""
+
+        self._assert_live()
+        with self._state.lock:
+            if execution is not self._state.training_execution:
+                raise ABC6AuthorityError(
+                    "training execution is not the exact registered object"
+                )
+            binding = self._training_execution_binding(execution)
+            if binding != self._state.training_execution_binding:
+                raise ABC6AuthorityError(
+                    "registered training execution binding changed"
+                )
+
+    def _owns_training_execution_identity(self, execution: object) -> bool:
+        """Check identity without touching descriptors, for safe object cleanup."""
+
+        with self._state.lock:
+            return execution is self._state.training_execution
 
     def _verify_training_preclaim_root(
         self,

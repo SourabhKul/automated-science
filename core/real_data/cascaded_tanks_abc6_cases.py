@@ -26,6 +26,7 @@ from typing import Final
 
 import numpy as np
 
+from core.real_data import cascaded_tanks_abc6_authority as authority_module
 from core.real_data.cascaded_tanks_models import (
     TankModel,
     TankParameters,
@@ -191,6 +192,12 @@ _RECEIPT_SCHEMA_VERSION: Final = 1
 _MAX_STATUS_RECEIPT_BYTES: Final = 4096
 _POSTFIT_GATE_SEAL = object()
 _SCORING_HANDOFF_SEAL = object()
+_AUTHORIZED_CASE_DATA_SEAL = object()
+_AUTHORIZED_CASE_DATA_LOCK = threading.RLock()
+_TRAINING_BUNDLE_AUTHORITIES: dict[
+    int, tuple["ABC6TrainingBundle", authority_module.ABC6LaunchAuthority]
+] = {}
+_AUTHORIZED_CASE_DATA_REGISTRY: dict[int, "ABC6AuthorizedCaseData"] = {}
 
 
 class ABC6SyntheticSimulationError(RuntimeError):
@@ -230,6 +237,193 @@ class ABC6TrainingBundle:
             if name == truth_id:
                 return state
         raise KeyError(f"no synthetic training terminal state for truth {truth_id!r}")
+
+
+class ABC6AuthorizedCaseData:
+    """One-use fit capability bound to a permit, bundle, and live authority."""
+
+    __slots__ = (
+        "_seal",
+        "_authority",
+        "_case_index",
+        "_bundle",
+        "_case_data",
+        "_used",
+        "_lock",
+    )
+
+    def __init__(
+        self,
+        seal: object,
+        authority: authority_module.ABC6LaunchAuthority,
+        case_index: int,
+        bundle: ABC6TrainingBundle,
+        case_data: ABC6TrainingCaseData,
+    ) -> None:
+        if (
+            seal is not _AUTHORIZED_CASE_DATA_SEAL
+            or type(authority) is not authority_module.ABC6LaunchAuthority
+            or type(bundle) is not ABC6TrainingBundle
+            or type(case_data) is not ABC6TrainingCaseData
+            or type(case_index) is not int
+        ):
+            raise TypeError("authorized case data is issued only from a consumed case permit")
+        object.__setattr__(self, "_seal", seal)
+        object.__setattr__(self, "_authority", authority)
+        object.__setattr__(self, "_case_index", case_index)
+        object.__setattr__(self, "_bundle", bundle)
+        object.__setattr__(self, "_case_data", case_data)
+        object.__setattr__(self, "_used", [False])
+        object.__setattr__(self, "_lock", threading.Lock())
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if hasattr(self, name):
+            raise AttributeError("authorized case data is immutable")
+        object.__setattr__(self, name, value)
+
+    def __copy__(self) -> "ABC6AuthorizedCaseData":
+        copied = object.__new__(type(self))
+        for name in self.__slots__:
+            object.__setattr__(copied, name, getattr(self, name))
+        return copied
+
+    def __deepcopy__(self, _memo: dict[int, object]) -> "ABC6AuthorizedCaseData":
+        return self.__copy__()
+
+    def _consume_for_fit(self) -> ABC6TrainingCaseData:
+        with self._lock:
+            with _AUTHORIZED_CASE_DATA_LOCK:
+                if (
+                    self._seal is not _AUTHORIZED_CASE_DATA_SEAL
+                    or _AUTHORIZED_CASE_DATA_REGISTRY.get(id(self)) is not self
+                ):
+                    raise ABC6StatusReceiptError(
+                        "authorized case data is copied, reconstructed, or unregistered"
+                    )
+            if self._used[0]:
+                raise ABC6StatusReceiptError(
+                    "authorized case data fit permit was already consumed"
+                )
+            # Consume before any validation that could be followed by numerical work.
+            self._used[0] = True
+
+        authority = self._authority
+        authority._assert_live()
+        with authority._state.lock:
+            if authority._state.training_bundle is not self._bundle:
+                raise ABC6StatusReceiptError(
+                    "authorized case data no longer matches the grant's training bundle"
+                )
+        with _AUTHORIZED_CASE_DATA_LOCK:
+            binding = _TRAINING_BUNDLE_AUTHORITIES.get(id(self._bundle))
+            if (
+                binding is None
+                or binding[0] is not self._bundle
+                or binding[1] is not authority
+            ):
+                raise ABC6StatusReceiptError(
+                    "authorized case data is bound to a different training authority"
+                )
+            if (
+                type(self._case_index) is not int
+                or not 0 <= self._case_index < CASE_COUNT
+                or self._bundle.case_data[self._case_index] is not self._case_data
+                or self._case_data.case is not case_by_index(self._case_index)
+            ):
+                raise ABC6StatusReceiptError(
+                    "authorized case data no longer references its exact bundle entry"
+                )
+        return self._case_data
+
+
+def _bind_training_bundle_to_authority(
+    bundle: ABC6TrainingBundle,
+    authority: authority_module.ABC6LaunchAuthority,
+) -> None:
+    """Bind the just-built campaign bundle to its live grant exactly once."""
+
+    if type(bundle) is not ABC6TrainingBundle:
+        raise TypeError("training bundle must use the exact frozen ABC6 type")
+    if type(authority) is not authority_module.ABC6LaunchAuthority:
+        raise TypeError("training bundle requires the received ABC6 launch authority")
+    authority._assert_live()
+    with authority._state.lock:
+        if not authority._state.training_started:
+            raise authority_module.ABC6AuthorityError(
+                "training bundle cannot precede campaign authorization"
+            )
+        if authority._state.training_bundle is not None:
+            raise authority_module.ABC6AuthorityError(
+                "training bundle authority binding is one-use"
+            )
+        with _AUTHORIZED_CASE_DATA_LOCK:
+            previous = _TRAINING_BUNDLE_AUTHORITIES.get(id(bundle))
+            if previous is not None:
+                raise authority_module.ABC6AuthorityError(
+                    "training bundle authority binding is one-use"
+                )
+            _TRAINING_BUNDLE_AUTHORITIES[id(bundle)] = (bundle, authority)
+        authority._state.training_bundle = bundle
+
+
+def get_training_case_data(
+    bundle: ABC6TrainingBundle,
+    case_index: int,
+    permit: authority_module.ABC6TrainingPermit,
+) -> ABC6AuthorizedCaseData:
+    """Consume the exact case permit and issue one bundle-bound fit capability."""
+
+    if type(bundle) is not ABC6TrainingBundle:
+        raise TypeError("bundle must be the exact frozen ABC6 training bundle")
+    index = _checked_case_index(case_index)
+    if type(permit) is not authority_module.ABC6TrainingPermit:
+        raise authority_module.ABC6AuthorityError(
+            "training case requires an exact issued case permit"
+        )
+    authority = permit._authority
+    if type(authority) is not authority_module.ABC6LaunchAuthority:
+        raise authority_module.ABC6AuthorityError(
+            "training case permit has no live launch authority"
+        )
+    with authority._state.lock:
+        if authority._state.training_bundle is not bundle:
+            raise authority_module.ABC6AuthorityError(
+                "training case bundle differs from the grant's exact bundle"
+            )
+    with _AUTHORIZED_CASE_DATA_LOCK:
+        binding = _TRAINING_BUNDLE_AUTHORITIES.get(id(bundle))
+        if (
+            binding is None
+            or binding[0] is not bundle
+            or binding[1] is not authority
+        ):
+            raise authority_module.ABC6AuthorityError(
+                "training case permit and bundle belong to different launch authorities"
+            )
+    if permit.case_index != index:
+        raise authority_module.ABC6AuthorityError(
+            "training case permit has the wrong case index"
+        )
+    case_data = bundle.data_for_case(index)
+    if (
+        type(case_data) is not ABC6TrainingCaseData
+        or case_data.case is not case_by_index(index)
+    ):
+        raise authority_module.ABC6AuthorityError(
+            "training bundle case entry differs from frozen roster"
+        )
+    # This must remain a direct call from this frozen role function.
+    permit.consume(index)
+    authorized = ABC6AuthorizedCaseData(
+        _AUTHORIZED_CASE_DATA_SEAL,
+        authority,
+        index,
+        bundle,
+        case_data,
+    )
+    with _AUTHORIZED_CASE_DATA_LOCK:
+        _AUTHORIZED_CASE_DATA_REGISTRY[id(authorized)] = authorized
+    return authorized
 
 
 @dataclass(frozen=True, slots=True)
@@ -1553,6 +1747,7 @@ __all__ = (
     "TRAINING_INPUT_S",
     "TRAINING_LENGTH",
     "ABC6Case",
+    "ABC6AuthorizedCaseData",
     "ABC6ProspectiveTargets",
     "ABC6StatusReceiptError",
     "ABC6SyntheticSimulationError",
@@ -1561,6 +1756,7 @@ __all__ = (
     "DeferredABC6TargetGate",
     "build_synthetic_training_bundle",
     "case_by_index",
+    "get_training_case_data",
     "open_deferred_abc6_target_gate",
     "write_status_receipt",
 )

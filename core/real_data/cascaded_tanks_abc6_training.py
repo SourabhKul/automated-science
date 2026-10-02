@@ -26,6 +26,7 @@ from core.real_data.cascaded_tanks_abc6_cases import (
     PARAMETER_ORDER,
     TRAINING_INPUT_L,
     TRAINING_INPUT_S,
+    ABC6AuthorizedCaseData,
     ABC6Case,
     ABC6TrainingCaseData,
     case_by_index,
@@ -482,15 +483,18 @@ def _run_one_case(
     )
 
 
-def run_abc6_training_case(data: ABC6TrainingCaseData) -> ABC6TrainingResult:
-    """Run one case with the reviewed production calibration and ABC controls.
+def run_abc6_training_case(data: ABC6AuthorizedCaseData) -> ABC6TrainingResult:
+    """Run one permit-authorized campaign case with frozen production controls.
 
-    The arrays are caller-supplied and their origin is unverified.  This
-    function accepts no prospective target capability and never generates or
-    scores a future trajectory.
+    Plain case arrays remain usable through private offline numerical helpers,
+    while this production entrypoint accepts only the one-use sealed value
+    issued by ``cases.get_training_case_data``.
     """
 
-    return _run_one_case(data, controls=_PRODUCTION_CONTROLS)
+    if type(data) is not ABC6AuthorizedCaseData:
+        raise TypeError("production training requires sealed authorized case data")
+    case_data = data._consume_for_fit()
+    return _run_one_case(case_data, controls=_PRODUCTION_CONTROLS)
 
 
 def _run_one_case_with_bounded_controls_for_test(

@@ -172,6 +172,7 @@ def pin_role_frame(function, role):
     )
 
 def fake_runner(authority_value):
+    authority_value.consume_runner_startup()
     case_receipts, summary_sha, forecast_sha, duplicate_index, duplicate_consumes = fake_campaign(authority_value)
     handoff = authority_value.create_runner_handoff(tuple(case_receipts), summary_sha, forecast_sha)
     score_permit = authority_value.activate_scoring(handoff)

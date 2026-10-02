@@ -665,6 +665,11 @@ def _fake_execution(receipts: Path, training, results):
         receipt_root_identity=_private_receipt_identity(receipts),
         _training_bundle=training,
         _training_results=tuple(results),
+        _authority=None,
+        _grant_sha256=None,
+        _run_id=campaign_result.run_id,
+        _manifest_sha256=campaign_result.manifest_sha256,
+        _seal=campaign_fit._TRAINING_EXECUTION_SEAL,
     )
 
 

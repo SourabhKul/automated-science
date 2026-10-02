@@ -14,7 +14,6 @@ import pytest
 from core.real_data import cascaded_tanks_abc6_authority as authority
 from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign
 
-
 MANIFEST_SHA256 = "1" * 64
 GRANT_SHA256 = "2" * 64
 SCAN_ORDER = (
@@ -153,6 +152,7 @@ def _configure_fake_campaign(
     monkeypatch.setattr(campaign, "_PROJECT_RUN_CLAIM_PATH", claim_path)
     if launch_authority is not None:
         monkeypatch.setattr(authority, "_require_role", lambda *_args: None)
+        launch_authority.consume_runner_startup()
 
         def fake_preflight(*_args, **_kwargs):
             assert launch_authority._state.training_started
@@ -229,9 +229,9 @@ def test_direct_campaign_remains_empty_only_and_rejects_the_grant_leaf(
     empty_receipts = empty_root / campaign.RECEIPT_ROOT_RELATIVE
     empty_receipts.mkdir(parents=True)
     direct_claim = _configure_fake_campaign(monkeypatch, empty_root, None)
-    with pytest.raises(_ClaimReached):
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="launch authority"):
         _run_public_campaign(empty_root, None)
-    assert direct_claim.is_file()
+    assert not direct_claim.exists()
 
     monkeypatch.undo()
     grant_root = tmp_path / "grant-checkout"
@@ -240,7 +240,7 @@ def test_direct_campaign_remains_empty_only_and_rejects_the_grant_leaf(
     receipt.mkdir(parents=True)
     (receipt / authority.GRANT_RECORD).write_bytes(b"fake grant leaf")
     direct_claim = _configure_fake_campaign(monkeypatch, grant_root, None)
-    with pytest.raises(campaign.ABC6CampaignPreflightError, match="must be empty"):
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="launch authority"):
         _run_public_campaign(grant_root, None)
     assert not direct_claim.exists()
 
@@ -272,7 +272,7 @@ def test_supervised_public_entry_checks_all_four_scans_before_claim(
         _run_public_campaign(root, launch_authority)
     assert observed_scans == list(SCAN_ORDER)
     assert launch_authority._state.training_started
-    assert launch_authority._state.issued == set()
+    assert launch_authority._state.issued == set(range(campaign.CASE_COUNT))
     assert launch_authority._grant_record.file_identity == authority._FileId.of(
         os.stat(grant_path, follow_symlinks=False)
     )
@@ -343,7 +343,7 @@ def test_each_preclaim_scan_rejects_stale_snapshot_fields(
         _run_public_campaign(root, launch_authority)
     assert did_corrupt
     assert not claim_path.exists()
-    assert launch_authority._state.issued == set()
+    assert launch_authority._state.issued == set(range(campaign.CASE_COUNT))
     launch_authority.close()
 
 
@@ -415,7 +415,7 @@ def test_each_preclaim_scan_rejects_changed_or_unexpected_leaf(
         _run_public_campaign(root, launch_authority)
     assert did_mutate
     assert not claim_path.exists()
-    assert launch_authority._state.issued == set()
+    assert launch_authority._state.issued == set(range(campaign.CASE_COUNT))
     launch_authority.close()
 
 

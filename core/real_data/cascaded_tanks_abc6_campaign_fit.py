@@ -123,6 +123,7 @@ _REVIEWED_SOURCE_SHA256: Final = MappingProxyType(
 )
 _FINAL_STATUSES: Final = frozenset({"complete", "incomplete", "unresolved", "failed"})
 _COMPONENTS: Final = ("fit", "baseline")
+_TRAINING_EXECUTION_SEAL: Final = object()
 
 
 class ABC6CampaignError(RuntimeError):
@@ -366,8 +367,17 @@ class ABC6TrainingCampaignExecution:
     receipt_root_identity: ABC6ReceiptRootIdentity = field(
         repr=False, compare=False
     )
+    _authority: authority_module.ABC6LaunchAuthority | None = field(
+        repr=False, compare=False
+    )
+    _grant_sha256: str | None = field(repr=False, compare=False)
+    _run_id: str = field(repr=False, compare=False)
+    _manifest_sha256: str = field(repr=False, compare=False)
+    _seal: object = field(repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        if self._seal is not _TRAINING_EXECUTION_SEAL:
+            raise TypeError("training executions are issued only by the private campaign path")
         _validate_execution_shape(
             self.campaign_result, self._training_bundle, self._training_results
         )
@@ -380,10 +390,25 @@ class ABC6TrainingCampaignExecution:
         _validate_execution_receipt_paths(
             self.campaign_result, self.evidence_manifest_path, self.receipt_root_identity
         )
+        if (
+            self._run_id != self.campaign_result.run_id
+            or self._manifest_sha256 != self.campaign_result.manifest_sha256
+        ):
+            raise ValueError("training execution binding differs from its campaign result")
+        if self._authority is None:
+            if self._grant_sha256 is not None:
+                raise ValueError("offline training execution cannot carry a grant digest")
+        elif (
+            type(self._authority) is not authority_module.ABC6LaunchAuthority
+            or not _is_sha256(self._grant_sha256)
+        ):
+            raise TypeError("supervised training execution requires its sealed launch grant")
 
     def load_verified_training_evidence(self) -> ABC6VerifiedTrainingEvidence:
         """Revalidate durable and in-memory evidence, then return frozen copies."""
 
+        if self._authority is not None:
+            self._authority._assert_registered_training_execution(self)
         if not isinstance(self.receipt_root_identity, ABC6ReceiptRootIdentity):
             raise ValueError("training execution has no anchored receipt identity")
         self.receipt_root_identity.verify()
@@ -404,6 +429,11 @@ class ABC6TrainingCampaignExecution:
     def close(self) -> None:
         """Release the local directory descriptors retained by this execution."""
 
+        if (
+            self._authority is not None
+            and not self._authority._owns_training_execution_identity(self)
+        ):
+            return
         identity = self.receipt_root_identity
         if isinstance(identity, ABC6ReceiptRootIdentity):
             identity.close()
@@ -2432,8 +2462,40 @@ def _execute_campaign(
     claim_registry_path: Path,
     capture_training_evidence: bool = False,
     training_session: authority_module.ABC6TrainingSession | None = None,
+    case_permits: tuple[authority_module.ABC6TrainingPermit, ...] | None = None,
 ) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
     """Preflight the manifest/path, then execute against its anchored root."""
+
+    if require_reviewed_runtime and (
+        training_session is None
+        or case_permits is None
+        or not capture_training_evidence
+    ):
+        raise ABC6CampaignPreflightError(
+            "production campaign execution requires one supervised evidence session"
+        )
+    if training_session is not None and not capture_training_evidence:
+        raise ABC6CampaignPreflightError(
+            "supervised training authority cannot enter the status-only private path"
+        )
+    if training_session is None:
+        if case_permits is not None:
+            raise ABC6CampaignPreflightError(
+                "case permits cannot be used without the supervised training session"
+            )
+    elif (
+        type(case_permits) is not tuple
+        or len(case_permits) != CASE_COUNT
+        or any(
+            type(permit) is not authority_module.ABC6TrainingPermit
+            or permit.case_index != index
+            or permit._authority is not training_session._authority
+            for index, permit in enumerate(case_permits)
+        )
+    ):
+        raise ABC6CampaignPreflightError(
+            "supervised campaign requires the exact ordered 24 case permits"
+        )
 
     verified_manifest_sha256, manifest, repository_root_fd = (
         _preflight_manifest_and_open_checkout_root(
@@ -2465,6 +2527,7 @@ def _execute_campaign(
             capture_training_evidence=capture_training_evidence,
             require_fixed_claim_path=require_reviewed_runtime,
             training_session=training_session,
+            case_permits=case_permits,
         )
         if isinstance(result, ABC6TrainingCampaignExecution):
             transferred = True
@@ -2483,6 +2546,7 @@ def _execute_campaign_after_preflight(
     capture_training_evidence: bool,
     require_fixed_claim_path: bool,
     training_session: authority_module.ABC6TrainingSession | None = None,
+    case_permits: tuple[authority_module.ABC6TrainingPermit, ...] | None = None,
 ) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
     """Claim once, then keep writes anchored to the opened receipt directory."""
 
@@ -2535,6 +2599,8 @@ def _execute_campaign_after_preflight(
             directory,
             fit_callable=fit_callable,
             capture_training_evidence=capture_training_evidence,
+            training_session=training_session,
+            case_permits=case_permits,
         )
     finally:
         os.close(receipt_directory_fd)
@@ -2549,10 +2615,20 @@ def _execute_campaign_after_claim(
     *,
     fit_callable: Callable[[ABC6TrainingCaseData], object],
     capture_training_evidence: bool,
+    training_session: authority_module.ABC6TrainingSession | None = None,
+    case_permits: tuple[authority_module.ABC6TrainingPermit, ...] | None = None,
 ) -> ABC6CampaignResult | ABC6TrainingCampaignExecution:
 
     try:
         bundle = build_synthetic_training_bundle()
+        if training_session is not None:
+            if case_permits is None:
+                raise ABC6CampaignPreflightError(
+                    "supervised campaign has no preissued case permits"
+                )
+            cases._bind_training_bundle_to_authority(
+                bundle, training_session._authority
+            )
     except BaseException as error:
         _write_failure_receipt(
             receipt_directory_fd,
@@ -2620,9 +2696,26 @@ def _execute_campaign_after_claim(
         try:
             if expected_case != case_by_index(expected_index):
                 raise ValueError("runtime case roster changed after preflight")
-            data = bundle.data_for_case(expected_index)
-            if data.case != expected_case:
-                raise ValueError("training bundle view identity differs from roster")
+            if training_session is None:
+                data = bundle.data_for_case(expected_index)
+                if data.case != expected_case:
+                    raise ValueError("training bundle view identity differs from roster")
+            else:
+                if case_permits is None:
+                    raise ValueError("supervised campaign has no case permit roster")
+                data = cases.get_training_case_data(
+                    bundle, expected_index, case_permits[expected_index]
+                )
+                if (
+                    data._authority is not training_session._authority
+                    or data._case_index != expected_index
+                    or data._bundle is not bundle
+                    or data._case_data is not bundle.case_data[expected_index]
+                    or data._case_data.case is not expected_case
+                ):
+                    raise ValueError(
+                        "authorized training case differs from its exact grant, bundle, or roster"
+                    )
         except BaseException as error:
             try:
                 _record_failed_case(
@@ -2880,12 +2973,23 @@ def _execute_campaign_after_claim(
             "failed; run is terminal"
         ) from error
     execution = ABC6TrainingCampaignExecution(
-            campaign_result=campaign_result,
-            evidence_manifest_path=evidence_manifest_path,
-            evidence_manifest_sha256=evidence_manifest_sha256,
-            receipt_root_identity=receipt_root_identity,
+        campaign_result=campaign_result,
+        evidence_manifest_path=evidence_manifest_path,
+        evidence_manifest_sha256=evidence_manifest_sha256,
+        receipt_root_identity=receipt_root_identity,
         _training_bundle=bundle,
         _training_results=detailed_results,
+        _authority=(
+            None if training_session is None else training_session._authority
+        ),
+        _grant_sha256=(
+            None
+            if training_session is None
+            else training_session._authority.grant_digest
+        ),
+        _run_id=campaign_result.run_id,
+        _manifest_sha256=campaign_result.manifest_sha256,
+        _seal=_TRAINING_EXECUTION_SEAL,
     )
     try:
         _verify_training_execution_evidence(execution)
@@ -2915,28 +3019,18 @@ def run_abc6_training_campaign(
     manifest_path: str | os.PathLike[str],
     manifest_sha256: str,
     receipt_directory: str | os.PathLike[str],
+    *,
+    launch_authority: authority_module.ABC6LaunchAuthority,
 ) -> ABC6CampaignResult:
-    """Run the 24 production training fits once, after separate external gates.
+    """Return compact status from the same supervised evidence entrypoint."""
 
-    This is not a launch approval.  Before calling it, an independent reviewer
-    must approve the immutable manifest and a separate watchdog must enforce
-    and record the full runner-tree budget.  The function itself verifies the
-    manifest hash, exact roster/source/runtime identity, and declared limits;
-    it cannot prove reviewer independence or monitor global time/RSS.
-    """
-
-    result = _execute_campaign(
+    execution = run_abc6_training_campaign_with_evidence(
         manifest_path,
         manifest_sha256,
         receipt_directory,
-        fit_callable=training.run_abc6_training_case,
-        require_reviewed_runtime=True,
-        claim_registry_path=_PROJECT_RUN_CLAIM_PATH,
-        capture_training_evidence=False,
+        launch_authority=launch_authority,
     )
-    if not isinstance(result, ABC6CampaignResult):  # pragma: no cover - invariant.
-        raise AssertionError("status-only campaign unexpectedly returned evidence")
-    return result
+    return execution.campaign_result
 
 
 def run_abc6_training_campaign_with_evidence(
@@ -2944,7 +3038,7 @@ def run_abc6_training_campaign_with_evidence(
     manifest_sha256: str,
     receipt_directory: str | os.PathLike[str],
     *,
-    launch_authority: authority_module.ABC6LaunchAuthority | None = None,
+    launch_authority: authority_module.ABC6LaunchAuthority,
 ) -> ABC6TrainingCampaignExecution:
     """Run the claimed 24-case campaign and return its exact in-memory evidence.
 
@@ -2955,20 +3049,24 @@ def run_abc6_training_campaign_with_evidence(
     failure remains terminal and returns no execution object.
     """
 
-    training_session = None
-    if launch_authority is not None:
-        if type(launch_authority) is not authority_module.ABC6LaunchAuthority:
-            raise ABC6CampaignPreflightError(
-                "supervised campaign requires the received launch authority"
-            )
-        try:
-            # This is deliberately the first supervised action in the public
-            # entrypoint: begin_training() checks this exact role/source/function.
-            training_session = launch_authority.begin_training()
-        except authority_module.ABC6AuthorityError as error:
-            raise ABC6CampaignPreflightError(
-                f"supervised campaign training authority was rejected: {error}"
-            ) from error
+    if type(launch_authority) is not authority_module.ABC6LaunchAuthority:
+        raise ABC6CampaignPreflightError(
+            "supervised campaign requires the received launch authority"
+        )
+    try:
+        # This is deliberately the first supervised action in the public
+        # entrypoint: begin_training() checks this exact role/source/function.
+        training_session = launch_authority.begin_training()
+        # Issuance is deliberately in this exact frozen role frame and happens
+        # before preflight or claim, making every failed attempt terminal.
+        permits_list: list[authority_module.ABC6TrainingPermit] = []
+        for index in range(CASE_COUNT):
+            permits_list.append(training_session.issue_case_permit(index))
+        case_permits = tuple(permits_list)
+    except authority_module.ABC6AuthorityError as error:
+        raise ABC6CampaignPreflightError(
+            f"supervised campaign training authority was rejected: {error}"
+        ) from error
 
     result = _execute_campaign(
         manifest_path,
@@ -2979,9 +3077,17 @@ def run_abc6_training_campaign_with_evidence(
         claim_registry_path=_PROJECT_RUN_CLAIM_PATH,
         capture_training_evidence=True,
         training_session=training_session,
+        case_permits=case_permits,
     )
     if not isinstance(result, ABC6TrainingCampaignExecution):  # pragma: no cover.
         raise AssertionError("evidence campaign did not return its training evidence")
+    try:
+        launch_authority.register_training_execution(result)
+    except authority_module.ABC6AuthorityError as error:
+        result.close()
+        raise ABC6CampaignExecutionError(
+            f"completed training execution could not be registered; run is terminal: {error}"
+        ) from error
     return result
 
 
