@@ -1,6 +1,51 @@
 # Automated science: current research state
 
-Updated: 2026-10-02T01:53Z. This file records observed state, not inferred execution.
+Updated: 2026-10-02T06:10Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: runtime inventory corrected; direct permit gap specified
+
+At `05:30:38Z`, independent Luna read-only monitoring found only the oMLX
+server relevant to this work, no ABC6/research Python process, no reserved
+`ct-abc6-20260928-v1` directory, claim, marker, checkpoint or log, and exact
+Qwen listed by `GET /v1/models` HTTP 200. A fresh fetch found clean
+`main == origin/main == FETCH_HEAD ==
+e42ed5ac430a0f8d3595603ef248e801336c4921` at that snapshot. Data was
+6.2 MB, artifacts 61 MB and free space 414 GiB. No generation or target
+access occurred.
+
+The independent runtime inventory found 911 relative symlink aliases in
+NumPy's package/metadata installation, all to regular files elsewhere in the
+same Homebrew Cellar. A blanket symlink ban would reject this actual host.
+A bounded read-only probe observed 1,211 nodes and 23,395,635 bytes of
+regular content plus symlink target content counted by alias; streaming hash
+measurement took 0.091 s and about 5.9 MiB additional RSS on the warm host.
+Its process loaded 409 dyld images (389 cache, 20 file-backed); nine system
+dependency install names remained without unique owner mapping after simple
+normalization. Watchdog and child loaded-image sets cannot be assumed equal.
+The primary corrected the runtime design to require explicit reviewed alias
+targets and separate role-specific expectations; independent Luna fact review
+cleared only that design draft and synced its report non-force as
+`dbdc50817591d939aa5714e34fb93bb97f93e724`, with fresh
+`HEAD == origin/main` verification. Exact alias rules, native closure,
+schema, bounds and runtime binding remain HOLD.
+
+A separate independent Luna audit found that both public campaign APIs can
+reach a training claim without launch authority once final source pins exist;
+the public scorer does not consume the authority module's scoring permit.
+The frozen case role names `get_training_case_data`, which does not yet exist.
+Current incomplete `None` source pins close these paths before claim, but
+source identity is not authorization. Primary drafted
+`reports/cascaded-tanks-abc6-direct-permit-protocol-2026-10-02.md`; after
+call-frame, fit-once and execution-identity corrections, independent Luna
+gave design GO for **bounded fake-only implementation**. A Luna max author is
+working only on training Stage A (mandatory authority, per-case permit and
+sealed one-use case data/fit, execution registration). Scoring Stage B,
+runtime collector, final source hashes, production replay and launch remain
+HOLD; Stage A has no code result or independent code review yet. The permit
+protocol's docs-only review and non-force Git handoff completed as
+`5c9ff99ff9a61083d15b144328a6fb9fdbd38e88` on `main`; fresh fetch
+verified `HEAD == origin/main`, and only that report was committed. See
+`reports/research-ledger/2026-10-02T0610Z.md`.
 
 ## Latest checkpoint: fake-only source/role closure component reviewed and synced
 
