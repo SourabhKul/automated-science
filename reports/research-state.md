@@ -1,6 +1,47 @@
 # Automated science: current research state
 
-Updated: 2026-10-01T19:39Z. This file records observed state, not inferred execution.
+Updated: 2026-10-02T01:03Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: source/role schema design cleared for fake-only work
+
+At `00:28:49Z` an independent Luna read-only check found no ABC6 or other
+research Python process, no reserved `ct-abc6-20260928-v1` directory, claim,
+marker, checkpoint or log, and a clean fresh-fetched `main == origin/main ==
+e52ccb5aa6aac35bda509b8033f7e15291abbc4b`. The oMLX `/v1/models`
+endpoint returned HTTP 200 listing the exact fixed Qwen. Data occupied 6.2 MB,
+artifacts 61 MB, and 414 GiB was free. There was no generation or run.
+
+Independent Luna read-only import/provenance audit found a **candidate future**
+sixteen-path manifest source roster, including executed
+`core/real_data/__init__.py` and separate replay, versus the present eight-key
+schema. A static reviewed map must have the other fifteen keys, excluding
+campaign-fit's own file to avoid self-hash recursion; its digest belongs in
+the external immutable manifest. Four exact runner/campaign/case/scorer role
+path/function pairs are specified in
+`reports/cascaded-tanks-abc6-source-role-schema-2026-10-02.md`. After five
+clarifications an independent Luna design reviewer gave **GO only for bounded
+fake-only source/role schema work**. Production hashes and source pins remain
+incomplete and preclaim fail closed. The staged design also requires anchored
+no-follow source hashing with symlink/replacement probes; direct campaign,
+case, and scorer one-use permits are a distinct later HOLD.
+
+Runtime closure is unresolved: Python 3.14.3, NumPy 2.4.2, psutil 7.2.2,
+macOS build 26A428 and arm64 were observed, but current fingerprints omit
+native extension and actual loaded `libproc`/libc symbol-image identity.
+An independent Luna read-only dyld probe at `00:56Z` then verified that
+`proc_pidinfo`/`proc_pidpath` resolve to loaded `libsystem_kernel.dylib`
+(`LC_UUID f63bf418-8f75-34a4-aaf1-8caf2b9b6a05`), `sysctl` to
+`libsystem_c.dylib` (`fba7b23e-aa60-3a90-9aa4-a7a2e0ad63ee`), and their
+images reside in shared cache `ea2c265e-297c-39c2-8646-7d8a2dff648a`.
+Thus native identity is locally measurable, but no collector or cross-layer
+binding has been implemented/reviewed; runtime closure remains HOLD. A Luna
+author is implementing only the fake-only source/role schema. No code result,
+independent code review, Git content sync, production manifest, approval or
+launch exists yet for this component. Reserved synthetic campaign remains
+UNUSED/HOLD; no prospective synthetic targets, real tank Qwen/ABC,
+`yEst[768:1024]`, or official `uVal/yVal` were accessed. Silverbox multisine
+remains consumed without a final score. No scientific breakthrough is claimed.
+See `reports/research-ledger/2026-10-02T0046Z.md`.
 
 ## Latest checkpoint: capability-bound grant leaf independently reviewed and synced
 
