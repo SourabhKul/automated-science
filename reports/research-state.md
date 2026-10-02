@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-02T01:43Z. This file records observed state, not inferred execution.
+Updated: 2026-10-02T01:53Z. This file records observed state, not inferred execution.
 
 ## Latest checkpoint: fake-only source/role closure component reviewed and synced
 
@@ -19,6 +19,8 @@ pushed exactly those twelve reviewed paths non-force to `main` as
 reviewed-docs commit `d8846411ffe0e9dd96c14e55d176e389e2da1ee0`.
 Fresh fetch verified clean `HEAD == origin/main == FETCH_HEAD` at the content
 commit. Earlier docs sync staged only the source/role design, state and ledger.
+The factual source-review checkpoint and ledger were synced separately at
+`dd40898da067539198b9f91c620e59bc58bd7ae8`.
 
 The independent 296-case fake-only batch returned **295 passed, one failed**
 both on the current checkout and clean-HEAD-plus-exact-diff overlay. The
@@ -34,6 +36,18 @@ The reserved synthetic campaign remains UNUSED/HOLD with no protocol
 prospective targets or real tank Qwen/ABC/held-out access. Silverbox
 multisine remains consumed without score. See
 `reports/research-ledger/2026-10-02T0143Z.md`.
+
+The primary then drafted a separately staged runtime-v1 identity proposal
+from the measured dyld facts. An independent Luna review cleared it for
+**design-draft sync only**, emphasizing that exact nested fields, package-tree
+inclusion, native dependency selection, bounds and sidecar schema remain
+unfrozen. The reviewer pushed only
+`reports/cascaded-tanks-abc6-runtime-v1-design-2026-10-02.md` as
+`ab06cdc6a25fda927a0f5f7344c911f135bc4346`; fresh fetch verified clean
+`HEAD == origin/main == FETCH_HEAD`. This is neither a runtime test oracle nor
+an implementation or launch approval. The next step is to freeze those exact
+definitions and independently review them before fake-provider acceptance
+tests or production pins.
 
 ## Latest checkpoint: source/role schema design cleared for fake-only work
 
