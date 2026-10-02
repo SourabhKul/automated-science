@@ -1,6 +1,41 @@
 # Automated science: current research state
 
-Updated: 2026-10-02T06:10Z. This file records observed state, not inferred execution.
+Updated: 2026-10-02T06:50Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: Stage A training permits independently reviewed and synced
+
+The bounded, fake-only ABC6 Stage A closes the public training-campaign
+authority bypass without launching a research run. Both public campaign APIs
+now require the same watchdog-issued authority; the status API delegates to
+the frozen evidence entrypoint. Runner startup precedes training, the
+campaign role issues exactly 24 ordered case permits, and the new exact
+case-role accessor returns bundle/authority-bound sealed data. The production
+fit consumes that value once before numerical work. Completed execution is
+registered by exact object, grant, run, manifest and root identity; copied
+objects and repeat use fail. The scorer/runner handoff Stage B is unchanged.
+
+An independent Luna max reviewer matched exact ten-file binary diff SHA-256
+`c5b08439d695a7e837f232350b04e7a93e09620d5ea49dc31a8b9edeef44d9ad`
+and approved **only** this component for sync. It reproduced **67/67**
+targeted current-tree fake tests and **341/341** focused tests in a clean
+base-plus-exact-diff overlay under Python 3.14.3, NumPy 2.4.2 and psutil
+7.2.2, each once. A sole Luna Git owner fetched and pushed only those ten
+reviewed source/test paths non-force as
+`11f3d70d887d934aa344a97e8a1537dc0cb42baf` on `main`; fresh fetch
+verified clean `HEAD == origin/main`. The separately reviewed permit protocol
+was synced as docs commit `5c9ff99ff9a61083d15b144328a6fb9fdbd38e88`,
+and the preceding factual state/ledger as
+`24bba8098c8ab41cf18238ab78379216fdf91148`.
+
+Production static source pins remain `None`, so the reserved synthetic
+`ct-abc6-20260928-v1` stays UNUSED/HOLD before claim. No Qwen/ABC campaign,
+protocol prospective synthetic targets, real tank development suffix or
+official test was accessed. Stage B scoring permit, durable pre-marker
+replay, role-specific runtime identity, final source/runtime hashes,
+source-backed terminal-v4 replay, immutable manifest/report/approval and
+separate launch GO remain HOLD. The earlier fake watchdog PGID timing
+failure is preserved, not repaired by Stage A. No scientific breakthrough.
+See `reports/research-ledger/2026-10-02T0650Z.md`.
 
 ## Latest checkpoint: runtime inventory corrected; direct permit gap specified
 
