@@ -50,6 +50,56 @@ _SCORE_SEAL = object()
 _HANDOFF_SEAL = object()
 _PENDING_SEAL = object()
 
+# Frozen candidate source and role contract for the future ABC6 grant.  The
+# campaign source appears in external source maps, but its static reviewed map
+# omits it to avoid self-hash recursion.
+ABC6_CAMPAIGN_SOURCE_PATH: Final = (
+    "core/real_data/cascaded_tanks_abc6_campaign_fit.py"
+)
+ABC6_MANIFEST_SOURCE_PATHS: Final = (
+    "core/abc_smc_reference.py",
+    "core/real_data/__init__.py",
+    "core/real_data/cascaded_tanks_abc6_authority.py",
+    ABC6_CAMPAIGN_SOURCE_PATH,
+    "core/real_data/cascaded_tanks_abc6_cases.py",
+    "core/real_data/cascaded_tanks_abc6_forecast.py",
+    "core/real_data/cascaded_tanks_abc6_receipt_io.py",
+    "core/real_data/cascaded_tanks_abc6_replay.py",
+    "core/real_data/cascaded_tanks_abc6_scoring.py",
+    "core/real_data/cascaded_tanks_abc6_training.py",
+    "core/real_data/cascaded_tanks_models.py",
+    "core/real_data/cascaded_tanks_pattern_search.py",
+    "core/real_data/cascaded_tanks_synthetic_abc.py",
+    "reports/cascaded-tanks-six-parameter-synthetic-abc-proposal-2026-09-28.md",
+    "scripts/run_cascaded_tanks_abc6_synthetic.py",
+    "scripts/watch_cascaded_tanks_abc6.py",
+)
+ABC6_STATIC_REVIEWED_SOURCE_PATHS: Final = tuple(
+    path for path in ABC6_MANIFEST_SOURCE_PATHS if path != ABC6_CAMPAIGN_SOURCE_PATH
+)
+ABC6_ROLE_CONTRACT: Final = (
+    (
+        "runner",
+        "scripts/run_cascaded_tanks_abc6_synthetic.py",
+        "run_cascaded_tanks_abc6_synthetic",
+    ),
+    (
+        "campaign",
+        ABC6_CAMPAIGN_SOURCE_PATH,
+        "run_abc6_training_campaign_with_evidence",
+    ),
+    (
+        "case",
+        "core/real_data/cascaded_tanks_abc6_cases.py",
+        "get_training_case_data",
+    ),
+    (
+        "scorer",
+        "core/real_data/cascaded_tanks_abc6_scoring.py",
+        "score_deferred_abc6_synthetic",
+    ),
+)
+
 
 class ABC6AuthorityError(RuntimeError):
     """The child grant, identity, phase, or handoff failed closed."""
@@ -420,6 +470,15 @@ class ABC6AuthorityBindings:
         for role in ("runner", "campaign", "case", "scorer"):
             _relative(getattr(self, f"{role}_source_path"), f"{role} source path")
             _function(getattr(self, f"{role}_function"), f"{role} function")
+        if tuple(
+            (
+                role,
+                getattr(self, f"{role}_source_path"),
+                getattr(self, f"{role}_function"),
+            )
+            for role in ("runner", "campaign", "case", "scorer")
+        ) != ABC6_ROLE_CONTRACT:
+            raise ValueError("role bindings differ from the frozen ABC6 role contract")
         for name, entries in (("source_hashes", self.source_hashes), ("runtime_hashes", self.runtime_hashes)):
             if not isinstance(entries, tuple) or not entries:
                 raise ValueError(f"{name} must be a nonempty tuple")
@@ -433,8 +492,8 @@ class ABC6AuthorityBindings:
             if keys != sorted(set(keys)):
                 raise ValueError(f"{name} must be sorted and unique")
         source_paths = {path for path, _ in self.source_hashes}
-        if not {self.runner_source_path, self.campaign_source_path, self.case_source_path, self.scorer_source_path} <= source_paths:
-            raise ValueError("source hashes must cover the runner, campaign, cases, and scorer")
+        if source_paths != set(ABC6_MANIFEST_SOURCE_PATHS):
+            raise ValueError("source hashes must equal the frozen sixteen-path ABC6 source roster")
         runtime = dict(self.runtime_hashes)
         if (
             runtime.get("child_launch_image_sha256") != self.child_launch_image_sha256

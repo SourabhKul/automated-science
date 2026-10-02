@@ -180,7 +180,7 @@ def _run_fake_score(
     ) = _private_root_fixture(tmp_path, monkeypatch)
     executions = []
 
-    def fake_campaign(manifest_path, digest, receipt_path):
+    def fake_campaign(manifest_path, digest, receipt_path, *, launch_authority=None):
         execution = runner_fixtures._execute_private_training(
             manifest_path, digest, receipt_path, claim_registry
         )
@@ -862,15 +862,7 @@ def _install_fake_child_grant(
     )
     launch_path = observed_vector[0]
     child_path = "/private/fake-Python.app/Contents/MacOS/Python"
-    source_paths = tuple(
-        sorted(
-            set(replay._INTEGRATED_SOURCE_PATHS)
-            | {
-                "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
-                "core/real_data/cascaded_tanks_abc6_cases.py",
-            }
-        )
-    )
+    source_paths = tuple(sorted(authority.ABC6_MANIFEST_SOURCE_PATHS))
     for index, path in enumerate(source_paths):
         source_file = root / path
         if not source_file.exists():

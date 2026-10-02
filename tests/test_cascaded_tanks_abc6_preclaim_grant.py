@@ -45,16 +45,7 @@ def _fake_authority(root: Path) -> tuple[authority.ABC6LaunchAuthority, Path]:
     runtime_image_sha256, _ = authority._hash_path(
         runtime_image, authority.MAX_IMAGE_BYTES, "fake child image"
     )
-    paths = tuple(
-        sorted(
-            {
-                "scripts/run_cascaded_tanks_abc6_synthetic.py",
-                "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
-                "core/real_data/cascaded_tanks_abc6_cases.py",
-                "core/real_data/cascaded_tanks_abc6_scoring.py",
-            }
-        )
-    )
+    paths = tuple(sorted(authority.ABC6_MANIFEST_SOURCE_PATHS))
     bindings = authority.ABC6AuthorityBindings(
         protocol_id=campaign.PROTOCOL_ID,
         run_id=campaign.RUN_ID,
@@ -91,14 +82,14 @@ def _fake_authority(root: Path) -> tuple[authority.ABC6LaunchAuthority, Path]:
         campaign_claim_relative=(
             f"{campaign.CAMPAIGN_CLAIM_PARENT_RELATIVE}/{campaign.RUN_ID}.claim"
         ),
-        runner_source_path=paths[3],
-        runner_function="run_cascaded_tanks_abc6_synthetic",
-        campaign_source_path=paths[0],
-        campaign_function="run_abc6_training_campaign_with_evidence",
-        case_source_path=paths[1],
-        case_function="run_abc6_training_case",
-        scorer_source_path=paths[2],
-        scorer_function="score_cascaded_tanks_abc6_training",
+        runner_source_path=authority.ABC6_ROLE_CONTRACT[0][1],
+        runner_function=authority.ABC6_ROLE_CONTRACT[0][2],
+        campaign_source_path=authority.ABC6_ROLE_CONTRACT[1][1],
+        campaign_function=authority.ABC6_ROLE_CONTRACT[1][2],
+        case_source_path=authority.ABC6_ROLE_CONTRACT[2][1],
+        case_function=authority.ABC6_ROLE_CONTRACT[2][2],
+        scorer_source_path=authority.ABC6_ROLE_CONTRACT[3][1],
+        scorer_function=authority.ABC6_ROLE_CONTRACT[3][2],
     )
     grant_fd = 91
     raw = authority._json(
@@ -144,6 +135,16 @@ def _configure_fake_campaign(
     *,
     preflight_manifest_sha256: str = MANIFEST_SHA256,
 ) -> Path:
+    source_hashes: dict[str, str] = {}
+    for relative_path in campaign._REQUIRED_SOURCE_PATHS:
+        source_path = root / relative_path
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        if not source_path.exists():
+            source_path.write_bytes(
+                f"private fake preclaim source: {relative_path}\n".encode("ascii")
+            )
+        source_hashes[relative_path] = _sha(source_path.read_bytes())
+    monkeypatch.setattr(campaign, "_REPO_ROOT", root)
     claim_path = (
         root
         / campaign.CAMPAIGN_CLAIM_PARENT_RELATIVE
@@ -160,6 +161,7 @@ def _configure_fake_campaign(
                 {
                     "repository_root_realpath": str(root),
                     "receipt_root_relative": campaign.RECEIPT_ROOT_RELATIVE,
+                    "source_hashes": source_hashes,
                 },
                 authority._open_root(str(root)),
             )
@@ -172,6 +174,7 @@ def _configure_fake_campaign(
                 {
                     "repository_root_realpath": str(root),
                     "receipt_root_relative": campaign.RECEIPT_ROOT_RELATIVE,
+                    "source_hashes": source_hashes,
                 },
                 authority._open_root(str(root)),
             )

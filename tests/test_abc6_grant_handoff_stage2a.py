@@ -24,6 +24,7 @@ _OVERLAY_FILES = (
     "scripts/run_cascaded_tanks_abc6_synthetic.py",
     "core/real_data/cascaded_tanks_abc6_authority.py",
     "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
+    "core/real_data/__init__.py",
     "core/real_data/cascaded_tanks_abc6_cases.py",
     "core/real_data/cascaded_tanks_abc6_forecast.py",
     "core/real_data/cascaded_tanks_abc6_scoring.py",
@@ -34,17 +35,25 @@ _OVERLAY_FILES = (
     "core/real_data/cascaded_tanks_models.py",
     "core/real_data/cascaded_tanks_synthetic_abc.py",
     "core/real_data/cascaded_tanks_pattern_search.py",
+    "reports/cascaded-tanks-six-parameter-synthetic-abc-proposal-2026-09-28.md",
 )
 _PINNED_BOOTSTRAP_SOURCES = (
-    "scripts/watch_cascaded_tanks_abc6.py",
-    "scripts/run_cascaded_tanks_abc6_synthetic.py",
+    "core/abc_smc_reference.py",
+    "core/real_data/__init__.py",
     "core/real_data/cascaded_tanks_abc6_authority.py",
     "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
     "core/real_data/cascaded_tanks_abc6_cases.py",
     "core/real_data/cascaded_tanks_abc6_forecast.py",
-    "core/real_data/cascaded_tanks_abc6_scoring.py",
+    "core/real_data/cascaded_tanks_abc6_receipt_io.py",
     "core/real_data/cascaded_tanks_abc6_replay.py",
-    "core/abc_smc_reference.py",
+    "core/real_data/cascaded_tanks_abc6_scoring.py",
+    "core/real_data/cascaded_tanks_abc6_training.py",
+    "core/real_data/cascaded_tanks_models.py",
+    "core/real_data/cascaded_tanks_pattern_search.py",
+    "core/real_data/cascaded_tanks_synthetic_abc.py",
+    "reports/cascaded-tanks-six-parameter-synthetic-abc-proposal-2026-09-28.md",
+    "scripts/run_cascaded_tanks_abc6_synthetic.py",
+    "scripts/watch_cascaded_tanks_abc6.py",
 )
 _ORIGINAL_SUPERVISE_COMMAND = watchdog._supervise_command
 
@@ -144,6 +153,22 @@ def _grant_run_identity(root: Path, sources: tuple[tuple[str, str], ...]):
             Path(sys.executable).resolve().read_bytes()
         ).hexdigest(),
     }
+
+
+def test_watchdog_grant_source_map_requires_the_exact_sixteen_path_roster() -> None:
+    source_map = {path: "a" * 64 for path in watchdog._GRANT_BOOTSTRAP_SOURCE_PATHS}
+    assert len(source_map) == 16
+    assert len(watchdog._validated_grant_source_hashes({"source_hashes": source_map})) == 16
+
+    missing = dict(source_map)
+    missing.pop(next(iter(missing)))
+    with pytest.raises(watchdog.WatchdogError, match="sixteen-path roster"):
+        watchdog._validated_grant_source_hashes({"source_hashes": missing})
+
+    extra = dict(source_map)
+    extra["unreviewed.py"] = "b" * 64
+    with pytest.raises(watchdog.WatchdogError, match="sixteen-path roster"):
+        watchdog._validated_grant_source_hashes({"source_hashes": extra})
 
 
 def test_runner_rejects_direct_api_missing_and_non_socket_grants(

@@ -191,12 +191,25 @@ def _use_private_test_identity(monkeypatch) -> None:
 @pytest.fixture(autouse=True)
 def _private_run_identity_for_every_test(monkeypatch, tmp_path) -> None:
     _use_private_test_identity(monkeypatch)
+    source_root = tmp_path.resolve()
+    for relative_path in campaign._REQUIRED_SOURCE_PATHS:
+        source_path = source_root / relative_path
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(f"private fake source: {relative_path}\n".encode("ascii"))
+    monkeypatch.setattr(campaign, "_REPO_ROOT", source_root)
     monkeypatch.setattr(
         campaign, "_active_checkout_root_path", lambda: tmp_path.resolve()
     )
     monkeypatch.setattr(campaign, "_current_git_head", lambda: "a" * 40)
+    fake_source_hashes = campaign._current_source_hashes()
     monkeypatch.setattr(
-        campaign, "_REVIEWED_SOURCE_SHA256", campaign._current_source_hashes()
+        campaign,
+        "_REVIEWED_SOURCE_SHA256",
+        {
+            path: digest
+            for path, digest in fake_source_hashes.items()
+            if path != campaign.authority_module.ABC6_CAMPAIGN_SOURCE_PATH
+        },
     )
 
 
@@ -869,15 +882,8 @@ def test_modified_receipt_io_source_bytes_fail_before_claim(
     tmp_path, monkeypatch
 ) -> None:
     helper_path = "core/real_data/cascaded_tanks_abc6_receipt_io.py"
-    fake_source_root = tmp_path / "fake-source-root"
-    for relative_path in campaign._REQUIRED_SOURCE_PATHS:
-        source = campaign._REPO_ROOT / relative_path
-        target = fake_source_root / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-    altered_helper = fake_source_root / helper_path
+    altered_helper = campaign._REPO_ROOT / helper_path
     altered_helper.write_bytes(altered_helper.read_bytes() + b"\\n# private mutation")
-    monkeypatch.setattr(campaign, "_REPO_ROOT", fake_source_root)
 
     manifest = tmp_path / "modified-receipt-io-source.json"
     manifest_sha256 = _write_manifest(manifest)
@@ -897,6 +903,161 @@ def test_modified_receipt_io_source_bytes_fail_before_claim(
         )
 
     assert called == []
+    assert not output.exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_source_schema_is_exact_and_production_reviewed_map_stays_incomplete(
+    tmp_path, monkeypatch
+) -> None:
+    manifest = tmp_path / "incomplete-static-source-map.json"
+    manifest_sha256 = _write_manifest(manifest)
+    output = _receipt_root(tmp_path)
+    paths = campaign.authority_module.ABC6_MANIFEST_SOURCE_PATHS
+    self_path = campaign.authority_module.ABC6_CAMPAIGN_SOURCE_PATH
+
+    assert len(paths) == 16
+    assert set(campaign._REQUIRED_SOURCE_PATHS) == set(paths)
+    assert len(campaign._REVIEWED_SOURCE_SHA256) == 15
+    assert set(campaign._REVIEWED_SOURCE_SHA256) == (
+        set(paths) - {self_path}
+    )
+    assert all(campaign._is_sha256(value) for value in campaign._REVIEWED_SOURCE_SHA256.values())
+    assert campaign._strict_manifest_schema(json.loads(manifest.read_text("ascii")))
+
+    monkeypatch.setattr(
+        campaign,
+        "_REVIEWED_SOURCE_SHA256",
+        {path: None for path in campaign.authority_module.ABC6_STATIC_REVIEWED_SOURCE_PATHS},
+    )
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="static reviewed source pins remain incomplete"):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=lambda _data: pytest.fail("incomplete pins reached fit"),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+    assert not output.exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+@pytest.mark.parametrize(
+    "symlink_kind",
+    ("leaf", "ancestor"),
+)
+def test_source_symlinks_fail_closed_before_campaign_claim(
+    tmp_path, symlink_kind: str
+) -> None:
+    manifest = tmp_path / f"symlinked-source-{symlink_kind}.json"
+    manifest_sha256 = _write_manifest(manifest)
+    if symlink_kind == "leaf":
+        relative_path = "core/abc_smc_reference.py"
+        source = campaign._REPO_ROOT / relative_path
+        moved = source.with_suffix(".saved")
+        source.rename(moved)
+        source.symlink_to(moved)
+    else:
+        parent = campaign._REPO_ROOT / "core/real_data"
+        moved = campaign._REPO_ROOT / "core/real_data_saved"
+        parent.rename(moved)
+        parent.symlink_to(moved, target_is_directory=True)
+
+    fit_calls = []
+    output = _receipt_root(tmp_path)
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="symlinked|source"):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+    assert fit_calls == []
+    assert not output.exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_source_replacement_during_hash_fails_before_campaign_claim(
+    tmp_path, monkeypatch
+) -> None:
+    manifest = tmp_path / "raced-source.json"
+    manifest_sha256 = _write_manifest(manifest)
+    relative_path = "core/abc_smc_reference.py"
+    source = campaign._REPO_ROOT / relative_path
+    original_hash_source = campaign._hash_source_beneath
+    replaced = False
+
+    def replace_after_source_hash(root_fd: int, path: str) -> str:
+        nonlocal replaced
+        digest = original_hash_source(root_fd, path)
+        if path == relative_path and not replaced:
+            source.rename(source.with_suffix(".saved"))
+            source.write_bytes(b"private replacement after pinned read\n")
+            replaced = True
+        return digest
+
+    monkeypatch.setattr(campaign, "_hash_source_beneath", replace_after_source_hash)
+    output = _receipt_root(tmp_path)
+    fit_calls = []
+    with pytest.raises(campaign.ABC6CampaignPreflightError, match="source identity changed"):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+    assert replaced
+    assert fit_calls == []
+    assert not output.exists()
+    assert not _test_claim_path(tmp_path).exists()
+
+
+def test_source_ancestor_replacement_during_hash_fails_before_campaign_claim(
+    tmp_path, monkeypatch
+) -> None:
+    manifest = tmp_path / "raced-source-ancestor.json"
+    manifest_sha256 = _write_manifest(manifest)
+    source_parent = campaign._REPO_ROOT / "core/real_data"
+    moved_parent = campaign._REPO_ROOT / "core/real_data_saved"
+    original_open_parent = campaign._open_relative_directory_nofollow
+    parent_open_count = 0
+
+    def replace_parent_on_reopen(
+        root_fd: int,
+        relative_path: str,
+        *,
+        label: str,
+        create: bool = False,
+    ) -> int:
+        nonlocal parent_open_count
+        if relative_path == "core/real_data" and label.startswith("source parent"):
+            parent_open_count += 1
+            if parent_open_count == 2:
+                source_parent.rename(moved_parent)
+                source_parent.mkdir()
+        return original_open_parent(
+            root_fd, relative_path, label=label, create=create
+        )
+
+    monkeypatch.setattr(
+        campaign, "_open_relative_directory_nofollow", replace_parent_on_reopen
+    )
+    output = _receipt_root(tmp_path)
+    fit_calls = []
+    with pytest.raises(
+        campaign.ABC6CampaignPreflightError, match="source ancestor identity changed"
+    ):
+        campaign._run_campaign_with_fit_callable_for_test(
+            manifest,
+            manifest_sha256,
+            output,
+            fit_callable=lambda data: fit_calls.append(data.case.case_index),
+            claim_registry_path=_test_claim_path(tmp_path),
+        )
+    assert parent_open_count == 2
+    assert fit_calls == []
     assert not output.exists()
     assert not _test_claim_path(tmp_path).exists()
 

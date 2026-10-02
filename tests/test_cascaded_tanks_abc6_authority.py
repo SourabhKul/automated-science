@@ -30,7 +30,7 @@ import hashlib, json, os, sys
 from pathlib import Path
 from core.real_data import cascaded_tanks_abc6_authority as a
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 RUN_ID = "private-authority-test-v1"
 PROTOCOL = "private-authority-protocol-v1"
 RECEIPTS = "artifacts/cascaded_tanks_abc6_synthetic/" + RUN_ID + "/receipts"
@@ -159,6 +159,18 @@ def fake_scorer(authority_value, score_permit):
         duplicate_score_rejected = True
     return metadata, duplicate_score_rejected
 
+def pin_role_frame(function, role):
+    _, relative_path, function_name = a.ABC6_ROLE_CONTRACT[
+        {"runner": 0, "campaign": 1, "case": 2, "scorer": 3}[role]
+    ]
+    filename = str(ROOT / relative_path)
+    if role == "campaign" and Path(__file__).name == "copied_fake_child.py":
+        filename = str(Path(__file__).resolve())
+    function.__code__ = function.__code__.replace(
+        co_name=function_name,
+        co_filename=filename,
+    )
+
 def fake_runner(authority_value):
     case_receipts, summary_sha, forecast_sha, duplicate_index, duplicate_consumes = fake_campaign(authority_value)
     handoff = authority_value.create_runner_handoff(tuple(case_receipts), summary_sha, forecast_sha)
@@ -189,6 +201,11 @@ def fake_runner(authority_value):
         "repeated_activation_rejected": repeated_activation_rejected,
         "duplicate_score_rejected": duplicate_score,
     }
+
+pin_role_frame(fake_runner, "runner")
+pin_role_frame(fake_campaign, "campaign")
+pin_role_frame(fake_case, "case")
+pin_role_frame(fake_scorer, "scorer")
 
 def main():
     fd = int(sys.argv[1])
@@ -222,8 +239,15 @@ if __name__ == "__main__":
 
 def _make_fake_root(tmp_path: Path, source: bytes) -> tuple[Path, str, Path]:
     root = tmp_path.resolve()
-    source_path = root / "fake_child.py"
+    source_path = root / authority.ABC6_ROLE_CONTRACT[0][1]
+    source_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.write_bytes(source)
+    for relative_path in authority.ABC6_MANIFEST_SOURCE_PATHS:
+        target = root / relative_path
+        if target == source_path:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(f"private fake authority source: {relative_path}\n".encode("ascii"))
     run_id = "private-authority-test-v1"
     receipt_relative = f"artifacts/cascaded_tanks_abc6_synthetic/{run_id}/receipts"
     receipt_path = root / receipt_relative
@@ -235,7 +259,6 @@ def _make_fake_root(tmp_path: Path, source: bytes) -> tuple[Path, str, Path]:
 def _bindings(root: Path, receipt_relative: str, identity: authority.ProcessIdentity, *, child_pid: int | None = None, vector: tuple[str, ...] | None = None, root_device: int | None = None):
     root_stat = root.stat()
     receipt_stat = (root / receipt_relative).stat()
-    source_digest = _digest((root / "fake_child.py").read_bytes())
     child_vector = identity.vector if vector is None else vector
     runtime_image_path = authority._vector_image_path(child_vector)
     runtime_image_sha256, _ = authority._hash_path(runtime_image_path, authority.MAX_IMAGE_BYTES, "fake runtime image")
@@ -262,21 +285,29 @@ def _bindings(root: Path, receipt_relative: str, identity: authority.ProcessIden
         child_launch_image_sha256=identity.image_sha256,
         child_image_path=runtime_image_path,
         child_image_sha256=runtime_image_sha256,
-        source_hashes=(("fake_child.py", source_digest),),
+        source_hashes=tuple(
+            sorted(
+                (
+                    path,
+                    _digest((root / path).read_bytes()),
+                )
+                for path in authority.ABC6_MANIFEST_SOURCE_PATHS
+            )
+        ),
         runtime_hashes=tuple(sorted((
             ("child_image_sha256", runtime_image_sha256),
             ("child_launch_image_sha256", identity.image_sha256),
             ("python_version_sha256", _digest(sys.version.encode())),
         ))),
         campaign_claim_relative=f"artifacts/evaluations/cascaded_tanks_abc6_campaign_fit/claims/private-authority-test-v1.claim",
-        runner_source_path="fake_child.py",
-        runner_function="fake_runner",
-        campaign_source_path="fake_child.py",
-        campaign_function="fake_campaign",
-        case_source_path="fake_child.py",
-        case_function="fake_case",
-        scorer_source_path="fake_child.py",
-        scorer_function="fake_scorer",
+        runner_source_path=authority.ABC6_ROLE_CONTRACT[0][1],
+        runner_function=authority.ABC6_ROLE_CONTRACT[0][2],
+        campaign_source_path=authority.ABC6_ROLE_CONTRACT[1][1],
+        campaign_function=authority.ABC6_ROLE_CONTRACT[1][2],
+        case_source_path=authority.ABC6_ROLE_CONTRACT[2][1],
+        case_function=authority.ABC6_ROLE_CONTRACT[2][2],
+        scorer_source_path=authority.ABC6_ROLE_CONTRACT[3][1],
+        scorer_function=authority.ABC6_ROLE_CONTRACT[3][2],
     )
 
 
@@ -296,6 +327,29 @@ def _capture_stable_child(pid: int, timeout: float = 3.0) -> authority.ProcessId
             consecutive = 1
         time.sleep(0.01)
     raise authority.ABC6AuthorityError("child process identity did not stabilize before fake grant")
+
+
+def test_authority_bindings_require_exact_source_map_and_role_pairs(tmp_path):
+    root, receipt_relative, _receipt = _make_fake_root(tmp_path, b"private fake only")
+    binding = _bindings(root, receipt_relative, authority._capture(os.getpid()))
+
+    with pytest.raises(ValueError, match="sixteen-path"):
+        replace(binding, source_hashes=binding.source_hashes[:-1])
+    with pytest.raises(ValueError, match="sixteen-path"):
+        replace(
+            binding,
+            source_hashes=tuple(
+                sorted((*binding.source_hashes[:-1], ("extra.py", "9" * 64)))
+            ),
+        )
+
+    for role, path, function in authority.ABC6_ROLE_CONTRACT:
+        path_field = f"{role}_source_path"
+        function_field = f"{role}_function"
+        with pytest.raises(ValueError, match="frozen ABC6 role contract"):
+            replace(binding, **{path_field: path + ".changed"})
+        with pytest.raises(ValueError, match="frozen ABC6 role contract"):
+            replace(binding, **{function_field: function + "_changed"})
 
 
 def _wire(
@@ -349,7 +403,7 @@ def _issue_fake_grant(
 def test_fake_child_traverses_one_use_training_and_scoring_once(tmp_path, monkeypatch):
     source = _fake_child_source().encode("utf-8")
     root, receipt_relative, receipt = _make_fake_root(tmp_path, source)
-    script = root / "fake_child.py"
+    script = root / authority.ABC6_ROLE_CONTRACT[0][1]
     channel, child, grant_digest, binding = _issue_fake_grant(monkeypatch, root, receipt_relative, script)
     stdout, stderr = child.communicate(timeout=10)
     channel.close()
@@ -402,7 +456,7 @@ def test_changed_process_identity_fails_before_training(tmp_path, monkeypatch):
     monkeypatch.setattr(authority, "_watchdog_callsite", lambda: None)
     channel = authority._new_watchdog_grant_channel()
     fd = channel.child_fd
-    script = root / "fake_child.py"
+    script = root / authority.ABC6_ROLE_CONTRACT[0][1]
     vector = [sys.executable, "-S", str(script), str(fd), "changed-process"]
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
@@ -423,9 +477,9 @@ def test_training_authority_rejects_wrong_campaign_source_or_function(
 ):
     source = _fake_child_source().encode("utf-8")
     root, receipt_relative, _receipt = _make_fake_root(tmp_path, source)
-    script = root / "fake_child.py"
+    script = root / authority.ABC6_ROLE_CONTRACT[0][1]
     if mode == "wrong-source":
-        script = root / "copied_fake_child.py"
+        script = root / "scripts/copied_fake_child.py"
         script.write_bytes(source)
     channel, child, _snapshot, _binding = _issue_fake_grant(
         monkeypatch, root, receipt_relative, script, mode=mode
@@ -603,10 +657,16 @@ def test_root_identity_mismatch_and_extra_frame_bytes_are_rejected(tmp_path):
 
     left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     wire = _wire(_bindings(root, receipt_relative, identity), grant_fd=left.fileno())
-    right.sendall(wire + wire)
-    right.shutdown(socket.SHUT_WR)
+    def send_trailing_frame() -> None:
+        right.sendall(wire + wire)
+        right.shutdown(socket.SHUT_WR)
+
+    sender = threading.Thread(target=send_trailing_frame)
+    sender.start()
     with pytest.raises(authority.ABC6AuthorityError, match="trailing data"):
         authority.receive_child_grant(left.fileno())
+    sender.join(timeout=2)
+    assert not sender.is_alive()
     left.close(); right.close()
 
 

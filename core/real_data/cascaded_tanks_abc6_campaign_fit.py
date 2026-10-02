@@ -113,30 +113,14 @@ _PROJECT_RUN_CLAIM_PATH: Final = (
     / f"{RUN_ID}.claim"
 )
 _REQUIRED_SOURCE_PATHS: Final = (
-    "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
-    "core/real_data/cascaded_tanks_abc6_receipt_io.py",
-    "core/real_data/cascaded_tanks_abc6_cases.py",
-    "core/real_data/cascaded_tanks_abc6_training.py",
-    "core/real_data/cascaded_tanks_pattern_search.py",
-    "core/real_data/cascaded_tanks_synthetic_abc.py",
-    "core/real_data/cascaded_tanks_models.py",
-    REVIEWED_PROPOSAL_PATH,
+    *authority_module.ABC6_MANIFEST_SOURCE_PATHS,
 )
-_REVIEWED_SOURCE_SHA256: Final = {
-    "core/real_data/cascaded_tanks_abc6_receipt_io.py": (
-        "53cfc4a74472558970d606c13583647e3da5b9a8290fb5f9941029e8a99dd2cf"
-    ),
-    "core/real_data/cascaded_tanks_abc6_cases.py": (
-        "3e20935ab4324dd4ffc8b352281ce02fae05f8f57516f5ac8c9cd8c606cd119b"
-    ),
-    "core/real_data/cascaded_tanks_abc6_training.py": (
-        "a12e0f1e2c4fb40e632b0785fdd47f8467ecffbdc36e1396e62d147b2981c59e"
-    ),
-    "core/real_data/cascaded_tanks_pattern_search.py": (
-        "c7800c76c73b5d6063a6e15ea45cd756e7a542b7ec584e99a18108e3ea914458"
-    ),
-    REVIEWED_PROPOSAL_PATH: REVIEWED_PROPOSAL_SHA256,
-}
+# The source-key shape is frozen while final bytes/runtime are not reviewed.
+# Empty slots make the current production pin intentionally unusable; fake
+# tests may replace this mapping with digests in their isolated fixtures.
+_REVIEWED_SOURCE_SHA256: Final = MappingProxyType(
+    {path: None for path in authority_module.ABC6_STATIC_REVIEWED_SOURCE_PATHS}
+)
 _FINAL_STATUSES: Final = frozenset({"complete", "incomplete", "unresolved", "failed"})
 _COMPONENTS: Final = ("fit", "baseline")
 
@@ -172,6 +156,7 @@ class ABC6ReceiptRootIdentity:
         "repository_root_inode",
         "receipt_root_device",
         "receipt_root_inode",
+        "source_hashes",
         "_repository_root_fd",
         "_receipt_root_fd",
     )
@@ -183,6 +168,7 @@ class ABC6ReceiptRootIdentity:
         receipt_root_relative: str,
         repository_root_fd: int,
         receipt_root_fd: int,
+        source_hashes: tuple[tuple[str, str], ...] = (),
     ) -> None:
         root_stat = os.fstat(repository_root_fd)
         receipt_stat = os.fstat(receipt_root_fd)
@@ -194,6 +180,7 @@ class ABC6ReceiptRootIdentity:
         self.repository_root_inode = root_stat.st_ino
         self.receipt_root_device = receipt_stat.st_dev
         self.receipt_root_inode = receipt_stat.st_ino
+        self.source_hashes = tuple(source_hashes)
         self._repository_root_fd = repository_root_fd
         self._receipt_root_fd = receipt_root_fd
 
@@ -250,6 +237,21 @@ class ABC6ReceiptRootIdentity:
                 os.close(receipt_reopened)
         finally:
             os.close(root_reopened)
+        if self.source_hashes:
+            try:
+                actual_sources = _current_source_hashes(
+                    root_fd=self._repository_root_fd
+                )
+            except ABC6CampaignPreflightError:
+                raise
+            except OSError as error:
+                raise ABC6CampaignPreflightError(
+                    "pinned campaign sources could not be revalidated"
+                ) from error
+            if actual_sources != dict(self.source_hashes):
+                raise ABC6CampaignPreflightError(
+                    "pinned campaign source identity changed"
+                )
 
     def duplicate_repository_root_fd(self) -> int:
         self.verify()
@@ -1201,6 +1203,7 @@ def _open_receipt_root_identity(
     *,
     training_session: authority_module.ABC6TrainingSession | None = None,
     manifest_sha256: str | None = None,
+    source_hashes: tuple[tuple[str, str], ...] = (),
 ) -> ABC6ReceiptRootIdentity:
     relative = _validate_receipt_root_relative(receipt_root_relative)
     expected_path = Path(repository_root_realpath) / relative
@@ -1213,6 +1216,13 @@ def _open_receipt_root_identity(
     if type(requested_text) is not str or requested_text != str(expected_path):
         raise ABC6CampaignPreflightError(
             "receipt directory must equal the manifest checkout/root join"
+        )
+
+    if source_hashes and _current_source_hashes(root_fd=repository_root_fd) != dict(
+        source_hashes
+    ):
+        raise ABC6CampaignPreflightError(
+            "pinned campaign source identity changed before receipt setup"
         )
 
     receipt_fd = _open_relative_directory_nofollow(
@@ -1228,6 +1238,7 @@ def _open_receipt_root_identity(
             receipt_root_relative=relative,
             repository_root_fd=repository_root_duplicate,
             receipt_root_fd=receipt_fd,
+            source_hashes=source_hashes,
         )
     except BaseException:
         os.close(repository_root_duplicate)
@@ -1317,11 +1328,160 @@ def _manifest_identity() -> dict[str, object]:
     }
 
 
-def _current_source_hashes() -> dict[str, str]:
-    return {
-        relative_path: _sha256_file(_REPO_ROOT / relative_path)
-        for relative_path in _REQUIRED_SOURCE_PATHS
-    }
+def _source_stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _assert_source_root_path_matches(root_fd: int) -> None:
+    """Keep source reads tied to the canonical checkout-root path identity."""
+
+    try:
+        descriptor_info = os.fstat(root_fd)
+    except OSError as error:
+        raise ABC6CampaignPreflightError("pinned source root descriptor is unavailable") from error
+    if not stat.S_ISDIR(descriptor_info.st_mode):
+        raise ABC6CampaignPreflightError("pinned source root is not a directory")
+    path_fd = _open_directory_nofollow(Path(_REPO_ROOT), label="pinned source root")
+    try:
+        path_info = os.fstat(path_fd)
+        if (descriptor_info.st_dev, descriptor_info.st_ino) != (
+            path_info.st_dev,
+            path_info.st_ino,
+        ):
+            raise ABC6CampaignPreflightError("pinned source root identity changed")
+    finally:
+        os.close(path_fd)
+
+
+def _hash_source_beneath(root_fd: int, relative_path: str) -> str:
+    """Hash one source through no-follow directory descriptors and verify identity."""
+
+    _validate_canonical_relative_path(relative_path, label="pinned source path")
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise ABC6CampaignPreflightError(
+            "platform cannot enforce no-follow pinned source reads"
+        )
+    parts = relative_path.split("/")
+    leaf = parts[-1]
+    parent_relative = "/".join(parts[:-1])
+    parent_fd = (
+        _open_relative_directory_nofollow(
+            root_fd, parent_relative, label=f"source parent for {relative_path}"
+        )
+        if parent_relative
+        else os.dup(root_fd)
+    )
+    source_fd = -1
+    try:
+        parent_before = os.fstat(parent_fd)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | os.O_NOFOLLOW
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        try:
+            source_fd = os.open(leaf, flags, dir_fd=parent_fd)
+            before = os.fstat(source_fd)
+            if not stat.S_ISREG(before.st_mode):
+                raise ABC6CampaignPreflightError(
+                    f"pinned source is not a regular file: {relative_path}"
+                )
+            digest = hashlib.sha256()
+            byte_count = 0
+            while True:
+                chunk = os.read(source_fd, 1024 * 1024)
+                if not chunk:
+                    break
+                byte_count += len(chunk)
+                if byte_count > 64 * 1024 * 1024:
+                    raise ABC6CampaignPreflightError(
+                        f"pinned source exceeds the 64 MiB read limit: {relative_path}"
+                    )
+                digest.update(chunk)
+            after = os.fstat(source_fd)
+            named = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
+        except ABC6CampaignPreflightError:
+            raise
+        except OSError as error:
+            raise ABC6CampaignPreflightError(
+                f"pinned source is missing, symlinked, or unreadable: {relative_path}"
+            ) from error
+
+        if (
+            byte_count != before.st_size
+            or _source_stat_identity(before) != _source_stat_identity(after)
+            or _source_stat_identity(before) != _source_stat_identity(named)
+            or not stat.S_ISREG(named.st_mode)
+        ):
+            raise ABC6CampaignPreflightError(
+                f"pinned source identity changed while hashing: {relative_path}"
+            )
+
+        if parent_relative:
+            current_parent_fd = _open_relative_directory_nofollow(
+                root_fd,
+                parent_relative,
+                label=f"source parent for {relative_path}",
+            )
+        else:
+            current_parent_fd = os.dup(root_fd)
+        try:
+            parent_after = os.fstat(parent_fd)
+            current_parent = os.fstat(current_parent_fd)
+            if (
+                (parent_before.st_dev, parent_before.st_ino)
+                != (parent_after.st_dev, parent_after.st_ino)
+                or (parent_before.st_dev, parent_before.st_ino)
+                != (current_parent.st_dev, current_parent.st_ino)
+            ):
+                raise ABC6CampaignPreflightError(
+                    f"pinned source ancestor identity changed while hashing: {relative_path}"
+                )
+        finally:
+            os.close(current_parent_fd)
+        return digest.hexdigest()
+    finally:
+        if source_fd >= 0:
+            os.close(source_fd)
+        os.close(parent_fd)
+
+
+def _current_source_hashes(*, root_fd: int | None = None) -> dict[str, str]:
+    """Hash the exact candidate source roster through the pinned checkout root."""
+
+    owned_root_fd = root_fd is None
+    if root_fd is None:
+        root_fd = _open_directory_nofollow(
+            Path(_REPO_ROOT), label="pinned source root"
+        )
+    try:
+        _assert_source_root_path_matches(root_fd)
+        hashes = {
+            relative_path: _hash_source_beneath(root_fd, relative_path)
+            for relative_path in _REQUIRED_SOURCE_PATHS
+        }
+        _assert_source_root_path_matches(root_fd)
+        return hashes
+    finally:
+        if owned_root_fd:
+            os.close(root_fd)
+
+
+def _reviewed_source_map_is_complete() -> bool:
+    reviewed = _REVIEWED_SOURCE_SHA256
+    return (
+        isinstance(reviewed, Mapping)
+        and set(reviewed) == set(authority_module.ABC6_STATIC_REVIEWED_SOURCE_PATHS)
+        and all(_is_sha256(digest) for digest in reviewed.values())
+    )
 
 
 def _current_runtime_fingerprint() -> dict[str, object]:
@@ -1640,7 +1800,11 @@ def _preflight_manifest_and_open_checkout_root(
         source_hashes = decoded.get("source_hashes")
         if not isinstance(source_hashes, dict):
             raise ABC6CampaignPreflightError("manifest lacks source_hashes mapping")
-        current_sources = _current_source_hashes()
+        current_sources = _current_source_hashes(root_fd=root_fd)
+        if not _reviewed_source_map_is_complete():
+            raise ABC6CampaignPreflightError(
+                "static reviewed source pins remain incomplete"
+            )
         if any(
             current_sources.get(name) != digest
             for name, digest in _REVIEWED_SOURCE_SHA256.items()
@@ -2286,6 +2450,7 @@ def _execute_campaign(
             receipt_directory,
             training_session=training_session,
             manifest_sha256=verified_manifest_sha256,
+            source_hashes=tuple(sorted(dict(manifest["source_hashes"]).items())),
         )
     finally:
         os.close(repository_root_fd)

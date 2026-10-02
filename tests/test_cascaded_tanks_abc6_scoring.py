@@ -481,7 +481,15 @@ def _install_fake_source_contract(
         )
         digests[relative_path] = hashlib.sha256(source_file.read_bytes()).hexdigest()
     monkeypatch.setattr(campaign_fit, "_REQUIRED_SOURCE_PATHS", required)
-    monkeypatch.setattr(campaign_fit, "_REVIEWED_SOURCE_SHA256", digests)
+    monkeypatch.setattr(
+        campaign_fit,
+        "_REVIEWED_SOURCE_SHA256",
+        {
+            path: digest
+            for path, digest in digests.items()
+            if path != campaign_fit.authority_module.ABC6_CAMPAIGN_SOURCE_PATH
+        },
+    )
     monkeypatch.setattr(campaign_fit, "_REPO_ROOT", source_root)
     monkeypatch.setattr(scoring, "_SOURCE_ROOT", source_root)
     monkeypatch.setattr(scoring, "_PROJECT_ROOT", source_root)

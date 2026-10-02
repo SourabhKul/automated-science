@@ -75,6 +75,11 @@ def _source_pin_check() -> tuple[tuple[str, str], ...]:
         )
     allowlisted = set(campaign_fit._REQUIRED_SOURCE_PATHS)
     reviewed = campaign_fit._REVIEWED_SOURCE_SHA256
+    if not campaign_fit._reviewed_source_map_is_complete():
+        raise ABC6SyntheticRunnerPreflightError(
+            "integrated source pin gate is closed; the static reviewed source map "
+            "must contain exactly fifteen valid SHA-256 pins"
+        )
     missing_allowlist = tuple(
         path for path in _INTEGRATED_SOURCE_PATHS if path not in allowlisted
     )

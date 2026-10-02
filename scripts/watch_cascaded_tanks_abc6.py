@@ -132,17 +132,7 @@ _INTEGRATED_SOURCE_PATHS = (
 )
 _GRANT_FD_ENV = "ABC6_GRANT_FD"
 _GRANT_BOOTSTRAP_SOURCE_PATHS = frozenset(
-    {
-        "scripts/watch_cascaded_tanks_abc6.py",
-        "scripts/run_cascaded_tanks_abc6_synthetic.py",
-        "core/real_data/cascaded_tanks_abc6_authority.py",
-        "core/real_data/cascaded_tanks_abc6_campaign_fit.py",
-        "core/real_data/cascaded_tanks_abc6_cases.py",
-        "core/real_data/cascaded_tanks_abc6_forecast.py",
-        "core/real_data/cascaded_tanks_abc6_scoring.py",
-        "core/real_data/cascaded_tanks_abc6_replay.py",
-        "core/abc_smc_reference.py",
-    }
+    launch_authority.ABC6_MANIFEST_SOURCE_PATHS
 )
 _EXPECTED_UNUSED_LEAVES = {
     _CAMPAIGN_CLAIM_PARENT_RELATIVE: (
@@ -2472,11 +2462,17 @@ def _validated_grant_source_hashes(
     raw = run_identity.get("source_hashes")
     if not isinstance(raw, Mapping) or not raw:
         raise WatchdogError("launch grant source map is absent before claim")
-    if not _GRANT_BOOTSTRAP_SOURCE_PATHS <= set(raw):
+    if set(raw) != _GRANT_BOOTSTRAP_SOURCE_PATHS:
         missing = sorted(_GRANT_BOOTSTRAP_SOURCE_PATHS - set(raw))
+        extra = sorted(set(raw) - _GRANT_BOOTSTRAP_SOURCE_PATHS, key=repr)
+        details = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if extra:
+            details.append("unexpected: " + ", ".join(map(str, extra)))
         raise WatchdogError(
-            "launch grant source pins remain closed before claim; missing reviewed "
-            "bootstrap sources: " + ", ".join(missing)
+            "launch grant source pins must equal the frozen sixteen-path roster "
+            "before claim (" + "; ".join(details) + ")"
         )
     checked: list[tuple[str, str]] = []
     for path, digest in raw.items():

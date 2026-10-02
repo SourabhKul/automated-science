@@ -49,7 +49,7 @@ def _install_fake_source_pins(
 ) -> tuple[tuple[str, str], ...]:
     root = tmp_path.resolve() / "fake-source-tree"
     hashes = {}
-    for index, relative in enumerate(runner._INTEGRATED_SOURCE_PATHS):
+    for index, relative in enumerate(campaign_fit.authority_module.ABC6_MANIFEST_SOURCE_PATHS):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = f"private fake source {index}\n".encode("ascii")
@@ -61,9 +61,19 @@ def _install_fake_source_pins(
     monkeypatch.setattr(campaign_fit, "_current_git_head", lambda: "a" * 40)
     monkeypatch.setattr(scoring, "_SOURCE_ROOT", root)
     monkeypatch.setattr(
-        campaign_fit, "_REQUIRED_SOURCE_PATHS", runner._INTEGRATED_SOURCE_PATHS
+        campaign_fit,
+        "_REQUIRED_SOURCE_PATHS",
+        campaign_fit.authority_module.ABC6_MANIFEST_SOURCE_PATHS,
     )
-    monkeypatch.setattr(campaign_fit, "_REVIEWED_SOURCE_SHA256", hashes)
+    monkeypatch.setattr(
+        campaign_fit,
+        "_REVIEWED_SOURCE_SHA256",
+        {
+            path: digest
+            for path, digest in hashes.items()
+            if path != campaign_fit.authority_module.ABC6_CAMPAIGN_SOURCE_PATH
+        },
+    )
     return tuple((path, hashes[path]) for path in runner._INTEGRATED_SOURCE_PATHS)
 
 

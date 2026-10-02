@@ -388,11 +388,16 @@ def _verified_integrated_source_hashes(
         type(required_paths) is not tuple
         or any(type(path) is not str for path in required_paths)
         or len(set(required_paths)) != len(required_paths)
-        or not set(_INTEGRATED_SOURCE_PATHS).issubset(required_paths)
+        or set(required_paths)
+        != set(campaign_fit.authority_module.ABC6_MANIFEST_SOURCE_PATHS)
         or not isinstance(reviewed, Mapping)
+        or set(reviewed)
+        != set(campaign_fit.authority_module.ABC6_STATIC_REVIEWED_SOURCE_PATHS)
+        or any(not _is_sha256(digest) for digest in reviewed.values())
     ):
         raise ABC6ScoringError(
-            "campaign source contract must allowlist and review runner, forecast, and scorer"
+            "campaign source contract must allowlist and review the exact "
+            "sixteen-source roster and fifteen valid static source pins"
         )
     root_anchor = _root_anchor_for_identity(receipt_root_identity)
     try:
@@ -2410,9 +2415,8 @@ def score_deferred_abc6_synthetic(
     ):
         raise ABC6ScoringError("frozen forecast roster must contain exactly 24 cases")
 
-    # The campaign manifest must freeze all three integrated sources before a
-    # reveal attempt. The current campaign allowlist omits them, so production
-    # scoring remains closed until its independent manifest review is updated.
+    # Preserve the three-entry persisted integrated hash record while requiring
+    # the full staged source contract and complete static map before reveal.
     source_hashes = _verified_integrated_source_hashes(
         execution.receipt_root_identity
     )
