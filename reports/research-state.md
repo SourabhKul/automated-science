@@ -1,6 +1,43 @@
 # Automated science: current research state
 
-Updated: 2026-10-03T07:18Z. This file records observed state, not inferred execution.
+Updated: 2026-10-03T11:51Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: first pre-marker writer patch held on ordering
+
+At 11:33:45–11:34:00Z a Luna max read-only monitor found no ABC6 or other
+research job and no reserved `ct-abc6-20260928-v1` directory, claim, marker,
+checkpoint or log. Exact fixed local Qwen was listed by `GET /v1/models`
+HTTP 200; no generation occurred. Data occupied 6.2 MB, artifacts 61 MB,
+and disk free was 413 GiB. Fresh fetch verified
+`main == origin/main == 75121a26fbdf4453e6d7e21cfdf241890d8001b2`;
+six uncommitted authority/scorer/test paths were unstaged. This is a
+timestamped snapshot, not a later-state assertion.
+
+The Luna author completed the bounded fake-only score-attempt/pre-marker
+writer patch at six-path diff SHA-256
+`2892eb972447f6b779715ec57671015ec8ee2926d48467094a5ed0294b4b554f`.
+An independent Luna max reviewer matched the diff and reproduced 146/146
+focused tests in the current tree and a clean-base exact overlay, including
+strict historical replay. **The reviewer nevertheless returned HOLD:**
+after successful one-use permit consumption, the scorer rereads both campaign
+claims before durably publishing `score-attempt.json`. A mismatched claim can
+leave the permit consumed with neither attempt nor typed failure receipt;
+the fake test encoded that bad outcome. The same early check misses an
+external-claim mutation between it and marker preparation. The author is
+repairing the exact order and adversarial fake tests; no corrected code
+review or source sync exists yet. See `reports/research-ledger/2026-10-03T1151Z.md`.
+
+Primary drafted a committed-source replay path/key map at
+`reports/cascaded-tanks-abc6-replay-source-map-v1-proposal-2026-10-03.md`.
+Independent Luna factual review initially held two path/status descriptions;
+after correction it gave **GO only to the factual design map**. It remains
+local pending reviewed documentation sync. Terminal-v4 public replay,
+production source-backed expected bindings and launch remain HOLD.
+
+The reserved synthetic ID was last observed unused at the 11:34Z monitor;
+authorization remains HOLD. No protocol prospective
+targets, real tank Qwen/ABC, `yEst[768:1024]`, official `uVal/yVal`, or
+Silverbox final score were accessed. No scientific breakthrough.
 
 ## Latest checkpoint: pre-marker evidence design narrowed and reviewed
 
