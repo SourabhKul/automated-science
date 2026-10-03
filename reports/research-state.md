@@ -1,6 +1,45 @@
 # Automated science: current research state
 
-Updated: 2026-10-03T11:51Z. This file records observed state, not inferred execution.
+Updated: 2026-10-03T12:08Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: corrected fake-only pre-marker writer synced
+
+The initial six-file score-attempt writer was independently held after 146/146
+fake tests because it checked campaign claims between one-use permit consume
+and durable attempt publication. The Luna author corrected that exact
+ordering: the attempt uses the authority-retained verified claim digest and
+is durably published first; both anchored claim copies are then revalidated
+inside the typed pre-marker failure catch before marker or prospective-target
+materialization. Fake tests now cover consume-time mismatches and post-attempt
+external/local claim swaps with a bound failure receipt and no marker/target.
+The corrected six-path diff SHA-256 is
+`27426a8f5345edc6955311723fdfb6c6f5b339119162be75b8cdac92ea049371`.
+
+An independent Luna max reviewer reproduced 148/148 focused fake-only tests
+on the current tree and exact clean-base overlay using Python 3.12.11,
+NumPy 2.4.4, psutil 7.2.2 and pytest 9.1.1. The author separately reported
+148/148 under Python 3.14.3 and NumPy 2.4.2. Historical strict-v3 replay
+remained passing and its source was unchanged. The reviewer gave **component
+GO only**, noting prior authorship of the underlying scorer architecture;
+this is not the independent full pre-target boundary/production approval.
+One Luna Git owner fresh-fetched, matched the exact six-file diff, staged only
+those six paths and pushed non-force as content commit
+`808dfa44bab5ecd67cd6192b34c3ebb8764cd69e` on `main`. Fresh fetch
+verified `HEAD == origin/main` at that commit and a clean worktree. No
+experiment, Qwen generation or target access was part of this sync.
+
+The independently fact-reviewed source-map proposal and preceding HOLD
+ledger/state were separately pushed non-force as docs commit
+`5eef6ed04bf5334f8be856ee86f694c3ca509d50`. The map names committed
+Stage A and terminal-v4 source paths/keys, but public terminal-v4 replay,
+source-backed expected bindings, marker/terminal attempt links, full
+source/runtime/role closure, immutable manifest/review/approval and a
+separate launch GO remain HOLD. Production static source pins are still
+`None`. The reserved synthetic ID was last observed unused at the 11:34Z
+monitor; authorization stays HOLD. No protocol prospective targets, real
+tank Qwen/ABC, `yEst[768:1024]`, official `uVal/yVal`, or Silverbox final
+score were accessed. No scientific breakthrough. See
+`reports/research-ledger/2026-10-03T1208Z.md`.
 
 ## Latest checkpoint: first pre-marker writer patch held on ordering
 
