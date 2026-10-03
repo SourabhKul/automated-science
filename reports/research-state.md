@@ -1,6 +1,191 @@
 # Automated science: current research state
 
-Updated: 2026-10-02T06:50Z. This file records observed state, not inferred execution.
+Updated: 2026-10-03T01:50Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: two reviewed ABC6 components synced; launch still HOLD
+
+At 01:35:23Z an independent Luna read-only monitor found no reserved
+`ct-abc6-20260928-v1` directory, campaign/watchdog/scorer claim, launch
+attestation, checkpoint or log. Its only ABC6 process match was the focused
+fake-only pytest suite of a concurrent reviewer, not a campaign runner.
+`GET /v1/models` returned HTTP 200 with the exact fixed Qwen model; no
+generation was requested. A fresh fetch found clean committed
+`main == origin/main == 854c39be89d2ef32c49913a333a5e8cd829b2398`
+with unrelated local worktree edits. See
+`reports/research-ledger/2026-10-03T0150Z.md`.
+
+An independent Luna max reviewer then verified the corrected eight-file
+Stage B1 scoring-permit patch at scoped diff SHA-256
+`226cb8fbe9385921ff068cb510fb83f9c56f62cb2c77e65254bcf4a897f79a83`.
+The reviewer reproduced 100/100 pinned fake-only targeted and strict-v3
+replay tests in both the current tree and a clean-base exact overlay. The
+sole Luna Git owner synced only those reviewed files non-force as content
+commit `5c3452531b267f7f0e820fd60896ae39089042b4`, fresh-fetch verified
+on `main == origin/main`. This is **component GO only**. The historical
+schema-v1 deferred-score receipt and strict-v3 replay remain unchanged;
+the production source pins remain `None` and preclaim remains closed.
+
+A separate independent Luna max reviewer verified the two-file watchdog
+PGID identity patch at scoped diff SHA-256
+`f72f7a2f60bcc0bab8d5e0180449d0c14c30687387aae0fbfbc83a8ac8f06040`.
+The reviewer reproduced 65/65 pinned fake-only tests current and clean-HEAD
+overlay and checked vanished-member, uncertain-identity and live-orphan
+branches. The same sole Git owner in a sequential step synced only those
+two files non-force as `ad838f9c4afb327815fb8c85ec7f9c4ba5786edc`;
+fresh fetch verified `main == origin/main` at that commit. The earlier
+295/296 timing failure and initial short-child attestation flake remain
+negative evidence; this narrows one race but does not eliminate all OS
+sampling uncertainty. A vanished PID remains in the captured initial RSS
+sample with a separate `vanished_during_sample_pids` field.
+
+An independent Luna factual review gave GO to the earlier state/ledger
+history but held the score-attempt receipt draft for exact schema and replay
+semantics. The primary added an explicit crash/stop classification proposal;
+this amended draft still needs independent design review. These reports and
+ledgers are local pending factual review and one-owner Git sync. No protocol
+prospective target, real tank `yEst[768:1024]`, or official `uVal/yVal` was
+accessed. The synthetic ID remains UNUSED/HOLD. Full pre-marker evidence,
+source/runtime closure, terminal-v4 replay, immutable manifest/report/
+approval and a separate launch GO are outstanding. Silverbox multisine
+remains consumed without final score; no breakthrough.
+
+## Latest checkpoint: Luna quota recurred; production state remains unverified
+
+At the 20:29Z wake the primary reread `AGENTS.md`, the 2026-09-07
+scientific review, code and runtime audits, current state, recent ledgers,
+and the draft score-attempt evidence design. A new explicit Luna max
+monitor/exact-byte reviewer spawn and a follow-up to the previous completed
+Luna reviewer both returned `agent thread limit reached`. No Luna monitor or
+review started. The primary did not substitute itself for delegated process,
+Git, model-endpoint, code-review or test work. The last independently
+measured process/Qwen/Git snapshot remains 10:29:44Z, and **current** remote,
+endpoint and process states are unverified. See
+`reports/research-ledger/2026-10-02T2032Z.md`.
+
+The corrected eight-file Stage B1 scoring-permit patch remains author-tested
+100/100 in current and clean overlays, independently unreviewed,
+uncommitted and unsynced. The separate two-file watchdog PGID repair remains
+unreviewed and unsynced. The pre-marker score-attempt receipt is a primary
+design draft only. No source pin, production manifest, approval or launch GO
+was issued. Reserved synthetic `ct-abc6-20260928-v1` remains on HOLD and is
+not to be claimed without a fresh delegated monitor and full independent
+review. No experiment, Qwen generation or held-out access occurred in this
+primary planning turn. The last verified GitHub sync was clean
+`main == origin/main == 854c39be89d2ef32c49913a333a5e8cd829b2398`
+at 10:29:44Z; do not infer current sync. Silverbox multisine remains
+consumed without final score; no breakthrough.
+
+## Latest checkpoint: independent Luna quota blocked this wake
+
+At 15:28Z the primary attempted a bounded Luna max read-only monitor and
+corrected Stage B1 exact-byte rereview, then a follow-up to the previous
+independent Luna reviewer. Both returned `agent thread limit reached`.
+Interrupting a long-stale `pending_init` sensitivity reviewer did not clear
+the quota; one fresh Luna max monitor/reviewer attempt returned the same
+error at 15:33Z.
+No fresh process, reserved claim/marker/checkpoint/log, Git remote or Qwen
+status was measured this wake; the last read-only snapshot is 10:29:44Z
+in `reports/research-ledger/2026-10-02T1050Z.md`. No research run or held-out
+target access was undertaken during this primary planning turn.
+
+Corrected Stage B1 remains author-tested at 100/100 current and clean-overlay
+fake tests but independently **unreviewed, uncommitted and unsynced** after
+the earlier eight-failure receipt-schema HOLD. The separate watchdog PGID
+patch also remains unreviewed and unsynced. The primary drafted
+`reports/cascaded-tanks-abc6-score-attempt-evidence-design-2026-10-02.md`
+for a durable pre-marker score-attempt receipt; it is a design proposal
+requiring independent Luna review, not an implementation or launch gate GO.
+The amended Stage B1 design and recent state/ledger drafts remain local
+pending factual review and one-owner Git sync. See
+`reports/research-ledger/2026-10-02T1530Z.md`.
+
+The last **verified** reviewed GitHub state is clean committed
+`main == origin/main == 854c39be89d2ef32c49913a333a5e8cd829b2398`
+at 10:29:44Z; current remote state is unverified. Production static source
+pins remain `None`. Reserved synthetic `ct-abc6-20260928-v1` stays
+UNUSED/HOLD pending fresh preflight; no protocol prospective targets,
+real tank `yEst[768:1024]` or official `uVal/yVal` have been accessed in this
+work. Silverbox multisine remains consumed without final score. No scientific
+breakthrough.
+
+## Latest checkpoint: Stage B schema break found; corrected code awaits review
+
+At 10:29:44Z a Luna max read-only monitor found no ABC6/research Python job,
+no reserved run directory/claim/marker/checkpoint/log, and the exact fixed
+Qwen model listed by local oMLX HTTP 200. Artifacts were 61 MB, data 6.2 MB
+and free disk 414 GiB. Fresh fetch found `main == origin/main == FETCH_HEAD`
+at `854c39be89d2ef32c49913a333a5e8cd829b2398`; the worktree contains
+deliberately unreviewed code/report edits. No research run or held-out target
+access occurred.
+
+Independent Luna max review held the first Stage B1 fake-only scoring-permit
+patch despite 53/53 targeted tests: it reproduced eight replay failures
+in both current and clean-base overlays. A new top-level `watchdog_authority`
+field broke the existing exact-key `schema_version: 1` deferred-score receipt
+and strict v3 replay. The reviewer found no other bounded permit bypass.
+Primary amended the frozen Stage B design to defer authority metadata to a
+future versioned deferred-score receipt, distinct from watchdog terminal-v4;
+independent Luna design review approved only that correction. The author
+removed the field while retaining direct pre-marker permit consumption and
+reported 100/100 targeted+replay tests current and clean overlay, scoped diff
+SHA-256 `226cb8fbe9385921ff068cb510fb83f9c56f62cb2c77e65254bcf4a897f79a83`.
+An independent rereview attempt returned `agent thread limit reached`.
+Corrected Stage B is therefore **author-tested, unreviewed, uncommitted and
+unsynced**. The separate watchdog PGID identity patch is also unreviewed and
+unsynced after a fresh reviewer spawn hit the same quota. Preserve its one
+transient fake timing failure as a limitation. See
+`reports/research-ledger/2026-10-02T1050Z.md` for exact evidence and paths.
+
+GitHub's last verified reviewed commit remains
+`854c39be89d2ef32c49913a333a5e8cd829b2398` on `main`/`origin/main`.
+Production source pins remain `None`; `ct-abc6-20260928-v1` stays
+UNUSED/HOLD. No protocol prospective synthetic targets, real tank
+`yEst[768:1024]` or official `uVal/yVal` were accessed. Independent code
+review, durable pre-marker attempt evidence, role-specific runtime/source
+closure, source-backed terminal-v4 replay, immutable manifest/report/approval
+and distinct launch GO remain outstanding. Silverbox multisine remains
+consumed without a final score. No scientific breakthrough.
+
+## Latest checkpoint: Stage B design synced; watchdog patch awaits review
+
+The independently design-reviewed, fake-only Stage B scoring-permit
+protocol is synced non-force on `main` as docs commit
+`854c39be89d2ef32c49913a333a5e8cd829b2398`; the sole Luna Git
+owner fresh-fetched `HEAD == origin/main` at sync. Its rule binds the
+runner's one-use handoff to the exact Stage A execution and freshly read
+48 fit/baseline statuses, summary and target-free forecast. The scorer must
+consume the exact activated permit before reveal marker or prospective
+target materialization. A Luna max author is implementing this fake-only
+chain; initial 11 new tests failed during an incomplete fake root-FD
+fixture, and no independently reviewed code result is available yet.
+
+An independent Luna audit located a possible watchdog false-failure
+window after successful child exit: one nonempty PGID snapshot can precede
+a verified-empty reap. The evidence does not distinguish a stale sample
+from a real short-lived descendant. A separate Luna max author made a
+two-file fake-only PID/start-time/PGID identity repair and reported 65/65
+current plus 65/65 clean-overlay watchdog tests, with one transient
+pre-membership short-child attestation failure on the first overlay run.
+That is author evidence only. Two independent-review trigger attempts
+returned `agent thread limit reached`; the two-file patch remains
+unreviewed, uncommitted and unsynced. A separate proposed Luna runtime
+role probe hit the same limit. Preserve the confirmed-orphan failure and
+the timing limitation. See `reports/research-ledger/2026-10-02T0725Z.md`.
+
+At the 05:30:38Z read-only snapshot, no ABC6 or research Python process or
+reserved run directory/claim/marker/checkpoint/log existed; the exact fixed
+Qwen model appeared in local oMLX `GET /v1/models` HTTP 200. No new
+research simulation, prospective synthetic target, real development suffix
+or official test access occurred this wake. Production static source pins
+remain `None`; reserved `ct-abc6-20260928-v1` stays UNUSED/HOLD. Stage B
+code review, durable pre-marker attempt evidence, role-specific runtime
+identity, source-backed terminal-v4 replay, immutable manifest/report/
+approval and distinct launch GO remain necessary. GitHub holds the
+reviewed Stage A content as
+`11f3d70d887d934aa344a97e8a1537dc0cb42baf` and factual docs as
+`cf347d16d947963bb230d3b6d068c152f215ac46`; active source edits are
+deliberately not synced. Silverbox multisine remains consumed without a
+final score. No scientific breakthrough.
 
 ## Latest checkpoint: Stage A training permits independently reviewed and synced
 
