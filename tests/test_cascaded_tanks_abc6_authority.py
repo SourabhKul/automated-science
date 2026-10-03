@@ -217,7 +217,21 @@ def fake_wrong_campaign(authority_value):
     return authority_value.begin_training()
 
 def fake_scorer(authority_value, score_permit, execution):
-    metadata = score_permit.consume(execution)
+    context = score_permit.consume(execution)
+    bindings = context.authority_bindings
+    metadata = {
+        "grant_sha256": authority_value._grant_digest,
+        "run_id": bindings.run_id,
+        "child_launch_image_path": bindings.child_launch_image_path,
+        "child_launch_image_sha256": bindings.child_launch_image_sha256,
+        "child_image_path": bindings.child_image_path,
+        "child_image_sha256": bindings.child_image_sha256,
+        "issued_case_indices": list(range(24)),
+        "consumed_case_indices": list(range(24)),
+        "status_receipts": [list(row) for row in context.status_receipts],
+        "summary_sha256": context.training_summary_sha256,
+        "forecast_sha256": context.forecast_artifact_sha256,
+    }
     duplicate_score_rejected = False
     try:
         score_permit.consume(execution)

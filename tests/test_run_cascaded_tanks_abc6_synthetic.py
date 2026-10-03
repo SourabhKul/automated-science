@@ -114,6 +114,25 @@ def _private_runner_fixture(tmp_path: Path, monkeypatch):
         "consume",
         lambda _permit, _execution: {"schema_version": 1, "fake_runner_test": True},
     )
+    # These orchestration fixtures stop at the fake authority boundary. The
+    # dedicated scoring-permit suite exercises the real consumed context and
+    # durable attempt/failure writers.
+    monkeypatch.setattr(
+        scoring,
+        "_publish_score_attempt",
+        lambda _context, _event: (
+            {"authority_bindings": {}, "campaign_claim_sha256": "0" * 64},
+            "1" * 64,
+        ),
+    )
+    monkeypatch.setattr(
+        scoring, "_revalidate_campaign_claim_after_attempt", lambda _context: None
+    )
+    monkeypatch.setattr(
+        scoring,
+        "_publish_pre_marker_failure",
+        lambda *_args, **_kwargs: "2" * 64,
+    )
     source_hashes = _install_fake_source_pins(tmp_path, monkeypatch)
     root = runner._REPO_ROOT
     receipts = root / campaign_fit.RECEIPT_ROOT_RELATIVE

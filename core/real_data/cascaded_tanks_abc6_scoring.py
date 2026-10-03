@@ -21,6 +21,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Final, Literal
 
@@ -81,6 +82,13 @@ _REVEAL_MARKER_PATH: Final = (
 _WEIGHT_SUM_ABS_TOL: Final = 1.0e-12
 _MAX_HANDOFF_ARTIFACT_BYTES: Final = 128 * 1024 * 1024
 _MAX_SCORE_RECEIPT_BYTES: Final = 16 * 1024 * 1024
+_MAX_SCORE_ATTEMPT_BYTES: Final = 256 * 1024
+SCORE_ATTEMPT_FILENAME: Final = "score-attempt.json"
+SCORE_PRE_MARKER_FAILURE_FILENAME: Final = "score-pre-marker-failure.json"
+_REVEAL_MARKER_RELATIVE: Final = (
+    "artifacts/evaluations/cascaded_tanks_abc6_scoring/claims/"
+    "ct-abc6-20260928-v1.claim"
+)
 
 _TRUTH_PARAMETERS: Final = {
     "A": ("O2", (0.50, 0.40, 0.50, 0.50, 0.50, 3.0)),
@@ -92,6 +100,10 @@ _M_RESIDUAL_GROUPS: Final = ((0, 24, "u8_first_24"), (24, 204, "u0_last_180"))
 
 class ABC6ScoringError(ValueError):
     """A frozen roster, receipt, target, or score failed closed validation."""
+
+
+class _UnexpectedPreMarkerError(ABC6ScoringError):
+    """An unexpected exception occurred while recomputing target-free forecasts."""
 
 
 class ABC6RevealAlreadyConsumedError(ABC6ScoringError):
@@ -120,6 +132,13 @@ class ABC6DeferredScoreConsumedError(RuntimeError):
         self.score_receipt_path = score_receipt_path
         self.score_receipt_sha256 = score_receipt_sha256
         self.failure_stage = failure_stage
+
+
+class _PreMarkerPhase(str, Enum):
+    SOURCE_REVALIDATION = "source_revalidation"
+    TRAINING_EVIDENCE_REVALIDATION = "training_evidence_revalidation"
+    FORECAST_REVALIDATION = "forecast_revalidation"
+    MARKER_PAYLOAD_PREPARATION = "marker_payload_preparation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -2115,6 +2134,575 @@ def _score_event_snapshot(stage: str) -> dict[str, object]:
     }
 
 
+def _score_file_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        stat.S_IMODE(info.st_mode),
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _read_stable_score_file_at(
+    directory_fd: int, filename: str, *, label: str
+) -> tuple[bytes, tuple[int, int, int, int, int, int]]:
+    if filename in {"", ".", ".."} or Path(filename).name != filename:
+        raise ABC6ScoringError(f"{label} filename is not a leaf")
+    required_flags = ("O_NOFOLLOW", "O_NONBLOCK")
+    if any(not hasattr(os, flag) for flag in required_flags):
+        raise ABC6ScoringError("runtime lacks no-follow regular-file opens")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            filename,
+            os.O_RDONLY
+            | os.O_NOFOLLOW
+            | os.O_NONBLOCK
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size < 0
+            or before.st_size > _MAX_SCORE_ATTEMPT_BYTES
+        ):
+            raise ABC6ScoringError(f"{label} is not a private bounded regular file")
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(
+                descriptor,
+                min(64 * 1024, _MAX_SCORE_ATTEMPT_BYTES + 1 - total),
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > _MAX_SCORE_ATTEMPT_BYTES:
+                raise ABC6ScoringError(f"{label} exceeds its fixed byte bound")
+        after = os.fstat(descriptor)
+        named = os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+        identity = _score_file_identity(after)
+        if (
+            total != after.st_size
+            or _score_file_identity(before) != identity
+            or _score_file_identity(named) != identity
+            or not stat.S_ISREG(named.st_mode)
+        ):
+            raise ABC6ScoringError(f"{label} identity changed during readback")
+        return b"".join(chunks), identity
+    except ABC6ScoringError:
+        raise
+    except OSError as error:
+        raise ABC6ScoringError(f"{label} is missing or unsafe") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _verified_campaign_claim_sha256(
+    context: authority_module.ABC6ConsumedScoringContext,
+    root_anchor: cases._DirectoryAnchor,
+    receipt_anchor: cases._DirectoryAnchor,
+) -> str:
+    bindings = context.authority_bindings
+    expected_relative = (
+        f"artifacts/evaluations/cascaded_tanks_abc6_campaign_fit/claims/"
+        f"{bindings.run_id}.claim"
+    )
+    if bindings.campaign_claim_relative != expected_relative:
+        raise ABC6ScoringError("authority campaign claim path differs from the fixed contract")
+    parent_relative, leaf = expected_relative.rsplit("/", 1)
+    external_parent = cases._open_relative_directory_anchor(
+        root_anchor, parent_relative, label="external campaign claim parent"
+    )
+    try:
+        cases._verify_directory_anchor_path(
+            external_parent, label="external campaign claim parent"
+        )
+        global_raw, _global_identity = _read_stable_score_file_at(
+            external_parent.descriptor,
+            leaf,
+            label="external campaign claim",
+        )
+        cases._verify_directory_anchor_path(
+            external_parent, label="external campaign claim parent"
+        )
+    finally:
+        external_parent.close()
+    local_raw, _local_identity = _read_stable_score_file_at(
+        receipt_anchor.descriptor,
+        campaign_fit.CLAIM_FILENAME,
+        label="receipt-root campaign claim",
+    )
+    if global_raw != local_raw:
+        raise ABC6ScoringError("external and receipt-root campaign claims differ")
+    try:
+        claim = json.loads(
+            global_raw.decode("ascii"),
+            object_pairs_hook=authority_module._unique_json_object,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"invalid JSON constant {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise ABC6ScoringError("campaign claim is malformed JSON") from error
+    expected_keys = {
+        "schema_version",
+        "protocol_id",
+        "run_id",
+        "manifest_sha256",
+        "receipt_directory",
+        "claimed_at_utc",
+        "claim_semantics",
+    }
+    execution = context.execution
+    result = execution.campaign_result
+    if (
+        type(claim) is not dict
+        or set(claim) != expected_keys
+        or type(claim.get("schema_version")) is not int
+        or claim.get("schema_version") != 1
+        or claim.get("protocol_id") != bindings.protocol_id
+        or claim.get("run_id") != bindings.run_id
+        or claim.get("manifest_sha256") != bindings.manifest_sha256
+        or claim.get("receipt_directory") != str(receipt_anchor.path)
+        or type(claim.get("claimed_at_utc")) is not str
+        or claim.get("claim_semantics") != "consumed_once_no_resume"
+        or _canonical_json(claim) != global_raw
+    ):
+        raise ABC6ScoringError("campaign claim identity differs from the consumed execution")
+    digest = _sha256(global_raw)
+    if (
+        not _is_sha256(digest)
+        or result.claim_sha256 != digest
+        or context.campaign_claim_sha256 != digest
+    ):
+        raise ABC6ScoringError("campaign claim digest differs from the registered execution")
+    return digest
+
+
+def _score_attempt_payload(
+    context: authority_module.ABC6ConsumedScoringContext,
+    event: dict[str, object],
+) -> dict[str, object]:
+    binding_payload = context.authority_bindings.payload()
+    status_receipts = [
+        {"case_index": index, "component": component, "sha256": digest}
+        for index, component, digest in context.status_receipts
+    ]
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "artifact_type": "abc6_score_attempt",
+        "authority_bindings": binding_payload,
+        "grant_record_sha256": context.grant_record.record_sha256,
+        "campaign_claim_sha256": context.campaign_claim_sha256,
+        "training_evidence_manifest_sha256": context.execution.evidence_manifest_sha256,
+        "training_summary_sha256": context.training_summary_sha256,
+        "status_receipts": status_receipts,
+        "forecast_artifact_sha256": context.forecast_artifact_sha256,
+        "reveal_marker_relative": _REVEAL_MARKER_RELATIVE,
+        "event": event,
+    }
+    if (
+        not _is_sha256(context.execution.evidence_manifest_sha256)
+        or not _is_sha256(context.training_summary_sha256)
+        or not _is_sha256(context.forecast_artifact_sha256)
+        or set(payload)
+        != {
+            "schema_version",
+            "artifact_type",
+            "authority_bindings",
+            "grant_record_sha256",
+            "campaign_claim_sha256",
+            "training_evidence_manifest_sha256",
+            "training_summary_sha256",
+            "status_receipts",
+            "forecast_artifact_sha256",
+            "reveal_marker_relative",
+            "event",
+        }
+    ):
+        raise ABC6ScoringError("consumed context cannot form a score-attempt receipt")
+    if (
+        event.get("stage") != "scoring_permit_consumed"
+        or set(event) != {"stage", "monotonic_ns", "occurred_at_utc", "clock"}
+        or event.get("clock") != "host-local-monotonic-ns"
+    ):
+        raise ABC6ScoringError("score-attempt event is invalid")
+    return payload
+
+
+def _publish_score_evidence_leaf(
+    receipt_anchor: cases._DirectoryAnchor,
+    filename: str,
+    raw: bytes,
+    *,
+    label: str,
+) -> str:
+    if len(raw) > _MAX_SCORE_ATTEMPT_BYTES:
+        raise ABC6ScoringError(f"{label} exceeds its fixed byte bound")
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_EXCL"):
+        raise ABC6ScoringError("runtime lacks exclusive no-follow file creation")
+    cases._verify_directory_anchor_path(receipt_anchor, label="score evidence receipt root")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            filename,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | os.O_NOFOLLOW
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=receipt_anchor.descriptor,
+        )
+        os.fchmod(descriptor, 0o600)
+        created = os.fstat(descriptor)
+        if not stat.S_ISREG(created.st_mode) or stat.S_IMODE(created.st_mode) != 0o600:
+            raise ABC6ScoringError(f"{label} leaf was not created as a private regular file")
+        view = memoryview(raw)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("short score evidence write")
+            view = view[written:]
+        os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(after.st_mode)
+            or stat.S_IMODE(after.st_mode) != 0o600
+            or after.st_size != len(raw)
+        ):
+            raise ABC6ScoringError(f"{label} changed while being written")
+        os.fsync(receipt_anchor.descriptor)
+        readback, named_identity = _read_stable_score_file_at(
+            receipt_anchor.descriptor,
+            filename,
+            label=f"{label} readback",
+        )
+        if readback != raw or named_identity != _score_file_identity(after):
+            raise ABC6ScoringError(f"{label} readback differs from published bytes")
+        cases._verify_directory_anchor_path(
+            receipt_anchor, label="score evidence receipt root"
+        )
+        return _sha256(readback)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _publish_score_attempt(
+    context: authority_module.ABC6ConsumedScoringContext,
+    event: dict[str, object],
+) -> tuple[dict[str, object], str]:
+    root_anchor, receipt_anchor = context._authority.open_consumed_receipt_anchors(context)
+    try:
+        root_path = cases._absolute_lexical_path(_PROJECT_ROOT)
+        if root_path != Path(context.authority_bindings.physical_root):
+            raise ABC6ScoringError("score-attempt checkout differs from the consumed authority root")
+        try:
+            marker_relative = _REVEAL_MARKER_PATH.relative_to(root_path).as_posix()
+        except ValueError as error:
+            raise ABC6ScoringError("fixed reveal marker is outside the consumed checkout") from error
+        if marker_relative != _REVEAL_MARKER_RELATIVE:
+            raise ABC6ScoringError("fixed reveal marker path differs from the protocol")
+        payload = _score_attempt_payload(context, event)
+        raw = _canonical_json(payload)
+        published_sha256 = _publish_score_evidence_leaf(
+            receipt_anchor,
+            SCORE_ATTEMPT_FILENAME,
+            raw,
+            label="score-attempt receipt",
+        )
+        if published_sha256 != _sha256(raw):
+            raise ABC6ScoringError("score-attempt receipt raw digest changed")
+        return payload, published_sha256
+    finally:
+        receipt_anchor.close()
+        root_anchor.close()
+
+
+def _revalidate_campaign_claim_after_attempt(
+    context: authority_module.ABC6ConsumedScoringContext,
+) -> None:
+    """Recheck both durable claim copies after the attempt receipt is sealed."""
+
+    root_anchor, receipt_anchor = context._authority.open_consumed_receipt_anchors(
+        context
+    )
+    try:
+        root_path = cases._absolute_lexical_path(_PROJECT_ROOT)
+        if root_path != Path(context.authority_bindings.physical_root):
+            raise ABC6ScoringError(
+                "campaign claim checkout differs from the consumed authority root"
+            )
+        claim_sha256 = _verified_campaign_claim_sha256(
+            context, root_anchor, receipt_anchor
+        )
+        if claim_sha256 != context.campaign_claim_sha256:
+            raise ABC6ScoringError(
+                "campaign claim changed after the score-attempt receipt"
+            )
+    finally:
+        receipt_anchor.close()
+        root_anchor.close()
+
+
+def _publish_pre_marker_failure(
+    context: authority_module.ABC6ConsumedScoringContext,
+    attempt_payload: dict[str, object],
+    attempt_sha256: str,
+    phase: _PreMarkerPhase,
+    reason_code: Literal["checked_rejection", "unexpected_exception"],
+) -> str:
+    binding_sha256 = _sha256(_canonical_json(attempt_payload["authority_bindings"]))
+    campaign_claim_sha256 = attempt_payload["campaign_claim_sha256"]
+    if not _is_sha256(attempt_sha256) or not _is_sha256(binding_sha256) or not _is_sha256(campaign_claim_sha256):
+        raise ABC6ScoringError("pre-marker failure cannot bind the verified attempt")
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "artifact_type": "abc6_score_pre_marker_failure",
+        "score_attempt_sha256": attempt_sha256,
+        "authority_bindings_sha256": binding_sha256,
+        "campaign_claim_sha256": campaign_claim_sha256,
+        "phase": phase.value,
+        "reason_code": reason_code,
+        "event": _score_event_snapshot("pre_marker_failure_detected"),
+    }
+    raw = _canonical_json(payload)
+    root_anchor, receipt_anchor = context._authority.open_consumed_receipt_anchors(context)
+    try:
+        _publish_score_evidence_leaf(
+            receipt_anchor,
+            SCORE_PRE_MARKER_FAILURE_FILENAME,
+            raw,
+            label="score pre-marker failure receipt",
+        )
+        return _sha256(raw)
+    finally:
+        receipt_anchor.close()
+        root_anchor.close()
+
+
+@dataclass(slots=True)
+class _PreparedABC6Score:
+    training: ABC6TrainingBundle
+    data: tuple[ABC6TrainingCaseData, ...]
+    results: tuple[object, ...]
+    receipt_root_identity: object
+    gate: object
+    receipt_hashes: tuple[tuple[str, str], ...]
+    summary_sha256: str
+    roster_hash: str
+    forecast_array_sha256: str
+    evidence_links: dict[str, object]
+    marker_payload: dict[str, object]
+    postscore_root_anchor: cases._DirectoryAnchor
+    postscore_receipt_anchor: cases._DirectoryAnchor
+
+
+def _prepare_score_before_marker(
+    execution: campaign_fit.ABC6TrainingCampaignExecution,
+    frozen_forecasts: ABC6FrozenForecastRoster,
+    forecast_artifact_path: str | os.PathLike[str],
+    forecast_artifact_sha256: str,
+    *,
+    simulator,
+    phase_holder: list[_PreMarkerPhase],
+) -> _PreparedABC6Score:
+    gate = None
+    postscore_root_anchor = None
+    postscore_receipt_anchor = None
+    try:
+        phase_holder[0] = _PreMarkerPhase.FORECAST_REVALIDATION
+        if not callable(simulator):
+            raise TypeError("simulator must be callable")
+        if not isinstance(frozen_forecasts, ABC6FrozenForecastRoster):
+            raise TypeError("frozen_forecasts must come from freeze_abc6_forecasts")
+        if (
+            len(frozen_forecasts.forecasts) != CASE_COUNT
+            or len(frozen_forecasts.case_sha256) != CASE_COUNT
+        ):
+            raise ABC6ScoringError("frozen forecast roster must contain exactly 24 cases")
+
+        phase_holder[0] = _PreMarkerPhase.SOURCE_REVALIDATION
+        # Preserve the three-entry persisted integrated hash record while requiring
+        # the full staged source contract and complete static map before reveal.
+        source_hashes = _verified_integrated_source_hashes(
+            execution.receipt_root_identity
+        )
+        phase_holder[0] = _PreMarkerPhase.TRAINING_EVIDENCE_REVALIDATION
+        try:
+            verified = execution.load_verified_training_evidence()
+        except Exception as error:
+            raise ABC6ScoringError(
+                "campaign execution failed durable training-evidence verification"
+            ) from error
+        if not isinstance(verified, campaign_fit.ABC6VerifiedTrainingEvidence):
+            raise ABC6ScoringError("execution returned no typed verified training evidence")
+        training = verified.training_bundle
+        results = verified.training_results
+        if not isinstance(results, tuple) or len(results) != CASE_COUNT:
+            raise ABC6ScoringError(
+                "verified training results must contain exactly 24 cases"
+            )
+        data = _validate_training_bundle(training)
+        receipt_root_identity, _receipt_directory, expected_receipt_names = (
+            _validate_campaign_execution_identity(execution)
+        )
+
+        # The case gate is opened only after every status receipt is durable and
+        # verified. No prospective simulator is called by this preflight.
+        gate, receipt_statuses, receipt_hashes, summary_sha256 = _read_verified_statuses(
+            receipt_root_identity
+        )
+        if gate is None:
+            raise ABC6ScoringError("typed scoring call did not open its target gate")
+        campaign_result = execution.campaign_result
+        expected_receipt_hashes: list[tuple[str, str]] = []
+        for status in campaign_result.case_statuses:
+            expected_receipt_hashes.extend(
+                (
+                    (
+                        f"case-{status.case_index:02d}.fit-status.json",
+                        status.fit_receipt_sha256,
+                    ),
+                    (
+                        f"case-{status.case_index:02d}.baseline-status.json",
+                        status.baseline_receipt_sha256,
+                    ),
+                )
+            )
+        if tuple(name for name, _digest in receipt_hashes) != expected_receipt_names:
+            raise ABC6ScoringError(
+                "verified status receipt order differs from campaign execution"
+            )
+        if tuple(receipt_hashes) != tuple(expected_receipt_hashes):
+            raise ABC6ScoringError(
+                "verified receipt digests differ from campaign execution"
+            )
+        if summary_sha256 != campaign_result.summary_sha256:
+            raise ABC6ScoringError(
+                "verified training summary digest differs from execution"
+            )
+
+        phase_holder[0] = _PreMarkerPhase.FORECAST_REVALIDATION
+        for case_index, (result, forecast, (fit_status, baseline_status)) in enumerate(
+            zip(results, frozen_forecasts.forecasts, receipt_statuses, strict=True)
+        ):
+            _validate_result_identity(result, case_index)
+            if (fit_status, baseline_status) != (
+                result.abc_status,
+                result.baseline_status,
+            ):
+                raise ABC6ScoringError(
+                    "durable status receipts disagree with training results"
+                )
+            computed_hash = _forecast_case_hash(case_index, forecast)
+            if computed_hash != frozen_forecasts.case_sha256[case_index]:
+                raise ABC6ScoringError("target-free forecast hash mismatch")
+            posterior = _validated_posterior(result, case_index)
+            _validated_forecast(forecast, result, case_index, posterior)
+
+        try:
+            recomputed_forecasts = tuple(
+                forecast_abc6_posterior_and_baseline(
+                    training.data_for_case(case_index),
+                    results[case_index],
+                    simulator=simulator,
+                )
+                for case_index in range(CASE_COUNT)
+            )
+            recomputed_roster = freeze_abc6_forecasts(recomputed_forecasts)
+        except Exception as error:
+            raise _UnexpectedPreMarkerError(
+                "verified training evidence could not reproduce target-free forecasts"
+            ) from error
+        if (
+            recomputed_roster.case_sha256 != frozen_forecasts.case_sha256
+            or recomputed_roster.roster_sha256 != frozen_forecasts.roster_sha256
+        ):
+            raise ABC6ScoringError(
+                "submitted forecast roster differs from verified training evidence"
+            )
+        _verify_frozen_forecast_artifact(
+            forecast_artifact_path,
+            forecast_artifact_sha256,
+            receipt_anchor=gate._receipt_anchor,
+            campaign_result=campaign_result,
+            evidence_manifest_sha256=execution.evidence_manifest_sha256,
+            source_hashes=source_hashes,
+            receipt_hashes=receipt_hashes,
+            summary_sha256=summary_sha256,
+            frozen=frozen_forecasts,
+        )
+
+        phase_holder[0] = _PreMarkerPhase.MARKER_PAYLOAD_PREPARATION
+        roster_hash = _sha256(
+            _canonical_json(
+                {
+                    "protocol_id": PROTOCOL_ID,
+                    "run_id": RUN_ID,
+                    "case_sha256": frozen_forecasts.case_sha256,
+                }
+            )
+        )
+        if roster_hash != frozen_forecasts.roster_sha256:
+            raise ABC6ScoringError("frozen forecast roster hash mismatch")
+        forecast_array_sha256 = _forecast_array_sha256(frozen_forecasts)
+        evidence_links = _training_evidence_links(gate._receipt_anchor, execution)
+        _reject_existing_reveal_marker(_REVEAL_MARKER_PATH, gate._root_anchor)
+        _require_score_output_absent(gate._receipt_anchor)
+
+        marker_payload = {
+            "schema": "cascaded-tanks-abc6-synthetic-reveal-v1",
+            "protocol_id": PROTOCOL_ID,
+            "run_id": RUN_ID,
+            "condition": "synthetic-prospective-target-confirmation-v1",
+            "semantics": "consumed-on-create; success-or-failure; no-retry",
+            "forecast_roster_sha256": roster_hash,
+            "forecast_artifact_sha256": forecast_artifact_sha256,
+            "training_manifest_sha256": campaign_result.manifest_sha256,
+            "training_evidence_manifest_sha256": execution.evidence_manifest_sha256,
+            "integrated_source_hashes": source_hashes,
+            "status_receipt_sha256": receipt_hashes,
+            "training_summary_sha256": summary_sha256,
+            "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        postscore_root_anchor, postscore_receipt_anchor = (
+            _duplicate_postscore_root_anchors(gate, receipt_root_identity)
+        )
+        return _PreparedABC6Score(
+            training=training,
+            data=data,
+            results=results,
+            receipt_root_identity=receipt_root_identity,
+            gate=gate,
+            receipt_hashes=receipt_hashes,
+            summary_sha256=summary_sha256,
+            roster_hash=roster_hash,
+            forecast_array_sha256=forecast_array_sha256,
+            evidence_links=evidence_links,
+            marker_payload=marker_payload,
+            postscore_root_anchor=postscore_root_anchor,
+            postscore_receipt_anchor=postscore_receipt_anchor,
+        )
+    except BaseException:
+        if postscore_receipt_anchor is not None:
+            postscore_receipt_anchor.close()
+        if postscore_root_anchor is not None:
+            postscore_root_anchor.close()
+        if gate is not None:
+            gate._receipt_anchor.close()
+            gate._root_anchor.close()
+        raise
+
+
 def _require_score_output_absent(
     receipt_anchor: cases._DirectoryAnchor,
 ) -> None:
@@ -2413,170 +3001,63 @@ def score_deferred_abc6_synthetic(
     # consumes the exact registered execution before source, evidence,
     # forecast, marker, or prospective-target work can begin.
     try:
-        scoring_permit.consume(execution)
+        consumed_context = scoring_permit.consume(execution)
     except authority_module.ABC6AuthorityError as error:
         raise ABC6ScoringError("watchdog scoring permit was rejected") from error
-
-    if not callable(simulator):
-        raise TypeError("simulator must be callable")
-    if not isinstance(frozen_forecasts, ABC6FrozenForecastRoster):
-        raise TypeError("frozen_forecasts must come from freeze_abc6_forecasts")
-    if (
-        len(frozen_forecasts.forecasts) != CASE_COUNT
-        or len(frozen_forecasts.case_sha256) != CASE_COUNT
-    ):
-        raise ABC6ScoringError("frozen forecast roster must contain exactly 24 cases")
-
-    # Preserve the three-entry persisted integrated hash record while requiring
-    # the full staged source contract and complete static map before reveal.
-    source_hashes = _verified_integrated_source_hashes(
-        execution.receipt_root_identity
+    attempt_event = _score_event_snapshot("scoring_permit_consumed")
+    attempt_payload, attempt_sha256 = _publish_score_attempt(
+        consumed_context, attempt_event
     )
+    phase_holder = [_PreMarkerPhase.SOURCE_REVALIDATION]
     try:
-        verified = execution.load_verified_training_evidence()
+        _revalidate_campaign_claim_after_attempt(consumed_context)
+        prepared = _prepare_score_before_marker(
+            execution,
+            frozen_forecasts,
+            forecast_artifact_path,
+            forecast_artifact_sha256,
+            simulator=simulator,
+            phase_holder=phase_holder,
+        )
     except Exception as error:
-        raise ABC6ScoringError(
-            "campaign execution failed durable training-evidence verification"
-        ) from error
-    if not isinstance(verified, campaign_fit.ABC6VerifiedTrainingEvidence):
-        raise ABC6ScoringError("execution returned no typed verified training evidence")
-    training = verified.training_bundle
-    results = verified.training_results
-    if not isinstance(results, tuple) or len(results) != CASE_COUNT:
-        raise ABC6ScoringError(
-            "verified training results must contain exactly 24 cases"
+        reason_code: Literal["checked_rejection", "unexpected_exception"] = (
+            "unexpected_exception"
+            if isinstance(error, _UnexpectedPreMarkerError)
+            else "checked_rejection"
+            if isinstance(error, (ABC6ScoringError, TypeError, ValueError))
+            else "unexpected_exception"
         )
-    data = _validate_training_bundle(training)
-    receipt_root_identity, receipt_directory, expected_receipt_names = (
-        _validate_campaign_execution_identity(execution)
-    )
+        _publish_pre_marker_failure(
+            consumed_context,
+            attempt_payload,
+            attempt_sha256,
+            phase_holder[0],
+            reason_code,
+        )
+        raise
 
-    # The case gate is opened only after every status receipt is durable and
-    # verified.  No prospective simulator is called by this preflight.
-    gate, receipt_statuses, receipt_hashes, summary_sha256 = _read_verified_statuses(
-        receipt_root_identity
-    )
-    if gate is None:
-        raise ABC6ScoringError("typed scoring call did not open its target gate")
-    campaign_result = execution.campaign_result
-    expected_receipt_hashes: list[tuple[str, str]] = []
-    for status in campaign_result.case_statuses:
-        expected_receipt_hashes.extend(
-            (
-                (
-                    f"case-{status.case_index:02d}.fit-status.json",
-                    status.fit_receipt_sha256,
-                ),
-                (
-                    f"case-{status.case_index:02d}.baseline-status.json",
-                    status.baseline_receipt_sha256,
-                ),
-            )
-        )
-    if tuple(name for name, _digest in receipt_hashes) != expected_receipt_names:
-        raise ABC6ScoringError(
-            "verified status receipt order differs from campaign execution"
-        )
-    if tuple(receipt_hashes) != tuple(expected_receipt_hashes):
-        raise ABC6ScoringError(
-            "verified receipt digests differ from campaign execution"
-        )
-    if summary_sha256 != campaign_result.summary_sha256:
-        raise ABC6ScoringError(
-            "verified training summary digest differs from execution"
-        )
-    for case_index, (result, forecast, (fit_status, baseline_status)) in enumerate(
-        zip(results, frozen_forecasts.forecasts, receipt_statuses, strict=True)
-    ):
-        _validate_result_identity(result, case_index)
-        if (fit_status, baseline_status) != (
-            result.abc_status,
-            result.baseline_status,
-        ):
-            raise ABC6ScoringError(
-                "durable status receipts disagree with training results"
-            )
-        computed_hash = _forecast_case_hash(case_index, forecast)
-        if computed_hash != frozen_forecasts.case_sha256[case_index]:
-            raise ABC6ScoringError("target-free forecast hash mismatch")
-        posterior = _validated_posterior(result, case_index)
-        _validated_forecast(forecast, result, case_index, posterior)
-
-    try:
-        recomputed_forecasts = tuple(
-            forecast_abc6_posterior_and_baseline(
-                training.data_for_case(case_index),
-                results[case_index],
-                simulator=simulator,
-            )
-            for case_index in range(CASE_COUNT)
-        )
-        recomputed_roster = freeze_abc6_forecasts(recomputed_forecasts)
-    except Exception as error:
-        raise ABC6ScoringError(
-            "verified training evidence could not reproduce target-free forecasts"
-        ) from error
-    if (
-        recomputed_roster.case_sha256 != frozen_forecasts.case_sha256
-        or recomputed_roster.roster_sha256 != frozen_forecasts.roster_sha256
-    ):
-        raise ABC6ScoringError(
-            "submitted forecast roster differs from verified training evidence"
-        )
-    _verify_frozen_forecast_artifact(
-        forecast_artifact_path,
-        forecast_artifact_sha256,
-        receipt_anchor=gate._receipt_anchor,
-        campaign_result=campaign_result,
-        evidence_manifest_sha256=execution.evidence_manifest_sha256,
-        source_hashes=source_hashes,
-        receipt_hashes=receipt_hashes,
-        summary_sha256=summary_sha256,
-        frozen=frozen_forecasts,
-    )
-    roster_hash = _sha256(
-        _canonical_json(
-            {
-                "protocol_id": PROTOCOL_ID,
-                "run_id": RUN_ID,
-                "case_sha256": frozen_forecasts.case_sha256,
-            }
-        )
-    )
-    if roster_hash != frozen_forecasts.roster_sha256:
-        raise ABC6ScoringError("frozen forecast roster hash mismatch")
-    forecast_array_sha256 = _forecast_array_sha256(frozen_forecasts)
-    evidence_links = _training_evidence_links(gate._receipt_anchor, execution)
-    _reject_existing_reveal_marker(_REVEAL_MARKER_PATH, gate._root_anchor)
-    _require_score_output_absent(gate._receipt_anchor)
-
-    marker_payload = {
-        "schema": "cascaded-tanks-abc6-synthetic-reveal-v1",
-        "protocol_id": PROTOCOL_ID,
-        "run_id": RUN_ID,
-        "condition": "synthetic-prospective-target-confirmation-v1",
-        "semantics": "consumed-on-create; success-or-failure; no-retry",
-        "forecast_roster_sha256": roster_hash,
-        "forecast_artifact_sha256": forecast_artifact_sha256,
-        "training_manifest_sha256": campaign_result.manifest_sha256,
-        "training_evidence_manifest_sha256": execution.evidence_manifest_sha256,
-        "integrated_source_hashes": source_hashes,
-        "status_receipt_sha256": receipt_hashes,
-        "training_summary_sha256": summary_sha256,
-        "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
-    postscore_root_anchor, postscore_receipt_anchor = (
-        _duplicate_postscore_root_anchors(gate, receipt_root_identity)
-    )
+    training = prepared.training
+    data = prepared.data
+    results = prepared.results
+    receipt_root_identity = prepared.receipt_root_identity
+    gate = prepared.gate
+    receipt_hashes = prepared.receipt_hashes
+    summary_sha256 = prepared.summary_sha256
+    forecast_array_sha256 = prepared.forecast_array_sha256
+    evidence_links = prepared.evidence_links
+    postscore_root_anchor = prepared.postscore_root_anchor
+    postscore_receipt_anchor = prepared.postscore_receipt_anchor
     try:
         reveal_claim = _claim_reveal_marker(
             _REVEAL_MARKER_PATH,
-            marker_payload,
+            prepared.marker_payload,
             root_anchor=gate._root_anchor,
         )
     except BaseException:
         postscore_receipt_anchor.close()
         postscore_root_anchor.close()
+        gate._receipt_anchor.close()
+        gate._root_anchor.close()
         raise
     marker_sha256 = reveal_claim.marker_sha256
     marker_identity = reveal_claim.receipt_identity()

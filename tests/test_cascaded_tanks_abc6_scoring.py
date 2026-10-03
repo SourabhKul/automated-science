@@ -48,12 +48,28 @@ _FAKE_TARGETS = {"A": (1.0,) * 60, "B": (2.0,) * 60, "M": (3.0,) * 60}
 
 @pytest.fixture(autouse=True)
 def _offline_scoring_permit_consumer(monkeypatch):
-    """Keep legacy offline scorer fixtures outside the supervised permit test."""
+    """Keep offline numerical scoring fixtures outside the supervised permit path."""
 
     monkeypatch.setattr(
         authority_module.ABC6ScoringPermit,
         "consume",
         lambda _permit, _execution: {"schema_version": 1, "fake_offline": True},
+    )
+    monkeypatch.setattr(
+        scoring,
+        "_publish_score_attempt",
+        lambda _context, _event: (
+            {"authority_bindings": {}, "campaign_claim_sha256": "0" * 64},
+            "1" * 64,
+        ),
+    )
+    monkeypatch.setattr(
+        scoring, "_revalidate_campaign_claim_after_attempt", lambda _context: None
+    )
+    monkeypatch.setattr(
+        scoring,
+        "_publish_pre_marker_failure",
+        lambda *_args, **_kwargs: "2" * 64,
     )
 
 
@@ -586,6 +602,28 @@ def _fake_execution(receipts: Path, training, results):
         if summary_path.exists()
         else "2" * 64
     )
+    root = receipts.parents[len(Path(campaign_fit.RECEIPT_ROOT_RELATIVE).parts) - 1]
+    claim_payload = {
+        "schema_version": 1,
+        "protocol_id": cases.PROTOCOL_ID,
+        "run_id": cases.RUN_ID,
+        "manifest_sha256": "a" * 64,
+        "receipt_directory": str(receipts),
+        "claimed_at_utc": "2026-10-03T12:00:00Z",
+        "claim_semantics": "consumed_once_no_resume",
+    }
+    claim_bytes = _canonical_json(claim_payload)
+    claim_sha256 = hashlib.sha256(claim_bytes).hexdigest()
+    (receipts / campaign_fit.CLAIM_FILENAME).write_bytes(claim_bytes)
+    os.chmod(receipts / campaign_fit.CLAIM_FILENAME, 0o600)
+    external_claim = (
+        root
+        / campaign_fit.CAMPAIGN_CLAIM_PARENT_RELATIVE
+        / f"{cases.RUN_ID}.claim"
+    )
+    external_claim.parent.mkdir(parents=True, exist_ok=True)
+    external_claim.write_bytes(claim_bytes)
+    os.chmod(external_claim, 0o600)
     evidence_directory = receipts / campaign_fit.EVIDENCE_DIRECTORY_NAME
     evidence_directory.mkdir(parents=True, exist_ok=True)
     bundle_filename = "training-bundle.evidence.json"
@@ -637,7 +675,7 @@ def _fake_execution(receipts: Path, training, results):
         "protocol_id": cases.PROTOCOL_ID,
         "run_id": cases.RUN_ID,
         "manifest_sha256": "a" * 64,
-        "claim_sha256": "b" * 64,
+        "claim_sha256": claim_sha256,
         "training_summary_filename": campaign_fit.SUMMARY_FILENAME,
         "training_summary_sha256": summary_sha256,
         "roster_sha256": campaign_fit._roster_sha256(),
@@ -668,7 +706,7 @@ def _fake_execution(receipts: Path, training, results):
         protocol_id=cases.PROTOCOL_ID,
         run_id=cases.RUN_ID,
         manifest_sha256="a" * 64,
-        claim_sha256="b" * 64,
+        claim_sha256=claim_sha256,
         status=overall_status,
         case_statuses=tuple(statuses),
         summary_path=summary_path,
@@ -1648,7 +1686,10 @@ def test_symlinked_fixed_root_ancestor_is_rejected_before_exclusive_claim(
 
     assert calls == []
     assert not marker.exists()
-    assert not (redirect / "evaluations").exists()
+    assert not (
+        redirect
+        / "evaluations/cascaded_tanks_abc6_scoring/claims/ct-abc6-20260928-v1.claim"
+    ).exists()
 
 
 @pytest.mark.parametrize(

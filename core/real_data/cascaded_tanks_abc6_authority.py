@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Final
 
 MAX_FRAME_BYTES: Final = 64 * 1024
@@ -47,6 +47,7 @@ _SESSION_SEAL = object()
 _CASE_SEAL = object()
 _SCORE_SEAL = object()
 _HANDOFF_SEAL = object()
+_CONSUMED_CONTEXT_SEAL = object()
 _PENDING_SEAL = object()
 
 # Frozen candidate source and role contract for the future ABC6 grant.  The
@@ -123,6 +124,16 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 def _is_sha(value: object) -> bool:
     return type(value) is str and _SHA.fullmatch(value) is not None
+
+
+def _registered_execution_claim_sha256(binding: tuple[object, ...]) -> str:
+    """Read the campaign-claim digest from a verified execution binding."""
+
+    if len(binding) <= 4 or not _is_sha(binding[4]):
+        raise ABC6AuthorityError(
+            "registered training execution has no valid campaign-claim digest"
+        )
+    return binding[4]
 
 
 def _relative(value: object, label: str) -> str:
@@ -888,6 +899,7 @@ class _State:
         self.handoff_attempted = False
         self.handoff: ABC6RunnerHandoff | None = None
         self.scoring_permit: ABC6ScoringPermit | None = None
+        self.consumed_scoring_context: ABC6ConsumedScoringContext | None = None
 
 
 class ABC6LaunchAuthority:
@@ -1529,6 +1541,90 @@ class ABC6LaunchAuthority:
             "forecast_sha256": None if handoff is None else handoff._forecast_sha256,
         }
 
+    def open_consumed_receipt_anchors(
+        self, context: "ABC6ConsumedScoringContext"
+    ) -> tuple[object, object]:
+        """Duplicate the authority-pinned checkout and receipt-root anchors."""
+
+        from core.real_data import cascaded_tanks_abc6_cases as cases
+
+        if type(context) is not ABC6ConsumedScoringContext:
+            raise ABC6AuthorityError("score attempt requires the consumed authority context")
+        self._assert_live()
+        with self._state.lock:
+            if (
+                context._seal is not _CONSUMED_CONTEXT_SEAL
+                or context._authority is not self
+                or self._state.consumed_scoring_context is not context
+                or not self._state.score_consumed
+                or context.execution is not self._state.training_execution
+                or context.handoff is not self._state.handoff
+                or context.authority_bindings is not self._bindings
+                or context.grant_record is not self._grant_record
+            ):
+                raise ABC6AuthorityError("consumed scoring context is stale or copied")
+            registered_binding = self._assert_registered_training_execution(
+                context.execution
+            )
+            if context.campaign_claim_sha256 != _registered_execution_claim_sha256(
+                registered_binding
+            ):
+                raise ABC6AuthorityError(
+                    "consumed scoring context campaign claim differs from registration"
+                )
+
+        bindings = self._bindings
+        root_anchor = None
+        receipt_anchor = None
+        root_fd = os.dup(self._root_fd)
+        receipt_fd = -1
+        try:
+            root_anchor = cases._DirectoryAnchor(Path(bindings.physical_root), root_fd)
+            root_fd = -1
+            receipt_fd = os.dup(self._receipt_fd)
+            receipt_anchor = cases._DirectoryAnchor(
+                Path(bindings.physical_root) / bindings.receipt_root_relative,
+                receipt_fd,
+            )
+            receipt_fd = -1
+            if (
+                (root_anchor.device, root_anchor.inode)
+                != (bindings.root_device, bindings.root_inode)
+                or (receipt_anchor.device, receipt_anchor.inode)
+                != (bindings.receipt_device, bindings.receipt_inode)
+            ):
+                raise ABC6AuthorityError("authority-pinned receipt root identity changed")
+            cases._verify_directory_anchor_path(root_anchor, label="authority checkout root")
+            current_receipt = cases._open_relative_directory_anchor(
+                root_anchor,
+                bindings.receipt_root_relative,
+                label="authority receipt root",
+            )
+            try:
+                if (current_receipt.device, current_receipt.inode) != (
+                    receipt_anchor.device,
+                    receipt_anchor.inode,
+                ):
+                    raise ABC6AuthorityError(
+                        "authority receipt root is detached from its pinned ancestry"
+                    )
+            finally:
+                current_receipt.close()
+            cases._verify_directory_anchor_path(
+                receipt_anchor, label="authority receipt root"
+            )
+            return root_anchor, receipt_anchor
+        except BaseException:
+            if root_anchor is not None:
+                root_anchor.close()
+            elif root_fd >= 0:
+                os.close(root_fd)
+            if receipt_anchor is not None:
+                receipt_anchor.close()
+            elif receipt_fd >= 0:
+                os.close(receipt_fd)
+            raise
+
     def close(self) -> None:
         if self._seal is not _AUTHORITY_SEAL:
             return
@@ -1781,6 +1877,62 @@ class ABC6RunnerHandoff:
         self._status_receipts, self._summary_sha256, self._forecast_sha256 = statuses, summary, forecast
 
 
+@dataclass(frozen=True, slots=True)
+class ABC6ConsumedScoringContext:
+    """Authority-minted immutable facts for one successfully consumed permit."""
+
+    _seal: object
+    _authority: ABC6LaunchAuthority
+    authority_bindings: ABC6AuthorityBindings
+    grant_record: _ReceivedGrantRecord
+    campaign_claim_sha256: str
+    execution: object
+    handoff: ABC6RunnerHandoff
+    status_receipts: tuple[tuple[int, str, str], ...]
+    training_summary_sha256: str
+    forecast_artifact_sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _CONSUMED_CONTEXT_SEAL
+            or type(self._authority) is not ABC6LaunchAuthority
+            or self._authority._seal is not _AUTHORITY_SEAL
+            or type(self.authority_bindings) is not ABC6AuthorityBindings
+            or not isinstance(self.grant_record, _ReceivedGrantRecord)
+            or not self.grant_record.regular_file
+            or self.grant_record.file_mode != 0o600
+            or not _is_sha(self.grant_record.record_sha256)
+            or not _is_sha(self.campaign_claim_sha256)
+            or type(self.handoff) is not ABC6RunnerHandoff
+            or self.handoff._seal is not _HANDOFF_SEAL
+            or self.handoff._authority is not self._authority
+            or self.handoff._execution is not self.execution
+            or not isinstance(self.status_receipts, tuple)
+            or len(self.status_receipts) != 48
+            or not _is_sha(self.training_summary_sha256)
+            or not _is_sha(self.forecast_artifact_sha256)
+        ):
+            raise ABC6AuthorityError("consumed scoring context failed sealed validation")
+        for case_index in range(CASE_COUNT):
+            for offset, component in enumerate(("fit", "baseline")):
+                entry = self.status_receipts[case_index * 2 + offset]
+                if (
+                    not isinstance(entry, tuple)
+                    or len(entry) != 3
+                    or type(entry[0]) is not int
+                    or entry[0] != case_index
+                    or type(entry[1]) is not str
+                    or entry[1] != component
+                    or not _is_sha(entry[2])
+                ):
+                    raise ABC6AuthorityError(
+                        "consumed scoring context status snapshot is invalid"
+                    )
+
+    def __reduce__(self):
+        raise TypeError("consumed scoring contexts cannot be serialized")
+
+
 class ABC6ScoringPermit:
     __slots__ = ("_seal", "_authority", "_used")
 
@@ -1794,7 +1946,7 @@ class ABC6ScoringPermit:
             raise TypeError("invalid scoring permit")
         self._seal, self._authority, self._used = seal, authority, False
 
-    def consume(self, execution: object) -> dict[str, object]:
+    def consume(self, execution: object) -> ABC6ConsumedScoringContext:
         authority = getattr(self, "_authority", None)
         if type(authority) is not ABC6LaunchAuthority:
             raise ABC6AuthorityError("scoring permit is unsealed or malformed")
@@ -1819,8 +1971,27 @@ class ABC6ScoringPermit:
                 or authority._state.score_consumed
             ):
                 raise ABC6AuthorityError("scoring permit is dormant or already consumed")
+            grant_record = authority._grant_record
+            if not isinstance(grant_record, _ReceivedGrantRecord):
+                raise ABC6AuthorityError(
+                    "scoring permit has no retained verified grant-record snapshot"
+                )
+            campaign_claim_sha256 = _registered_execution_claim_sha256(binding)
+            context = ABC6ConsumedScoringContext(
+                _CONSUMED_CONTEXT_SEAL,
+                authority,
+                authority._bindings,
+                grant_record,
+                campaign_claim_sha256,
+                execution,
+                handoff,
+                tuple(handoff._status_receipts),
+                handoff._summary_sha256,
+                handoff._forecast_sha256,
+            )
             self._used = authority._state.score_consumed = True
-        return authority.receipt_metadata()
+            authority._state.consumed_scoring_context = context
+        return context
 
     def __copy__(self):
         raise TypeError("scoring permits cannot be copied")
