@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-03T07:09Z. This file records observed state, not inferred execution.
+Updated: 2026-10-03T07:18Z. This file records observed state, not inferred execution.
 
 ## Latest checkpoint: pre-marker evidence design narrowed and reviewed
 
@@ -30,8 +30,12 @@ and scorer integration**. Exact source-derived path/key formulas and public
 replay remain HOLD, as do versioned marker/terminal links, complete source/
 runtime closure, immutable manifest/review/approval and a separate launch
 decision. A Luna max author has been assigned that bounded implementation;
-no reviewed code result or Git sync exists yet for it. The revised design
-files and this checkpoint are local pending factual review/sync.
+no reviewed implementation result or code sync exists yet. The four reviewed
+compact report/protocol paths were synced non-force as content commit
+`bcf749fffa632a67f9381fed612457964c2dad46`; a fresh fetch verified
+`main == origin/main` at that commit. Concurrent local code edits were outside
+that documentation scope and remain unreviewed and uncommitted; no
+implementation or test result is inferred from them.
 
 The reserved synthetic ID remains UNUSED/HOLD. No protocol prospective
 targets, real tank Qwen/ABC, `yEst[768:1024]`, official `uVal/yVal`, or
