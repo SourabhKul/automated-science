@@ -27,6 +27,7 @@ from typing import Final, Literal
 import numpy as np
 
 from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign_fit
+from core.real_data import cascaded_tanks_abc6_authority as authority_module
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data.cascaded_tanks_abc6_cases import (
     CASE_COUNT,
@@ -2387,6 +2388,7 @@ def score_deferred_abc6_synthetic(
     forecast_artifact_path: str | os.PathLike[str],
     forecast_artifact_sha256: str,
     *,
+    scoring_permit: authority_module.ABC6ScoringPermit,
     simulator=simulate_cascaded_tanks,
 ) -> ABC6DeferredScoreResult:
     """Reveal, hash, then score the fixed synthetic A/B/M prospective targets.
@@ -2401,12 +2403,22 @@ def score_deferred_abc6_synthetic(
     checkpoint when the pinned paths permit; the marker is never removed.
     """
 
-    if not callable(simulator):
-        raise TypeError("simulator must be callable")
+    if type(scoring_permit) is not authority_module.ABC6ScoringPermit:
+        raise TypeError("scoring_permit must be an activated ABC6ScoringPermit")
     if not isinstance(execution, campaign_fit.ABC6TrainingCampaignExecution):
         raise TypeError(
             "execution must be an ABC6TrainingCampaignExecution; bare training data is rejected"
         )
+    # This direct call is the scorer's first supervised action. The authority
+    # consumes the exact registered execution before source, evidence,
+    # forecast, marker, or prospective-target work can begin.
+    try:
+        scoring_permit.consume(execution)
+    except authority_module.ABC6AuthorityError as error:
+        raise ABC6ScoringError("watchdog scoring permit was rejected") from error
+
+    if not callable(simulator):
+        raise TypeError("simulator must be callable")
     if not isinstance(frozen_forecasts, ABC6FrozenForecastRoster):
         raise TypeError("frozen_forecasts must come from freeze_abc6_forecasts")
     if (

@@ -563,23 +563,46 @@ def run_cascaded_tanks_abc6_synthetic(
             "status receipts changed after target-free forecasts were frozen"
         )
     _verify_forecast_roster(frozen, results)
-    if (
-        _verify_published_forecasts(receipt_root_identity, payload)
-        != artifact_sha256
-    ):
+    forecast_sha256_now = _verify_published_forecasts(
+        receipt_root_identity, payload
+    )
+    if forecast_sha256_now != artifact_sha256:
         raise ABC6SyntheticRunnerIntegrityError(
             "target-free forecast artifact digest changed before scoring"
         )
 
+    fresh_status_receipts = tuple(
+        (index, component, digest)
+        for index in range(cases.CASE_COUNT)
+        for component, (_filename, digest) in zip(
+            ("fit", "baseline"),
+            receipt_hashes_now[index * 2 : index * 2 + 2],
+            strict=True,
+        )
+    )
+    try:
+        scoring_handoff = launch_authority.create_runner_handoff(
+            execution,
+            fresh_status_receipts,
+            _summary_sha256_now,
+            forecast_sha256_now,
+        )
+        scoring_permit = launch_authority.activate_scoring(scoring_handoff)
+    except authority_module.ABC6AuthorityError as error:
+        raise ABC6SyntheticRunnerIntegrityError(
+            "watchdog did not authorize the verified scoring handoff"
+        ) from error
+
     # No target generator or reveal marker is owned here. The reviewed scorer
-    # receives the typed execution and durable forecast artifact, verifies its
-    # own evidence/source/receipt chain, claims its one-use marker, hashes target
-    # truth, and only then invokes the deferred target generator.
+    # consumes the activated permit against the exact execution before its
+    # source/evidence/forecast checks, then claims its one-use marker and only
+    # after that invokes the deferred target generator.
     score = scoring.score_deferred_abc6_synthetic(
         execution,
         frozen,
         artifact_path,
-        artifact_sha256,
+        forecast_sha256_now,
+        scoring_permit=scoring_permit,
     )
     return ABC6SyntheticRunResult(
         training_campaign=execution.campaign_result,

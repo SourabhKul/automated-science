@@ -89,6 +89,31 @@ def _private_runner_fixture(tmp_path: Path, monkeypatch):
         "consume_runner_startup",
         lambda self: None,
     )
+    handoff_calls = []
+
+    def fake_create_handoff(self, execution, status_receipts, summary_sha256, forecast_sha256):
+        handoff_calls.append(
+            (self, execution, status_receipts, summary_sha256, forecast_sha256)
+        )
+        return object()
+
+    monkeypatch.setattr(
+        runner.authority_module.ABC6LaunchAuthority,
+        "create_runner_handoff",
+        fake_create_handoff,
+    )
+    monkeypatch.setattr(
+        runner.authority_module.ABC6LaunchAuthority,
+        "activate_scoring",
+        lambda self, handoff: object.__new__(
+            runner.authority_module.ABC6ScoringPermit
+        ),
+    )
+    monkeypatch.setattr(
+        runner.authority_module.ABC6ScoringPermit,
+        "consume",
+        lambda _permit, _execution: {"schema_version": 1, "fake_runner_test": True},
+    )
     source_hashes = _install_fake_source_pins(tmp_path, monkeypatch)
     root = runner._REPO_ROOT
     receipts = root / campaign_fit.RECEIPT_ROOT_RELATIVE
@@ -121,6 +146,7 @@ def _private_runner_fixture(tmp_path: Path, monkeypatch):
         marker,
         source_hashes,
         test_authority,
+        handoff_calls,
     )
 
 
@@ -205,6 +231,7 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
         marker,
         source_hashes,
         test_authority,
+        handoff_calls,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     events = []
     campaign_calls = []
@@ -278,6 +305,7 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
         artifact_path,
         artifact_sha256,
         *,
+        scoring_permit,
         simulator=scoring.simulate_cascaded_tanks,
     ):
         assert isinstance(execution, campaign_fit.ABC6TrainingCampaignExecution)
@@ -290,6 +318,7 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
             frozen,
             artifact_path,
             artifact_sha256,
+            scoring_permit=scoring_permit,
             simulator=simulator,
         )
 
@@ -345,6 +374,18 @@ def test_integrated_runner_freezes_all_cases_before_scorer_claim_and_generator(
     assert len(campaign_calls) == 1
     assert campaign_calls[0][2] == receipts
     assert generator_calls == ["called-after-marker-and-freeze"]
+    assert len(handoff_calls) == 1
+    assert handoff_calls[0][0] is test_authority
+    assert isinstance(
+        handoff_calls[0][1], campaign_fit.ABC6TrainingCampaignExecution
+    )
+    assert len(handoff_calls[0][2]) == 48
+    assert handoff_calls[0][3] == hashlib.sha256(
+        (receipts / campaign_fit.SUMMARY_FILENAME).read_bytes()
+    ).hexdigest()
+    assert handoff_calls[0][4] == hashlib.sha256(
+        (receipts / runner.FORECAST_ARTIFACT_FILENAME).read_bytes()
+    ).hexdigest()
     assert events.index("verified-evidence") < events.index("verified-48-statuses")
     assert events.index("frozen") < events.index("typed-scorer-handoff")
     assert events.index("frozen") < len(events)
@@ -394,6 +435,7 @@ def test_preopen_artifacts_symlink_fails_before_claim_marker_or_materializer(
         marker,
         _source_hashes,
         test_authority,
+        _handoff_calls,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     copied_artifacts = tmp_path.resolve() / "copied-artifacts"
     copied_artifacts.mkdir()
@@ -454,6 +496,7 @@ def test_postopen_artifacts_swap_cannot_redirect_forecast_readback_or_reveal(
         marker,
         _source_hashes,
         test_authority,
+        _handoff_calls,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     campaign_calls = []
 
@@ -541,6 +584,7 @@ def test_missing_incomplete_case_receipt_fails_before_scorer_or_materializer(
         marker,
         _source_hashes,
         test_authority,
+        _handoff_calls,
     ) = _private_runner_fixture(tmp_path, monkeypatch)
     campaign_calls = []
 

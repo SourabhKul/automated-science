@@ -81,6 +81,7 @@ def _private_root_fixture(tmp_path: Path, monkeypatch):
         marker,
         source_hashes,
         test_authority,
+        _handoff_calls,
     ) = runner_fixtures._private_runner_fixture(tmp_path, monkeypatch)
     claim_registry = (
         root
@@ -207,12 +208,20 @@ def _run_fake_score(
     monkeypatch.setattr(cases, "_materialize_prospective_targets", fake_materializer)
     score_callable = scoring.score_deferred_abc6_synthetic
 
-    def fake_score(execution, frozen, artifact_path, artifact_sha256):
+    def fake_score(
+        execution,
+        frozen,
+        artifact_path,
+        artifact_sha256,
+        *,
+        scoring_permit,
+    ):
         return score_callable(
             execution,
             frozen,
             artifact_path,
             artifact_sha256,
+            scoring_permit=scoring_permit,
             simulator=scoring_fixtures._fake_simulator,
         )
 

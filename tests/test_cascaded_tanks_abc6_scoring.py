@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign_fit
+from core.real_data import cascaded_tanks_abc6_authority as authority_module
 from core.real_data import cascaded_tanks_abc6_cases as cases
 from core.real_data import cascaded_tanks_abc6_scoring as scoring
 from core.real_data.cascaded_tanks_abc6_cases import (
@@ -43,6 +44,21 @@ from core.real_data.cascaded_tanks_models import (
 
 _WEIGHTS = (0.25, 0.75)
 _FAKE_TARGETS = {"A": (1.0,) * 60, "B": (2.0,) * 60, "M": (3.0,) * 60}
+
+
+@pytest.fixture(autouse=True)
+def _offline_scoring_permit_consumer(monkeypatch):
+    """Keep legacy offline scorer fixtures outside the supervised permit test."""
+
+    monkeypatch.setattr(
+        authority_module.ABC6ScoringPermit,
+        "consume",
+        lambda _permit, _execution: {"schema_version": 1, "fake_offline": True},
+    )
+
+
+def _fake_scoring_permit():
+    return object.__new__(authority_module.ABC6ScoringPermit)
 
 
 def _assert_score_event(event, *, stage):
@@ -754,7 +770,7 @@ def _private_score(
     )
     return scoring.score_deferred_abc6_synthetic(
         *prepared,
-        simulator=simulator,
+        scoring_permit=_fake_scoring_permit(), simulator=simulator,
     )
 
 
@@ -855,7 +871,7 @@ def test_bare_mutated_posterior_and_matching_forecast_are_rejected_pre_marker(
             training,
             tuple(changed_results),
             frozen,
-            simulator=_fake_simulator,
+            scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
         )
 
     assert calls == []
@@ -885,7 +901,7 @@ def test_current_campaign_source_allowlist_fails_closed_before_loading_or_reveal
             frozen,
             receipts / scoring._FORECAST_ARTIFACT_FILENAME,
             "d" * 64,
-            simulator=_fake_simulator,
+            scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
         )
 
     assert loader_calls == []
@@ -920,7 +936,7 @@ def test_mismatched_checkout_identity_fails_before_marker_or_target_generation(
                 frozen,
                 artifact_path,
                 artifact_sha256,
-                simulator=_fake_simulator,
+                scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
             )
     finally:
         original_identity.close()
@@ -966,7 +982,7 @@ def test_success_scores_fake_targets_and_emits_protocol_diagnostics(
         monkeypatch, receipts, training, results, forecasts
     )
     output = scoring.score_deferred_abc6_synthetic(
-        *prepared, simulator=_fake_simulator
+        *prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator
     )
 
     assert marker.is_file()
@@ -1090,7 +1106,7 @@ def test_success_scores_fake_targets_and_emits_protocol_diagnostics(
         scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
     ):
         scoring.score_deferred_abc6_synthetic(
-            *prepared, simulator=_fake_simulator
+            *prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator
         )
     assert calls == ["generate"]
     assert hashlib.sha256(output.score_receipt_path.read_bytes()).hexdigest() == (
@@ -1188,7 +1204,7 @@ def test_durable_forecast_artifact_source_tampering_fails_before_marker(
             frozen,
             artifact_path,
             tampered_digest,
-            simulator=_fake_simulator,
+            scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
         )
 
     assert calls == []
@@ -1211,7 +1227,7 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as first:
         scoring.score_deferred_abc6_synthetic(
             *prepared,
-            simulator=_fake_simulator,
+            scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
         )
     assert first.value.condition_consumed is True
     assert first.value.retry_forbidden is True
@@ -1244,7 +1260,7 @@ def test_post_marker_failure_is_consumed_and_second_call_cannot_regenerate(
     ):
         scoring.score_deferred_abc6_synthetic(
             *prepared,
-            simulator=_fake_simulator,
+            scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
         )
     assert calls == ["generate"]
 
@@ -1275,7 +1291,7 @@ def test_score_receipt_write_failure_records_terminal_checkpoint_when_possible(
     )
     with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as failure:
         scoring.score_deferred_abc6_synthetic(
-            *prepared, simulator=_fake_simulator
+            *prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator
         )
 
     assert failure.value.condition_consumed is True
@@ -1303,7 +1319,7 @@ def test_score_receipt_write_failure_records_terminal_checkpoint_when_possible(
         scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
     ):
         scoring.score_deferred_abc6_synthetic(
-            *prepared, simulator=_fake_simulator
+            *prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator
         )
     assert materializer_calls == ["generate"]
 
@@ -1342,7 +1358,7 @@ def test_fifo_marker_readback_is_bounded_nonblocking_and_consumes_claim(
     with pytest.raises(
         scoring.ABC6ScoringError, match="could not read back the durable reveal marker"
     ):
-        scoring.score_deferred_abc6_synthetic(*prepared, simulator=_fake_simulator)
+        scoring.score_deferred_abc6_synthetic(*prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator)
 
     assert readback_flags
     assert all(flags & os.O_NONBLOCK for flags in readback_flags)
@@ -1352,7 +1368,7 @@ def test_fifo_marker_readback_is_bounded_nonblocking_and_consumes_claim(
     with pytest.raises(
         scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
     ):
-        scoring.score_deferred_abc6_synthetic(*prepared, simulator=_fake_simulator)
+        scoring.score_deferred_abc6_synthetic(*prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator)
     assert materializer_calls == []
 
 
@@ -1434,7 +1450,7 @@ def test_marker_parent_dup_fault_records_failure_and_never_retries_targets(
     monkeypatch.setattr(scoring.os, "dup", fail_marker_parent_dup_once)
     with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as failure:
         scoring.score_deferred_abc6_synthetic(
-            *prepared, simulator=_fake_simulator
+            *prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator
         )
 
     assert state["faulted"] is True
@@ -1462,7 +1478,7 @@ def test_marker_parent_dup_fault_records_failure_and_never_retries_targets(
         scoring.ABC6RevealAlreadyConsumedError, match="cannot be retried"
     ):
         scoring.score_deferred_abc6_synthetic(
-            *prepared, simulator=_fake_simulator
+            *prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator
         )
     assert materializer_calls == []
 
@@ -1498,7 +1514,7 @@ def test_receipt_ancestor_swap_after_marker_never_writes_to_decoy_tree(
     monkeypatch.setattr(cases, "_issue_scoring_target_handoff", issue_then_swap)
     with pytest.raises(scoring.ABC6DeferredScoreConsumedError) as failure:
         scoring.score_deferred_abc6_synthetic(
-            *prepared, simulator=_fake_simulator
+            *prepared, scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator
         )
 
     assert failure.value.condition_consumed is True
@@ -1627,7 +1643,7 @@ def test_symlinked_fixed_root_ancestor_is_rejected_before_exclusive_claim(
     with pytest.raises(scoring.ABC6ScoringError, match="identity changed"):
         scoring.score_deferred_abc6_synthetic(
             *prepared,
-            simulator=_fake_simulator,
+            scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
         )
 
     assert calls == []
@@ -1690,7 +1706,7 @@ def test_boolean_case_and_particle_ids_are_rejected_before_marker(
         with pytest.raises(scoring.ABC6ScoringError, match=message):
             scoring.score_deferred_abc6_synthetic(
                 *prepared,
-                simulator=_fake_simulator,
+                scoring_permit=_fake_scoring_permit(), simulator=_fake_simulator,
             )
     else:
         with pytest.raises(scoring.ABC6ScoringError, match=message):

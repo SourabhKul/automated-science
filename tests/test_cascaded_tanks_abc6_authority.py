@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import socket
@@ -24,11 +25,24 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _fake_child_pythonpath() -> str:
+    """Expose pinned test dependencies without enabling site initialization."""
+
+    numpy_spec = importlib.util.find_spec("numpy")
+    if numpy_spec is None or numpy_spec.origin is None:
+        raise RuntimeError("the pinned fake-child tests require NumPy")
+    dependency_root = str(Path(numpy_spec.origin).resolve().parent.parent)
+    checkout_root = str(Path(__file__).resolve().parents[1])
+    return os.pathsep.join((checkout_root, dependency_root))
+
+
 def _fake_child_source() -> str:
     return r'''from __future__ import annotations
 import hashlib, json, os, sys
 from pathlib import Path
+from types import SimpleNamespace
 from core.real_data import cascaded_tanks_abc6_authority as a
+from core.real_data import cascaded_tanks_abc6_campaign_fit as c
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN_ID = "private-authority-test-v1"
@@ -145,16 +159,68 @@ def fake_campaign(authority_value):
     forecast_raw = canonical(add_payload_hash(forecast_body))
     write_bytes(ROOT / RECEIPTS / "campaign.target-free-forecasts.json", forecast_raw)
     forecast_sha = hashlib.sha256(forecast_raw).hexdigest()
-    return case_receipts, summary_sha, forecast_sha, duplicate_index_rejected, duplicate_consume_rejected
+
+    case_statuses = tuple(
+        SimpleNamespace(
+            case_index=index,
+            case_id=f"private-case-{index:02d}",
+            fit_status="complete",
+            baseline_status="complete",
+            fit_receipt_sha256=next(d for i, c, d in case_receipts if i == index and c == "fit"),
+            baseline_receipt_sha256=next(d for i, c, d in case_receipts if i == index and c == "baseline"),
+        )
+        for index in range(24)
+    )
+    receipt_stat = (ROOT / RECEIPTS).stat()
+    root_stat = ROOT.stat()
+    identity = SimpleNamespace(
+        repository_root_realpath=str(ROOT),
+        receipt_root_relative=RECEIPTS,
+        repository_root_device=root_stat.st_dev,
+        repository_root_inode=root_stat.st_ino,
+        receipt_root_device=receipt_stat.st_dev,
+        receipt_root_inode=receipt_stat.st_ino,
+        verify=lambda: None,
+    )
+    result = SimpleNamespace(
+        protocol_id=PROTOCOL,
+        run_id=RUN_ID,
+        manifest_sha256="1" * 64,
+        claim_sha256=claim_sha,
+        status="complete",
+        case_statuses=case_statuses,
+        summary_path=ROOT / RECEIPTS / "campaign.training-summary.json",
+        summary_sha256=summary_sha,
+    )
+    bundle = object()
+    authority_value._state.training_bundle = bundle
+    execution = object.__new__(c.ABC6TrainingCampaignExecution)
+    values = {
+        "campaign_result": result,
+        "evidence_manifest_path": ROOT / RECEIPTS / c.EVIDENCE_MANIFEST_FILENAME,
+        "evidence_manifest_sha256": "e" * 64,
+        "_training_bundle": bundle,
+        "_training_results": (),
+        "receipt_root_identity": identity,
+        "_authority": authority_value,
+        "_grant_sha256": authority_value._grant_digest,
+        "_run_id": RUN_ID,
+        "_manifest_sha256": "1" * 64,
+        "_seal": c._TRAINING_EXECUTION_SEAL,
+    }
+    for name, value in values.items():
+        object.__setattr__(execution, name, value)
+    authority_value.register_training_execution(execution)
+    return case_receipts, summary_sha, forecast_sha, duplicate_index_rejected, duplicate_consume_rejected, execution
 
 def fake_wrong_campaign(authority_value):
     return authority_value.begin_training()
 
-def fake_scorer(authority_value, score_permit):
-    metadata = score_permit.consume()
+def fake_scorer(authority_value, score_permit, execution):
+    metadata = score_permit.consume(execution)
     duplicate_score_rejected = False
     try:
-        score_permit.consume()
+        score_permit.consume(execution)
     except a.ABC6AuthorityError:
         duplicate_score_rejected = True
     return metadata, duplicate_score_rejected
@@ -173,15 +239,15 @@ def pin_role_frame(function, role):
 
 def fake_runner(authority_value):
     authority_value.consume_runner_startup()
-    case_receipts, summary_sha, forecast_sha, duplicate_index, duplicate_consumes = fake_campaign(authority_value)
-    handoff = authority_value.create_runner_handoff(tuple(case_receipts), summary_sha, forecast_sha)
+    case_receipts, summary_sha, forecast_sha, duplicate_index, duplicate_consumes, execution = fake_campaign(authority_value)
+    handoff = authority_value.create_runner_handoff(execution, tuple(case_receipts), summary_sha, forecast_sha)
     score_permit = authority_value.activate_scoring(handoff)
     repeated_activation_rejected = False
     try:
         authority_value.activate_scoring(handoff)
     except a.ABC6AuthorityError:
         repeated_activation_rejected = True
-    metadata, duplicate_score = fake_scorer(authority_value, score_permit)
+    metadata, duplicate_score = fake_scorer(authority_value, score_permit, execution)
     grant_record = authority_value._grant_record
     return {
         "metadata": metadata,
@@ -212,6 +278,10 @@ def main():
     fd = int(sys.argv[1])
     mode = sys.argv[2]
     authority_value = a.receive_child_grant(fd)
+    # The dedicated fake-root Stage B tests exercise actual durable validation.
+    # This process-lifecycle probe keeps its existing synthetic receipts and
+    # isolates the in-memory one-use transition.
+    a.ABC6LaunchAuthority._validate_runner_evidence_handoff = lambda self, execution, statuses, summary, forecast: statuses
     if mode == "changed-process":
         a._process_vector = lambda _pid: ("changed",)
         try:
@@ -386,7 +456,7 @@ def _issue_fake_grant(
     child_fd = channel.child_fd
     vector = [sys.executable, "-S", str(source_path), str(child_fd), mode]
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = _fake_child_pythonpath()
     process = subprocess.Popen(vector, pass_fds=(child_fd,), cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     channel.close_child_copy()
     try:
@@ -460,7 +530,7 @@ def test_changed_process_identity_fails_before_training(tmp_path, monkeypatch):
     script = root / authority.ABC6_ROLE_CONTRACT[0][1]
     vector = [sys.executable, "-S", str(script), str(fd), "changed-process"]
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = _fake_child_pythonpath()
     child = subprocess.Popen(vector, pass_fds=(fd,), cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     channel.close_child_copy()
     identity = _capture_stable_child(child.pid)

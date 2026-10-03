@@ -112,6 +112,15 @@ def _json(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode("ascii")
 
 
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def _is_sha(value: object) -> bool:
     return type(value) is str and _SHA.fullmatch(value) is not None
 
@@ -876,7 +885,9 @@ class _State:
         self.activation_attempted = False
         self.activated = False
         self.score_consumed = False
+        self.handoff_attempted = False
         self.handoff: ABC6RunnerHandoff | None = None
+        self.scoring_permit: ABC6ScoringPermit | None = None
 
 
 class ABC6LaunchAuthority:
@@ -1031,6 +1042,22 @@ class ABC6LaunchAuthority:
             self._grant_digest,
             result.run_id,
             result.manifest_sha256,
+            result.claim_sha256,
+            result.summary_sha256,
+            tuple(
+                (
+                    status.case_index,
+                    status.case_id,
+                    status.fit_status,
+                    status.baseline_status,
+                    status.fit_receipt_sha256,
+                    status.baseline_receipt_sha256,
+                )
+                for status in result.case_statuses
+            ),
+            execution.evidence_manifest_sha256,
+            str(execution.evidence_manifest_path),
+            id(identity),
             identity.repository_root_realpath,
             identity.repository_root_device,
             identity.repository_root_inode,
@@ -1039,7 +1066,7 @@ class ABC6LaunchAuthority:
             identity.receipt_root_inode,
         )
 
-    def _assert_registered_training_execution(self, execution: object) -> None:
+    def _assert_registered_training_execution(self, execution: object) -> tuple[object, ...]:
         """Reject copied or reconstructed execution values at the handoff."""
 
         self._assert_live()
@@ -1048,11 +1075,19 @@ class ABC6LaunchAuthority:
                 raise ABC6AuthorityError(
                     "training execution is not the exact registered object"
                 )
-            binding = self._training_execution_binding(execution)
+            try:
+                binding = self._training_execution_binding(execution)
+            except ABC6AuthorityError:
+                raise
+            except Exception as error:
+                raise ABC6AuthorityError(
+                    "registered training execution binding is invalid"
+                ) from error
             if binding != self._state.training_execution_binding:
                 raise ABC6AuthorityError(
                     "registered training execution binding changed"
                 )
+            return binding
 
     def _owns_training_execution_identity(self, execution: object) -> bool:
         """Check identity without touching descriptors, for safe object cleanup."""
@@ -1184,6 +1219,7 @@ class ABC6LaunchAuthority:
 
     def create_runner_handoff(
         self,
+        execution: object,
         status_receipts: tuple[tuple[int, str, str], ...],
         summary_sha256: str,
         forecast_sha256: str,
@@ -1192,21 +1228,242 @@ class ABC6LaunchAuthority:
 
         self._assert_live()
         _require_role(self, "runner")
+        with self._state.lock:
+            if self._state.handoff_attempted:
+                raise ABC6AuthorityError("runner handoff creation is one-use")
+            self._state.handoff_attempted = True
+
+        try:
+            execution_binding = self._assert_registered_training_execution(execution)
+            status_tuple = self._validate_runner_evidence_handoff(
+                execution,
+                status_receipts,
+                summary_sha256,
+                forecast_sha256,
+            )
+        except ABC6AuthorityError:
+            raise
+        except Exception as error:
+            raise ABC6AuthorityError(
+                "runner handoff evidence does not match the registered execution"
+            ) from error
+        handoff = ABC6RunnerHandoff(
+            _HANDOFF_SEAL,
+            self,
+            execution,
+            execution_binding,
+            status_tuple,
+            summary_sha256,
+            forecast_sha256,
+        )
+        with self._state.lock:
+            self._state.handoff = handoff
+        return handoff
+
+    def _validate_runner_evidence_handoff(
+        self,
+        execution: object,
+        status_receipts: tuple[tuple[int, str, str], ...],
+        summary_sha256: str,
+        forecast_sha256: str,
+    ) -> tuple[tuple[int, str, str], ...]:
+        """Compare runner digests with the registered execution and fresh files."""
+
+        from core.real_data import cascaded_tanks_abc6_campaign_fit as campaign
+        from core.real_data import cascaded_tanks_abc6_cases as cases
+        from core.real_data import cascaded_tanks_abc6_scoring as scoring
+
+        if type(execution) is not campaign.ABC6TrainingCampaignExecution:
+            raise ABC6AuthorityError("runner handoff requires the registered campaign execution")
         if not isinstance(status_receipts, tuple) or len(status_receipts) != 48:
             raise ABC6AuthorityError("runner handoff requires exactly 48 ordered status digests")
-        expected = tuple((i, component) for i in range(CASE_COUNT) for component in ("fit", "baseline"))
-        actual: list[tuple[int, str]] = []
+        if not _is_sha(summary_sha256) or not _is_sha(forecast_sha256):
+            raise ABC6AuthorityError("runner handoff summary or forecast digest is invalid")
+        expected: list[tuple[int, str, str]] = []
+        for index, case_status in enumerate(execution.campaign_result.case_statuses):
+            if type(case_status.case_index) is not int or case_status.case_index != index:
+                raise ABC6AuthorityError("execution statuses differ from the frozen roster")
+            expected.extend(
+                (
+                    (index, "fit", case_status.fit_receipt_sha256),
+                    (index, "baseline", case_status.baseline_receipt_sha256),
+                )
+            )
+        if len(expected) != 48:
+            raise ABC6AuthorityError("registered execution does not contain 24 case statuses")
+        normalized: list[tuple[int, str, str]] = []
         for entry in status_receipts:
             if not isinstance(entry, tuple) or len(entry) != 3:
                 raise ABC6AuthorityError("runner status handoff entry has an invalid shape")
             index, component, digest = entry
             if type(index) is not int or type(component) is not str or not _is_sha(digest):
                 raise ABC6AuthorityError("runner status handoff identity or digest is invalid")
-            actual.append((index, component))
-        if tuple(actual) != expected or not _is_sha(summary_sha256) or not _is_sha(forecast_sha256):
-            raise ABC6AuthorityError("runner handoff is incomplete or not in frozen roster order")
-        handoff = ABC6RunnerHandoff(_HANDOFF_SEAL, self, status_receipts, summary_sha256, forecast_sha256)
-        return handoff
+            normalized.append((index, component, digest))
+        if tuple(normalized) != tuple(expected):
+            raise ABC6AuthorityError("runner status digests differ from the execution identity")
+
+        gate = None
+        try:
+            gate, receipt_statuses, receipt_hashes, durable_summary_sha256 = (
+                scoring._read_verified_statuses(execution.receipt_root_identity)
+            )
+            if gate is None:
+                raise ABC6AuthorityError("registered execution did not open the durable status gate")
+            durable_receipts = tuple(
+                (index, component, digest)
+                for index in range(CASE_COUNT)
+                for component, digest in (
+                    ("fit", receipt_hashes[index * 2][1]),
+                    ("baseline", receipt_hashes[index * 2 + 1][1]),
+                )
+            )
+            if (
+                durable_receipts != tuple(normalized)
+                or durable_summary_sha256 != execution.campaign_result.summary_sha256
+                or durable_summary_sha256 != summary_sha256
+                or tuple(receipt_statuses)
+                != tuple(
+                    (item.fit_status, item.baseline_status)
+                    for item in execution.campaign_result.case_statuses
+                )
+            ):
+                raise ABC6AuthorityError(
+                    "fresh durable status or summary digests differ from the execution"
+                )
+            self._verify_runner_forecast_artifact(
+                execution,
+                status_receipts=tuple(normalized),
+                summary_sha256=durable_summary_sha256,
+                forecast_sha256=forecast_sha256,
+            )
+        except ABC6AuthorityError:
+            raise
+        except Exception as error:
+            raise ABC6AuthorityError(
+                "durable runner status, summary, or forecast readback failed"
+            ) from error
+        finally:
+            if gate is not None:
+                gate._receipt_anchor.close()
+                gate._root_anchor.close()
+        return tuple(normalized)
+
+    def _verify_runner_forecast_artifact(
+        self,
+        execution: object,
+        *,
+        status_receipts: tuple[tuple[int, str, str], ...],
+        summary_sha256: str,
+        forecast_sha256: str,
+    ) -> None:
+        from core.real_data import cascaded_tanks_abc6_cases as cases
+
+        identity = execution.receipt_root_identity
+        identity.verify()
+        receipt_fd = identity.duplicate_receipt_root_fd()
+        try:
+            raw = cases._read_regular_file_at(
+                receipt_fd,
+                "campaign.target-free-forecasts.json",
+                maximum_bytes=cases._MAX_HANDOFF_ARTIFACT_BYTES,
+                label="runner target-free forecast artifact",
+            )
+        finally:
+            os.close(receipt_fd)
+        identity.verify()
+        if _sha(raw) != forecast_sha256:
+            raise ABC6AuthorityError(
+                "runner forecast digest differs from a fresh anchored artifact read"
+            )
+        try:
+            decoded = json.loads(
+                raw.decode("ascii"),
+                object_pairs_hook=_unique_json_object,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant {value}")
+                ),
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            raise ABC6AuthorityError("runner forecast artifact is malformed JSON") from error
+        if type(decoded) is not dict or _json(decoded) != raw:
+            raise ABC6AuthorityError("runner forecast artifact is not canonical JSON")
+        body = {key: value for key, value in decoded.items() if key != "payload_sha256"}
+        if decoded.get("payload_sha256") != _sha(_json(body)):
+            raise ABC6AuthorityError("runner forecast artifact payload digest is invalid")
+        result = execution.campaign_result
+        ordered_receipts = [
+            {
+                "filename": f"case-{index:02d}.{component}-status.json",
+                "sha256": digest,
+            }
+            for index, component, digest in status_receipts
+        ]
+        if any(
+            (
+                decoded.get("schema_version") != 1,
+                decoded.get("protocol_id") != self._bindings.protocol_id,
+                decoded.get("run_id") != self._bindings.run_id,
+                decoded.get("training_manifest_sha256") != result.manifest_sha256,
+                decoded.get("training_claim_sha256") != result.claim_sha256,
+                decoded.get("training_summary_filename") != result.summary_path.name,
+                decoded.get("training_summary_sha256") != summary_sha256,
+                decoded.get("training_evidence_manifest_sha256")
+                != execution.evidence_manifest_sha256,
+                decoded.get("status_receipts") != ordered_receipts,
+                decoded.get("target_free") is not True,
+                decoded.get("prospective_targets_generated_by_runner") is not False,
+                decoded.get("retry_allowed") is not False,
+            )
+        ):
+            raise ABC6AuthorityError(
+                "runner forecast artifact differs from its execution or target-free roster"
+            )
+        case_hashes = decoded.get("forecast_case_sha256")
+        forecasts = decoded.get("forecasts")
+        if (
+            type(case_hashes) is not list
+            or len(case_hashes) != CASE_COUNT
+            or any(not _is_sha(value) for value in case_hashes)
+            or type(forecasts) is not list
+            or len(forecasts) != CASE_COUNT
+        ):
+            raise ABC6AuthorityError(
+                "runner forecast artifact has no complete ordered target-free roster"
+            )
+        expected_roster_hash = _sha(
+            _json(
+                {
+                    "protocol_id": self._bindings.protocol_id,
+                    "run_id": self._bindings.run_id,
+                    "case_sha256": case_hashes,
+                }
+            )
+        )
+        if decoded.get("forecast_roster_sha256") != expected_roster_hash:
+            raise ABC6AuthorityError("runner target-free forecast roster hash is invalid")
+
+    def _validate_scoring_handoff(self, handoff: "ABC6RunnerHandoff") -> None:
+        if (
+            not isinstance(handoff, ABC6RunnerHandoff)
+            or handoff._seal is not _HANDOFF_SEAL
+            or handoff._authority is not self
+            or handoff is not self._state.handoff
+        ):
+            raise ABC6AuthorityError("scoring activation requires this child's one sealed runner handoff")
+        execution = handoff._execution
+        binding = self._assert_registered_training_execution(execution)
+        if (
+            handoff._execution_binding != binding
+            or handoff._summary_sha256 != execution.campaign_result.summary_sha256
+            or not _is_sha(handoff._forecast_sha256)
+        ):
+            raise ABC6AuthorityError("sealed runner handoff differs from its registered execution")
+        self._validate_runner_evidence_handoff(
+            execution,
+            handoff._status_receipts,
+            handoff._summary_sha256,
+            handoff._forecast_sha256,
+        )
 
     def activate_scoring(self, handoff: "ABC6RunnerHandoff") -> "ABC6ScoringPermit":
         self._assert_live()
@@ -1217,20 +1474,21 @@ class ABC6LaunchAuthority:
             self._state.activation_attempted = True
         if not self._state.training_started or self._state.issued != set(range(CASE_COUNT)) or self._state.consumed != set(range(CASE_COUNT)):
             raise ABC6AuthorityError("scoring requires the one complete 24-case training campaign")
-        if not isinstance(handoff, ABC6RunnerHandoff) or handoff._seal is not _HANDOFF_SEAL or handoff._authority is not self:
-            raise ABC6AuthorityError("scoring activation requires this child's sealed runner handoff")
-        expected = tuple((i, component) for i in range(CASE_COUNT) for component in ("fit", "baseline"))
-        if (
-            len(handoff._status_receipts) != 48
-            or tuple((item[0], item[1]) for item in handoff._status_receipts) != expected
-            or any(not _is_sha(item[2]) for item in handoff._status_receipts)
-            or not _is_sha(handoff._summary_sha256)
-            or not _is_sha(handoff._forecast_sha256)
-        ):
-            raise ABC6AuthorityError("sealed runner handoff no longer matches its verified digest shape")
-        self._state.handoff = handoff
-        self._state.activated = True
-        return ABC6ScoringPermit(_SCORE_SEAL, self)
+        try:
+            self._validate_scoring_handoff(handoff)
+        except ABC6AuthorityError:
+            raise
+        except Exception as error:
+            raise ABC6AuthorityError(
+                "runner handoff failed durable scoring activation validation"
+            ) from error
+        with self._state.lock:
+            if self._state.activated:
+                raise ABC6AuthorityError("scoring activation state is inconsistent")
+            self._state.activated = True
+            permit = ABC6ScoringPermit(_SCORE_SEAL, self)
+            self._state.scoring_permit = permit
+        return permit
 
     def receipt_metadata(self) -> dict[str, object]:
         self._assert_live()
@@ -1264,6 +1522,7 @@ class ABC6LaunchAuthority:
             "consumed_case_indices": sorted(self._state.consumed),
             "scoring_activation_attempted": self._state.activation_attempted,
             "scoring_activated": self._state.activated,
+            "runner_handoff_attempted": self._state.handoff_attempted,
             "scoring_consumed": self._state.score_consumed,
             "status_receipts": [] if handoff is None else [list(item) for item in handoff._status_receipts],
             "summary_sha256": None if handoff is None else handoff._summary_sha256,
@@ -1492,15 +1751,33 @@ class ABC6TrainingPermit:
 
 
 class ABC6RunnerHandoff:
-    __slots__ = ("_seal", "_authority", "_status_receipts", "_summary_sha256", "_forecast_sha256")
+    __slots__ = (
+        "_seal",
+        "_authority",
+        "_execution",
+        "_execution_binding",
+        "_status_receipts",
+        "_summary_sha256",
+        "_forecast_sha256",
+    )
 
     def __new__(cls, seal: object = None, *_args: object, **_kwargs: object):
         if cls is not ABC6RunnerHandoff or seal is not _HANDOFF_SEAL:
             raise TypeError("runner handoff is sealed to the attested runner")
         return super().__new__(cls)
 
-    def __init__(self, seal: object, authority: ABC6LaunchAuthority, statuses: tuple[tuple[int, str, str], ...], summary: str, forecast: str):
-        self._seal, self._authority = seal, authority
+    def __init__(
+        self,
+        seal: object,
+        authority: ABC6LaunchAuthority,
+        execution: object,
+        execution_binding: tuple[object, ...],
+        statuses: tuple[tuple[int, str, str], ...],
+        summary: str,
+        forecast: str,
+    ):
+        self._seal, self._authority, self._execution = seal, authority, execution
+        self._execution_binding = execution_binding
         self._status_receipts, self._summary_sha256, self._forecast_sha256 = statuses, summary, forecast
 
 
@@ -1517,15 +1794,42 @@ class ABC6ScoringPermit:
             raise TypeError("invalid scoring permit")
         self._seal, self._authority, self._used = seal, authority, False
 
-    def consume(self) -> dict[str, object]:
-        authority = self._authority
+    def consume(self, execution: object) -> dict[str, object]:
+        authority = getattr(self, "_authority", None)
+        if type(authority) is not ABC6LaunchAuthority:
+            raise ABC6AuthorityError("scoring permit is unsealed or malformed")
         authority._assert_live()
         _require_role(authority, "scorer")
+        binding = authority._assert_registered_training_execution(execution)
         with authority._state.lock:
-            if self._seal is not _SCORE_SEAL or not authority._state.activated or self._used or authority._state.score_consumed:
+            handoff = authority._state.handoff
+            if (
+                getattr(self, "_seal", None) is not _SCORE_SEAL
+                or authority._state.scoring_permit is not self
+                or not authority._state.activated
+                or handoff is None
+                or handoff._seal is not _HANDOFF_SEAL
+                or handoff._authority is not authority
+                or handoff._execution is not execution
+                or handoff._execution_binding != binding
+                or not authority._state.training_started
+                or authority._state.issued != set(range(CASE_COUNT))
+                or authority._state.consumed != set(range(CASE_COUNT))
+                or self._used
+                or authority._state.score_consumed
+            ):
                 raise ABC6AuthorityError("scoring permit is dormant or already consumed")
             self._used = authority._state.score_consumed = True
         return authority.receipt_metadata()
+
+    def __copy__(self):
+        raise TypeError("scoring permits cannot be copied")
+
+    def __deepcopy__(self, _memo: dict[int, object]):
+        raise TypeError("scoring permits cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("scoring permits cannot be serialized")
 
 
 def _require_role(authority: ABC6LaunchAuthority, role: str) -> None:
