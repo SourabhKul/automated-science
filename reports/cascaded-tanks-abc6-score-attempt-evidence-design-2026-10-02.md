@@ -1,6 +1,7 @@
 # ABC6 pre-marker scoring-attempt evidence — design draft
 
-**Primary decision draft, 2026-10-02T15:30Z.** This defines the next fake-only
+**Primary decision draft, 2026-10-02T15:30Z; bounded v1 writer scope was
+subsequently design-reviewed on 2026-10-03.** This defines the next fake-only
 review target after the Stage B1 scoring-permit chain. It authorizes no
 production manifest, campaign claim, Qwen/ABC run, protocol prospective
 targets, real tank development suffix or official held-out access. The
@@ -40,8 +41,11 @@ digest, all 48 ordered fit/baseline status digests, the training summary
 digest, and the target-free forecast artifact digest. It records the fact of
 permit consumption and an exact expected reveal-marker leaf. It contains no
 prospective target values, scores, model-selection result, raw grant secret or
-caller-supplied authority metadata. Exact field names, types, size cap and
-serialized byte contract require independent review before implementation.
+caller-supplied authority metadata. The separate
+`reports/cascaded-tanks-abc6-pre-marker-evidence-v1-protocol-2026-10-03.md`
+now freezes the exact field names, types, size cap and serialized byte
+contract for a bounded fake-only writer/scorer implementation. It does not
+clear public replay, source-derived path/key formulas or production launch.
 Do not retrofit this into the historical `schema_version: 1` deferred-score
 receipt or weaken strict v3 replay. A future versioned deferred-score receipt
 is a separate artifact from this pre-marker attempt receipt and from the
@@ -61,28 +65,61 @@ condition as already frozen. A later versioned marker and terminal-v4 replay
 contract must bind the attempt-receipt digest to post-marker evidence before
 any production launch; this draft does not claim that link is implemented.
 
-**Proposed crash and stop classification, still requiring design review.** A
-claimed run with no valid attempt receipt is consumed and `unreplayable`,
-including a crash immediately after in-memory permit consumption and any
-ambiguous publication whose durable bytes cannot be verified. A valid attempt
-receipt with no reveal marker is not by itself `failed`: a separately durable,
-typed scorer failure point must verify the pre-marker error and match the
-attempt digest and child identity; a watchdog cap or deliberate stop takes
-the separately frozen precedence. If the child disappears without such a
-failure point, classify the attempt `unreplayable` rather than inventing a
-scorer failure. A valid marker requires its own versioned link to the exact
-attempt digest, terminal identity and post-marker score chain before the
-condition can be classified. This table of cases is a design constraint, not
-an implemented replay path or a reason to reuse the run ID.
+**Future pre-entry recovery proposal; outside the reviewed v1 writer scope.**
+The one-use campaign claim always burns the run ID; the operational replay
+classification is a separate question. A missing attempt receipt alone does
+not override a verified failure or intervention *before scorer entry* in a
+future version that has independently reviewed, typed pre-entry evidence. A
+canonical, durable, claim/run/child-bound stage or intervention record,
+verified by the terminal chain, must establish the pre-entry phase and its
+order relative to any later stop. The frozen execution path must guarantee
+that a verified pre-entry failure exits before invoking the scorer. A verified
+pre-entry stage error before intervention is `failed`; a verified earlier
+watchdog cap or deliberate stop is `incomplete`, under the existing terminal
+precedence. If full training/forecast evidence exists but no durable event
+proves whether scorer entry occurred, a missing attempt receipt is
+`unreplayable`. In particular, a crash after in-memory permit consumption but
+before verifiable attempt-receipt publication, or ambiguous publication with
+unverifiable durable bytes, is consumed and `unreplayable`.
+
+The earlier watchdog claim and later campaign claim are separate. A verified
+terminal with *no campaign claim* can use the existing no-campaign-chain
+failure/stop rules without an attempt receipt. Once the campaign claim
+exists, current durable `fit_phase_gate` evidence alone does not prove that
+scoring activation or permit consumption did not occur. The current
+`campaign.failure.json` may identify some failures inside campaign fitting,
+but public replay does not yet verify it and it cannot cover runner or scorer
+failures after campaign return. Do not promote a child nonzero exit plus
+absent marker to a claimed pre-scoring failure. Any campaign-claimed
+pre-entry exception needs an independently verified typed failure or stop
+record that proves the scorer was unreachable in the frozen call path;
+otherwise the phase remains `unreplayable`. In the bounded v1 design, **every
+campaign-claimed run without a valid attempt receipt is `unreplayable`**;
+the proposed pre-entry exception is not part of its replay contract.
+
+A valid attempt receipt with no reveal marker is not by itself `failed`: a
+separately durable, typed scorer failure point must verify the pre-marker
+error and match the attempt digest and child identity. A failure durably
+verified before a later stop/cap is `failed`; a stop/cap verified first with
+no earlier error is `incomplete`; uncertain event order or child disappearance
+without a verifiable failure point is `unreplayable`. A valid marker requires
+its own versioned link to the exact attempt digest, terminal identity and
+post-marker score chain before the condition can be classified. These are
+design constraints, not implemented replay paths or reasons to reuse the ID.
 
 ## Fake-only review gate
 
-An independent Luna max design review must first freeze the exact receipt
-schema, provenance fields and expected marker link; source pins remain `None`.
-Then a bounded Luna implementation and a different exact-byte reviewer should
+Independent Luna max design rereview cleared the separate v1 receipt schema
+and provenance fields for bounded fake-only writer/scorer integration, while
+the future marker/terminal link remains HOLD; source pins remain `None`.
+A bounded Luna implementation and a different exact-byte reviewer should
 test: valid permit to durable attempt receipt to marker to fake-only target
 materializer; missing/wrong/copied/reused permit with no attempt receipt;
-exception after consumption but before receipt; O_EXCL collision; failure at
+exception after consumption but before receipt (assert no retry, marker or
+target materialization and `unreplayable` despite a burned run ID); verified
+pre-entry error or earlier stop with no attempt receipt (future separate
+schema only; v1 campaign-claimed cases stay `unreplayable`); full pre-score
+artifacts with no entry proof or attempt receipt; O_EXCL collision; failure at
 write, file sync, parent sync or readback; stable present entry after
 ambiguous API error; partial/corrupt/extra-field/noncanonical receipt;
 symlink/FIFO/ancestor swaps; pre-marker scorer check failure with a verified

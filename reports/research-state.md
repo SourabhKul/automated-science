@@ -1,6 +1,41 @@
 # Automated science: current research state
 
-Updated: 2026-10-03T02:00Z. This file records observed state, not inferred execution.
+Updated: 2026-10-03T07:09Z. This file records observed state, not inferred execution.
+
+## Latest checkpoint: pre-marker evidence design narrowed and reviewed
+
+An independent Luna max read-only monitor at 06:31:55–06:32:43Z found no
+ABC6, campaign, scorer, watchdog or other research job; the reserved
+`ct-abc6-20260928-v1` directory and its claim parents were absent. Local
+`GET /v1/models` returned HTTP 200 and listed exact fixed
+`Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed`; no generation occurred.
+Data occupied 6.2 MB, artifacts 61 MB and free disk was 414 GiB. A fresh
+fetch verified clean `main == origin/main ==
+887cf9594d0a64f95a01efae72009cc4e2c8279b`. These are timestamped
+observations, not proof about later runtime state. See
+`reports/research-ledger/2026-10-03T0709Z.md`.
+
+Primary drafted
+`reports/cascaded-tanks-abc6-pre-marker-evidence-v1-protocol-2026-10-03.md`
+after Luna read-only source-interface inventory. Its first independent design
+review HOLD found four gaps: no typed pre-entry evidence, incomplete claim/
+expected-value mapping, rejected-consume ambiguity and ambiguous-publication
+durability. Primary narrowed campaign-claimed/no-attempt cases to
+`unreplayable` for this v1 component, required a typed authority-minted
+consumed context, named both claim locations and independently opened
+evidence, specified rejected consume, and required file+parent sync before
+settled replay accepts an ambiguous publication. Independent Luna max design
+rereview gave **GO only for bounded fake-only attempt/failure receipt writer
+and scorer integration**. Exact source-derived path/key formulas and public
+replay remain HOLD, as do versioned marker/terminal links, complete source/
+runtime closure, immutable manifest/review/approval and a separate launch
+decision. A Luna max author has been assigned that bounded implementation;
+no reviewed code result or Git sync exists yet for it. The revised design
+files and this checkpoint are local pending factual review/sync.
+
+The reserved synthetic ID remains UNUSED/HOLD. No protocol prospective
+targets, real tank Qwen/ABC, `yEst[768:1024]`, official `uVal/yVal`, or
+Silverbox final score were accessed. No scientific breakthrough.
 
 ## Latest sync addendum: reviewed compact reports published
 
