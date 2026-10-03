@@ -1,6 +1,20 @@
 # Automated science: current research state
 
-Updated: 2026-10-03T01:50Z. This file records observed state, not inferred execution.
+Updated: 2026-10-03T02:00Z. This file records observed state, not inferred execution.
+
+## Latest sync addendum: reviewed compact reports published
+
+After the component code commits below, the sole Luna Git owner synced seven
+reviewed compact state/ledger/Stage-B protocol paths non-force as
+`cfe7b14862d78517652f488f94b686b7f57465c6` on `main`. It excluded a
+score-attempt draft whose opening still described Stage B1 as unreviewed.
+The primary corrected that stale sentence; a separate Luna factual reviewer
+gave the corrected design-only draft GO for publication while retaining
+implementation HOLD. The same sole Git owner then synced only that draft
+non-force as `01b597c794fb75dd1af81668e9805b6a94ebdabd`. Fresh fetch
+confirmed `HEAD == origin/main` at this latter commit and a clean worktree.
+These syncs publish methods controls and open risks; they do not approve a
+campaign claim, target reveal, real-data fit or scientific finding.
 
 ## Latest checkpoint: two reviewed ABC6 components synced; launch still HOLD
 
