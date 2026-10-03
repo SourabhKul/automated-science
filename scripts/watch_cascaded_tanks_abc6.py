@@ -2097,6 +2097,46 @@ def _build_campaign_command(
     ]
 
 
+def _confirm_process_group_member_identity(
+    process_group_id: int,
+    member: dict[str, object],
+) -> tuple[bool, bool, list[str]]:
+    """Confirm that a sampled PID still has its sampled start time and PGID."""
+
+    pid = int(member["pid"])
+    expected_create_time = float(member["create_time"])
+    errors: list[str] = []
+    try:
+        create_time_before = psutil.Process(pid).create_time()
+        observed_pgid = os.getpgid(pid)
+        create_time_after = psutil.Process(pid).create_time()
+    except (psutil.NoSuchProcess, ProcessLookupError):
+        return False, True, errors
+    except (psutil.AccessDenied, psutil.Error, OSError) as error:
+        errors.append(
+            f"pid={pid} operation=confirm_identity error={type(error).__name__}: {error}"
+        )
+        return False, False, errors
+
+    if (
+        create_time_before != expected_create_time
+        or create_time_after != expected_create_time
+    ):
+        errors.append(
+            f"pid={pid} operation=confirm_identity error=process_start_time_changed "
+            f"expected={expected_create_time} before={create_time_before} "
+            f"after={create_time_after}"
+        )
+        return False, False, errors
+    if observed_pgid != process_group_id:
+        errors.append(
+            f"pid={pid} operation=confirm_identity error=process_group_changed "
+            f"expected={process_group_id} observed={observed_pgid}"
+        )
+        return False, False, errors
+    return True, False, errors
+
+
 def _snapshot_process_group(
     process_group_id: int,
 ) -> tuple[list[dict[str, object]], int, list[int], list[str]]:
@@ -2128,19 +2168,29 @@ def _snapshot_process_group(
                 identity = (pid, create_time)
                 if identity in seen:
                     continue
-                seen.add(identity)
                 rss = process.memory_info().rss
                 parent_pid = process.ppid()
                 status = process.status()
-                members.append(
-                    {
-                        "pid": pid,
-                        "create_time": create_time,
-                        "ppid": parent_pid,
-                        "status": status,
-                        "rss_bytes": rss,
-                    }
+                member = {
+                    "pid": pid,
+                    "create_time": create_time,
+                    "ppid": parent_pid,
+                    "status": status,
+                    "rss_bytes": rss,
+                }
+                confirmed, disappeared, identity_errors = (
+                    _confirm_process_group_member_identity(process_group_id, member)
                 )
+                if disappeared:
+                    vanished.append(pid)
+                    continue
+                if identity_errors:
+                    errors.extend(identity_errors)
+                    continue
+                if not confirmed:
+                    continue
+                seen.add(identity)
+                members.append(member)
                 total += rss
             except psutil.NoSuchProcess:
                 vanished.append(pid)
@@ -3100,6 +3150,27 @@ def _supervise_command(
             samples.append(sample)
 
             process_return_code = child.poll()
+            if process_return_code is not None and members:
+                confirmed_members: list[dict[str, object]] = []
+                for member in members:
+                    confirmed, disappeared, identity_errors = (
+                        _confirm_process_group_member_identity(
+                            process_group_id, member
+                        )
+                    )
+                    if confirmed:
+                        confirmed_members.append(member)
+                    if disappeared:
+                        vanished_pids.append(int(member["pid"]))
+                    enumeration_errors.extend(identity_errors)
+                if vanished_pids:
+                    sample["vanished_during_sample_pids"] = sorted(
+                        set(vanished_pids)
+                    )
+                sample["membership_enumeration_errors"] = enumeration_errors
+                sample["membership_complete"] = not enumeration_errors
+                members = confirmed_members
+
             if process_return_code is not None and members:
                 stop_reason = "child_exited_with_live_process_group_members"
                 record_watchdog_intervention("watchdog_stop", stop_reason)

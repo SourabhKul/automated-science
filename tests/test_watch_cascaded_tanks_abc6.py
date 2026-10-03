@@ -882,6 +882,60 @@ def test_unexpected_descendant_is_sampled_and_terminated_with_child_tree(
     assert receipt["kill_and_reap"]["child_reaped"] is True
 
 
+@pytest.mark.parametrize(
+    ("state", "expected_confirmed", "expected_vanished", "expected_error"),
+    [
+        ("stable", True, False, None),
+        ("stale", False, True, None),
+        ("reused", False, False, "process_start_time_changed"),
+        ("moved", False, False, "process_group_changed"),
+    ],
+)
+def test_process_group_member_confirmation_checks_pid_start_and_group(
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+    expected_confirmed: bool,
+    expected_vanished: bool,
+    expected_error: str | None,
+) -> None:
+    process_group_id = 4242
+    member = {
+        "pid": 5151,
+        "create_time": 123.5,
+        "ppid": 1,
+        "status": psutil.STATUS_SLEEPING,
+        "rss_bytes": 4096,
+    }
+
+    class FakeProcess:
+        def create_time(self) -> float:
+            return 999.0 if state == "reused" else 123.5
+
+    def fake_process(pid: int) -> FakeProcess:
+        assert pid == member["pid"]
+        if state == "stale":
+            raise psutil.NoSuchProcess(pid=pid)
+        return FakeProcess()
+
+    monkeypatch.setattr(watchdog.psutil, "Process", fake_process)
+    monkeypatch.setattr(
+        watchdog.os,
+        "getpgid",
+        lambda pid: process_group_id + 1 if state == "moved" else process_group_id,
+    )
+
+    confirmed, vanished, errors = watchdog._confirm_process_group_member_identity(
+        process_group_id, member
+    )
+
+    assert confirmed is expected_confirmed
+    assert vanished is expected_vanished
+    if expected_error is None:
+        assert errors == []
+    else:
+        assert any(expected_error in error for error in errors)
+
+
 def test_orphaned_group_member_is_found_after_direct_child_exits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -918,6 +972,8 @@ def test_orphaned_group_member_is_found_after_direct_child_exits(
     assert receipt["stop_reason"] == "child_exited_with_live_process_group_members"
     assert receipt["kill_and_reap"]["tracked_process_group_reaped"] is True
     assert receipt["kill_and_reap"]["membership_verification"] == "verified_empty"
+    assert receipt["kill_and_reap"]["term_process_group_signal_sent"] is True
+    assert pids[1] in receipt["kill_and_reap"]["term_pids"]
     assert any(
         member["pid"] == pids[1]
         for row in receipt["rss_sampling"]["raw_samples"]
