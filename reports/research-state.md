@@ -1,6 +1,44 @@
 # Automated science: current research state
 
-Updated: 2026-10-15T10:09Z. This file records observed state, not inferred execution.
+Updated: 2026-10-15T15:13Z. This file records observed state, not inferred execution.
+
+## Training budget control independently reproduced
+
+The completed forecast study remains unchanged. A saved-receipt audit found
+all nine point searches stopped at their budgets and shared deterministic
+within-family paths. Their seed labels are budget truncations, not random
+optimizer replications. Independent replay matched the audit metrics exactly.
+
+A separate training-only control then reused existing helpers with the same
+box and 2,048 calls per family. S0/O2/C2 training RMSEs are
+0.855467/0.785439/0.786292. These improve on the prior longest paths by
+5.84%/35.05%/38.07%. Independent replay matched the full old prefixes and all
+new minima/counters. All three stop at their budgets and touch a=0.2 lower
+and c=1.5 upper bounds. S0's minimum appears at call 1,016; O2/C2 at 1,944/1,908.
+These are training results, with no new prediction or mechanism claim.
+
+The control completed once at 15:07:24.828088–15:07:35.473430Z, exit 0,
+6,144 callbacks, no failures or external stop, 10.645304 stage seconds and
+52,084,736 bytes peak sampled worker-tree RSS. The monitor conservatively
+charged 6,144 because its final-progress validator rejected active_model=null
+with active_arm_calls=2,048. Child terminal and arrays confirm the exact same
+count; retain this limitation without a repair/rerun. Total fitting now costs
+20,620 calls and a conservative 38.735304 stage seconds. Original 585 forecast
+replays remain separate. No new data, score, forecast, LLM call or official
+access occurred. Original 96 files are byte-identical; no research job remains.
+
+See the training-receipt-audit and training-budget-control result reports and
+`reports/research-ledger/2026-10-15T1410Z.md`. Compact publication and its Git
+sync are pending independent factual review. Current main remains
+`352d78917ad0db991b1c2f21f5d0c232dd42f279` as verified before this fit.
+Product source is unchanged at 994 runtime/299 test lines. Preserve local B2a.
+
+Next: assess the ABC training-fit gap from saved calibration/particle receipts
+before deciding on one small tighter-tolerance control. Keep the support and
+ARX/point controls. Do not force official scoring, widen the box automatically,
+retune from consumed targets or resume ABC6. Any new fit or final stage needs
+its own frozen scope. The original outcome stays unresolved; ARX remains the
+best measured development predictor. A clear limitations outcome is valid.
 
 ## First real development comparison independently reproduced
 
