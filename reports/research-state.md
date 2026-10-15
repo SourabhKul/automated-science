@@ -1,6 +1,50 @@
 # Automated science: current research state
 
-Updated: 2026-10-15T15:20Z. This file records observed state, not inferred execution.
+Updated: 2026-10-15T19:34Z. This file records observed state, not inferred execution.
+
+## Current v1 configuration stops before official scoring
+
+Independent saved-ABC replay matched all 31 input hashes and metrics exactly.
+None of the nine final populations has weighted mass within 1.25 times the
+separate common-budget point training RMSE. This descriptive threshold is
+not compute matched. Against the old paired point threshold, only C2/29,
+C2/47 and O2/47 have positive mass: 1.69%/7.60%/2.77%. All 2,304 calibration
+distances are finite; q25/q10 match the frozen epsilons. Final weights/ESS
+and support checks pass; no population failures are recorded. Generation 1
+support rejection is 61.36–72.20% of proposals. These are training diagnostics,
+not a causal explanation or new prediction. Costs stay 20,620 fitting calls
+and 585 forecast replays. No new source/target/forecast/score data was read.
+
+See `reports/cascaded-tanks-abc-training-receipt-audit-results-2026-10-15.md`
+and `reports/research-ledger/2026-10-15T1908Z.md`. Primary stops the current
+v1 configuration before refit and official access: no family met the frozen
+useful-improvement criterion over simple controls, and selection is unresolved.
+This is current scientific prioritization, not a new prespecified test. The
+negative methods result is valid; do not force a poor model through the
+one-use official record. A revised study needs a new scientific and evaluation
+plan. One tighter-tolerance training control remains optional, with no launch
+GO. The generic API supports a third epsilon, but the week wrapper does not;
+keep engineering within the unchanged 994 runtime/299 test ceiling or cut scope.
+
+At 19:08:53Z Luna found no research job or locks; exact original Qwen is listed,
+Strata exact ID is unloaded, both endpoint GET checks return 200. Fresh fetched
+main/origin/main/advertised remote is be0824a412f0763e7882bb0090bf0881e2a354b8.
+Deferred B2a stays local. No new data is acquired. The one-time synthetic acceptance check is now complete and independently
+assessed. All six first attempts returned exact IDs, HTTP 200, stop finish
+and valid JSON. Only release/task 1 on the original endpoint fully passes
+the frozen semantic rubric. Strata task 1 and both task 2 answers contain
+trajectory errors; both task 3 answers falsely set real_mechanism_identified
+true. Both correctly abstain on the uninformative record. Valid schema is
+not a scientific correctness check. No semantic repairs were permitted.
+
+The run used six POSTs plus three preflight GETs (9/12), no retries or timeout,
+31.4962 seconds and 34,390,016 bytes maximum sampled operator RSS. The new
+model can generate structured output, but no scientific upgrade or general
+model ranking follows. Keep the fixed research instrument and the available
+Strata connection. See the local-qwen-fixed-task acceptance protocol/result
+and this wake's ledger. No real-data fit or target entered the check; no
+additional call is authorized from its unused repair slots. Publication of
+this wake's reviewed evidence is pending one-owner factual sync.
 
 ## Training budget control independently reproduced
 

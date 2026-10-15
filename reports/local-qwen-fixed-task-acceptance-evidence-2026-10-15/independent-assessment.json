@@ -1,0 +1,384 @@
+{
+  "call_audit": {
+    "checks": {
+      "all_calls_within_12": true,
+      "finished_before_deadline": true,
+      "no_repairs": true,
+      "operator_complete_without_stop": true,
+      "responses_under_body_cap": true,
+      "sampled_operator_rss_under_cap": true,
+      "saved_run_bytes_under_cap": true,
+      "sequential_post_numbers": true,
+      "six_exactly_first_attempts": true,
+      "six_request_files_and_responses": true,
+      "three_preflight_gets_counted": true
+    },
+    "limit": 12,
+    "post_numbers": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "posts": 6,
+    "preflight_gets_counted": 3,
+    "repairs": 0,
+    "total_endpoint_calls": 9
+  },
+  "cells": [
+    {
+      "arithmetic_or_abstention_pass": true,
+      "attempt": 1,
+      "cell": "task1",
+      "cell_pass": true,
+      "expected": {
+        "capped": [
+          5,
+          2.5,
+          1.25
+        ],
+        "first_release_distinguishes": true,
+        "real_mechanism_identified": false,
+        "retained": [
+          8,
+          4,
+          2
+        ],
+        "task": "release"
+      },
+      "field_checks": {
+        "capped": true,
+        "first_release_distinguishes": true,
+        "retained": true
+      },
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_seconds": 3.1317943330068374,
+      "mismatches": [],
+      "observed": {
+        "capped": [
+          5.0,
+          2.5,
+          1.25
+        ],
+        "first_release_distinguishes": true,
+        "real_mechanism_identified": false,
+        "retained": [
+          8.0,
+          4.0,
+          2.0
+        ],
+        "task": "release"
+      },
+      "operator_validation": "valid_json_schema_expected_tag",
+      "provider": "omlx",
+      "repair_attempts": 0,
+      "request_number": 4,
+      "request_sha256": "23a4394bd3ced16da5520e4439f17409c761c92da55f12da1f15c539dcd875b6",
+      "requested_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "response_sha256": "740494d978e62e9cf1f1a92ec9253bd004e1bc7cef512fe3a9ffdc1a41d6742a",
+      "restraint_pass": true,
+      "returned_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "structural_pass": true,
+      "task_tag_pass": true
+    },
+    {
+      "arithmetic_or_abstention_pass": false,
+      "attempt": 1,
+      "cell": "task1",
+      "cell_pass": false,
+      "expected": {
+        "capped": [
+          5,
+          2.5,
+          1.25
+        ],
+        "first_release_distinguishes": true,
+        "real_mechanism_identified": false,
+        "retained": [
+          8,
+          4,
+          2
+        ],
+        "task": "release"
+      },
+      "field_checks": {
+        "capped": false,
+        "first_release_distinguishes": false,
+        "retained": true
+      },
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_seconds": 17.14081170799909,
+      "mismatches": [
+        "capped",
+        "first_release_distinguishes"
+      ],
+      "observed": {
+        "capped": [
+          8,
+          4,
+          2
+        ],
+        "first_release_distinguishes": false,
+        "real_mechanism_identified": false,
+        "retained": [
+          8,
+          4,
+          2
+        ],
+        "task": "release"
+      },
+      "operator_validation": "valid_json_schema_expected_tag",
+      "provider": "strata",
+      "repair_attempts": 0,
+      "request_number": 5,
+      "request_sha256": "dfccf94642328bf0b8dc4656b47ead82314acfb251d2c2f902595d711d896fe1",
+      "requested_model": "qwen3.8-flash-next-iq3_s",
+      "response_sha256": "69ba9db14ee683ffbecd01035b7a772cb839846d7caf8ed8f55f253c7c0b3d9f",
+      "restraint_pass": true,
+      "returned_model": "qwen3.8-flash-next-iq3_s",
+      "structural_pass": true,
+      "task_tag_pass": true
+    },
+    {
+      "arithmetic_or_abstention_pass": false,
+      "attempt": 1,
+      "cell": "task2",
+      "cell_pass": false,
+      "expected": {
+        "capped_probe": [
+          10,
+          5
+        ],
+        "identified_from_record": false,
+        "probe_inputs": [
+          14,
+          0
+        ],
+        "real_mechanism_identified": false,
+        "retained_probe": [
+          10,
+          8
+        ],
+        "task": "abstain"
+      },
+      "field_checks": {
+        "capped_probe": true,
+        "identified_from_record": true,
+        "probe_inputs": true,
+        "retained_probe": false
+      },
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_seconds": 3.6004308330011554,
+      "mismatches": [
+        "retained_probe"
+      ],
+      "observed": {
+        "capped_probe": [
+          10,
+          5
+        ],
+        "identified_from_record": false,
+        "probe_inputs": [
+          14,
+          0
+        ],
+        "real_mechanism_identified": false,
+        "retained_probe": [
+          11,
+          5.5
+        ],
+        "task": "abstain"
+      },
+      "operator_validation": "valid_json_schema_expected_tag",
+      "provider": "omlx",
+      "repair_attempts": 0,
+      "request_number": 6,
+      "request_sha256": "00184c9e71ed3b7c7a11b72a88a0a727a3ccd45a093f2cc9631be53526d73124",
+      "requested_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "response_sha256": "867a66fca2490b995de06b64b05d7bc1980ce08fb1f9699b59b02d4d75341d91",
+      "restraint_pass": true,
+      "returned_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "structural_pass": true,
+      "task_tag_pass": true
+    },
+    {
+      "arithmetic_or_abstention_pass": false,
+      "attempt": 1,
+      "cell": "task2",
+      "cell_pass": false,
+      "expected": {
+        "capped_probe": [
+          10,
+          5
+        ],
+        "identified_from_record": false,
+        "probe_inputs": [
+          14,
+          0
+        ],
+        "real_mechanism_identified": false,
+        "retained_probe": [
+          10,
+          8
+        ],
+        "task": "abstain"
+      },
+      "field_checks": {
+        "capped_probe": true,
+        "identified_from_record": true,
+        "probe_inputs": true,
+        "retained_probe": false
+      },
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_seconds": 2.8881742500088876,
+      "mismatches": [
+        "retained_probe"
+      ],
+      "observed": {
+        "capped_probe": [
+          10,
+          5
+        ],
+        "identified_from_record": false,
+        "probe_inputs": [
+          14,
+          0
+        ],
+        "real_mechanism_identified": false,
+        "retained_probe": [
+          10,
+          5
+        ],
+        "task": "abstain"
+      },
+      "operator_validation": "valid_json_schema_expected_tag",
+      "provider": "strata",
+      "repair_attempts": 0,
+      "request_number": 7,
+      "request_sha256": "129b1b8f7b1cef4c4ed2cc09df8949c058a2696be779b32563e98159f8da9ef7",
+      "requested_model": "qwen3.8-flash-next-iq3_s",
+      "response_sha256": "09485a9fdbd8c62f888c404dbbae8cfe80c16c93fee3e1521a1c5dc5a7172bcd",
+      "restraint_pass": true,
+      "returned_model": "qwen3.8-flash-next-iq3_s",
+      "structural_pass": true,
+      "task_tag_pass": true
+    },
+    {
+      "arithmetic_or_abstention_pass": true,
+      "attempt": 1,
+      "cell": "task3",
+      "cell_pass": false,
+      "expected": {
+        "action": "training_support_control",
+        "expanded_a": 2,
+        "expanded_training_rmse": 0,
+        "real_mechanism_identified": false,
+        "task": "failure",
+        "zero_rmse_with_old_support": false
+      },
+      "field_checks": {
+        "action": true,
+        "expanded_a": true,
+        "expanded_training_rmse": true,
+        "zero_rmse_with_old_support": true
+      },
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_seconds": 2.7947975839924766,
+      "mismatches": [
+        "real_mechanism_identified must be false"
+      ],
+      "observed": {
+        "action": "training_support_control",
+        "expanded_a": 2.0,
+        "expanded_training_rmse": 0.0,
+        "real_mechanism_identified": true,
+        "task": "failure",
+        "zero_rmse_with_old_support": false
+      },
+      "operator_validation": "valid_json_schema_expected_tag",
+      "provider": "omlx",
+      "repair_attempts": 0,
+      "request_number": 8,
+      "request_sha256": "0fc9bee4e2c2af5495707a16092ef2afaa1832a79562a2ea8e058fcffeae90b6",
+      "requested_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "response_sha256": "67a7ed9e55be504e1615f1b1b0f57a5c2c745d37d3e9c811cbfde404802b3252",
+      "restraint_pass": false,
+      "returned_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "structural_pass": true,
+      "task_tag_pass": true
+    },
+    {
+      "arithmetic_or_abstention_pass": true,
+      "attempt": 1,
+      "cell": "task3",
+      "cell_pass": false,
+      "expected": {
+        "action": "training_support_control",
+        "expanded_a": 2,
+        "expanded_training_rmse": 0,
+        "real_mechanism_identified": false,
+        "task": "failure",
+        "zero_rmse_with_old_support": false
+      },
+      "field_checks": {
+        "action": true,
+        "expanded_a": true,
+        "expanded_training_rmse": true,
+        "zero_rmse_with_old_support": true
+      },
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_seconds": 1.8844345419929596,
+      "mismatches": [
+        "real_mechanism_identified must be false"
+      ],
+      "observed": {
+        "action": "training_support_control",
+        "expanded_a": 2,
+        "expanded_training_rmse": 0,
+        "real_mechanism_identified": true,
+        "task": "failure",
+        "zero_rmse_with_old_support": false
+      },
+      "operator_validation": "valid_json_schema_expected_tag",
+      "provider": "strata",
+      "repair_attempts": 0,
+      "request_number": 9,
+      "request_sha256": "e3e720f617d6400bc1af48cdce2562674d5c4458d212b2c739b7264f68ceb7f1",
+      "requested_model": "qwen3.8-flash-next-iq3_s",
+      "response_sha256": "8af3af5f4f7168c24132672cfa3971f7c7ea62b447833d2ebb903be19febfb28",
+      "restraint_pass": false,
+      "returned_model": "qwen3.8-flash-next-iq3_s",
+      "structural_pass": true,
+      "task_tag_pass": true
+    }
+  ],
+  "integrity_errors": [],
+  "interpretation": "The operator accepted all six outputs as structurally valid with expected task tags. Independent frozen-rubric assessment finds some arithmetic or claim-restraint failures; it does not trigger repairs under the protocol.",
+  "invocation_sha256": "385b9a9a1a091fb0cf08c67b18fd5f070e622289f373e9610432331e3df46b50",
+  "latency_note": "Descriptive only. The first Strata response may include a cold model load; original-model residency is not comparable here. No latency or model-speed ranking is inferred.",
+  "protocol_sha256": "7bb6b2906375b2aed8eebe098129f730669186df5bb87411fd8437c4c89acadd",
+  "resource_audit": {
+    "deadline_utc": "2026-10-15T21:08:53+00:00",
+    "estimated_finish_utc": "2026-10-15T19:29:19.420930+00:00",
+    "largest_response_body_bytes": 873,
+    "operator_rss_cap_bytes": 1073741824,
+    "peak_sampled_operator_rss_bytes": 34390016,
+    "response_body_cap_bytes": 32768,
+    "sampling_limit": "before/after each POST; peaks between samples may be missed",
+    "saved_run_byte_cap": 1048576,
+    "saved_run_bytes_at_terminal": 20236,
+    "wall_seconds": 31.49620983299974
+  },
+  "run_id": "local-qwen-acceptance-20261015-v1",
+  "schema": "local_qwen_acceptance_independent_assessment_v1",
+  "scope": "six synthetic task responses; no model ranking, statistical comparison, real-data claim or scientific-benefit claim",
+  "summary_sha256": "1cbe614d24e085d8d81205612b3277cb89656bd43599978e899b82431ac8dfcb"
+}

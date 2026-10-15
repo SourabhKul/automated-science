@@ -1,0 +1,1 @@
+{"attempt":1,"cell":"task3","method":"POST","number":8,"operator_rss_before_bytes":22216704,"provider":"omlx","request_sha256":"0fc9bee4e2c2af5495707a16092ef2afaa1832a79562a2ea8e058fcffeae90b6","requested_model":"Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed","timeout_seconds":180,"url":"http://127.0.0.1:8000/v1/chat/completions"}

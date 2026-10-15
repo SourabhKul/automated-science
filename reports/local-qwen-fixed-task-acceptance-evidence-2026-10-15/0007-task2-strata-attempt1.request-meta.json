@@ -1,0 +1,1 @@
+{"attempt":1,"cell":"task2","method":"POST","number":7,"operator_rss_before_bytes":21299200,"provider":"strata","request_sha256":"129b1b8f7b1cef4c4ed2cc09df8949c058a2696be779b32563e98159f8da9ef7","requested_model":"qwen3.8-flash-next-iq3_s","timeout_seconds":180,"url":"http://127.0.0.1:8080/v1/chat/completions"}
