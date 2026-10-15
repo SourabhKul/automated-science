@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-15T19:34Z. This file records observed state, not inferred execution.
+Updated: 2026-10-15T19:39Z. This file records observed state, not inferred execution.
 
 ## Current v1 configuration stops before official scoring
 
@@ -29,7 +29,9 @@ keep engineering within the unchanged 994 runtime/299 test ceiling or cut scope.
 At 19:08:53Z Luna found no research job or locks; exact original Qwen is listed,
 Strata exact ID is unloaded, both endpoint GET checks return 200. Fresh fetched
 main/origin/main/advertised remote is be0824a412f0763e7882bb0090bf0881e2a354b8.
-Deferred B2a stays local. No new data is acquired. The one-time synthetic acceptance check is now complete and independently
+Deferred B2a stays local. No new data is acquired.
+
+The one-time synthetic acceptance check is now complete and independently
 assessed. All six first attempts returned exact IDs, HTTP 200, stop finish
 and valid JSON. Only release/task 1 on the original endpoint fully passes
 the frozen semantic rubric. Strata task 1 and both task 2 answers contain
@@ -43,8 +45,13 @@ model can generate structured output, but no scientific upgrade or general
 model ranking follows. Keep the fixed research instrument and the available
 Strata connection. See the local-qwen-fixed-task acceptance protocol/result
 and this wake's ledger. No real-data fit or target entered the check; no
-additional call is authorized from its unused repair slots. Publication of
-this wake's reviewed evidence is pending one-owner factual sync.
+additional call is authorized from its unused repair slots.
+
+Independent factual review cleared all 34 public report/evidence paths.
+The sole Luna Git owner pushed them non-force on main as
+`fa8d54fd0484da52309311e67c4ddd8b30b49152`. Fresh fetch verified HEAD
+and origin/main at that content commit. This later status addendum records
+the sync, without changing the completed studies or acceptance protocol.
 
 ## Training budget control independently reproduced
 
