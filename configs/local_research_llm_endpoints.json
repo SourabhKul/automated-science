@@ -1,0 +1,46 @@
+{
+  "observed_at_utc": "2026-10-15T09:10:54Z",
+  "current_tank_study_model": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+  "future_strata_development_acceptance": {
+    "authorized": true,
+    "protocol": "3 fixed tasks x 2 attempts x 2 exact models",
+    "max_total_requests_including_preflights_and_repairs": 12
+  },
+  "client": {
+    "connect_timeout_seconds": 5,
+    "get_timeout_seconds": 8,
+    "chat_timeout_seconds": 600,
+    "lifecycle_calls_operator_initiated_only": true,
+    "automatic_client_load_or_unload": false,
+    "automatic_model_substitution": false,
+    "require_returned_model_to_equal_requested_model": true
+  },
+  "endpoints": [
+    {
+      "name": "omlx",
+      "base_url": "http://127.0.0.1:8000/v1",
+      "model_id": "Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed",
+      "routes": {
+        "health": {"method": "GET", "path": "/health", "http_status": 200},
+        "models": {"method": "GET", "path": "/v1/models", "http_status": 200},
+        "chat": {"method": "POST", "path": "/v1/chat/completions", "status": "historical smokes; not live-verified in this GET check"}
+      },
+      "observed": {"health": "healthy", "model_listed": true, "loaded_count": 0, "max_model_len": 262144}
+    },
+    {
+      "name": "strata",
+      "base_url": "http://127.0.0.1:8080/v1",
+      "model_id": "qwen3.8-flash-next-iq3_s",
+      "routes": {
+        "health": {"method": "GET", "path": "/health", "http_status": 200},
+        "models": {"method": "GET", "path": "/v1/models", "http_status": 200},
+        "chat": {"method": "POST", "path": "/v1/chat/completions", "status": "source/docs verified; not called"},
+        "load": {"method": "POST", "path": "/v1/load", "status": "manual only; source/docs verified"},
+        "unload": {"method": "POST", "path": "/v1/unload", "status": "manual only; source/docs verified"}
+      },
+      "observed": {"model_listed": true, "loaded": false, "max_context": 131072, "api_key_enabled": false},
+      "script_idle_unload_default_seconds": 900,
+      "exact_id_required": true
+    }
+  ]
+}
