@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-15T09:59Z. This file records observed state, not inferred execution.
+Updated: 2026-10-15T10:09Z. This file records observed state, not inferred execution.
 
 ## First real development comparison independently reproduced
 
@@ -22,9 +22,13 @@ methods result exists; it is not a scientific breakthrough or replication.
 
 See `reports/cascaded-tanks-week-development-results-2026-10-15.md` and
 `reports/research-ledger/2026-10-15T0941Z.md` for all arm errors, costs and
-hashes. Independent factual/figure/metadata review is complete; one-owner
-Git sync is pending. Source content is already on origin/main at
-`5997cc2c0498b3ff435499c049fb5976f4b2f1e2`; later report sync is pending.
+hashes. Independent factual/figure/metadata review is complete. The sole Luna
+Git owner published exactly 12 reviewed report/figure/evidence/state paths
+non-force on main as `ef876948a3ff6e5ee0911114ce909f3cfb3c9675`.
+A fresh fetch verified HEAD, origin/main and the advertised remote main at
+that content commit. Source content is
+`5997cc2c0498b3ff435499c049fb5976f4b2f1e2`. This sync-status addendum
+follows the report-content commit; it does not change the frozen run.
 Keep raw targets/particles out of Git and preserve deferred B2a. A saved-training
 receipt check found all nine point fits at the `c=1.5` upper boundary and
 training RMSE below every paired final ABC particle. Final tolerances remain
