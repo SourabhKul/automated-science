@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-15T15:13Z. This file records observed state, not inferred execution.
+Updated: 2026-10-15T15:20Z. This file records observed state, not inferred execution.
 
 ## Training budget control independently reproduced
 
@@ -28,10 +28,21 @@ replays remain separate. No new data, score, forecast, LLM call or official
 access occurred. Original 96 files are byte-identical; no research job remains.
 
 See the training-receipt-audit and training-budget-control result reports and
-`reports/research-ledger/2026-10-15T1410Z.md`. Compact publication and its Git
-sync are pending independent factual review. Current main remains
-`352d78917ad0db991b1c2f21f5d0c232dd42f279` as verified before this fit.
+`reports/research-ledger/2026-10-15T1410Z.md`. Independent factual review cleared all 16 compact report/evidence paths.
+The sole Luna Git owner pushed them non-force on main as
+`5a2feed6c7e3aa042c8d6c12c09192ce3acf0e88`. Fresh fetch verified HEAD,
+origin/main and advertised remote main at that content commit. This later
+status addendum records that sync; it does not change either run.
 Product source is unchanged at 994 runtime/299 test lines. Preserve local B2a.
+
+The user reports Strata online. Luna's GET-only check at 15:17:42.981150Z
+returned HTTP 200 for health/models and listed the exact
+`qwen3.8-flash-next-iq3_s` ID as unloaded. Existing endpoint configuration
+already matches port 8080 and this ID. No lifecycle or generation call was
+made. The narrow fixed-task acceptance check stays available under the
+authorized two-hour/12-request limit; it needs its own fixed development
+protocol and must use no sealed data or broad ranking.
+
 
 Next: assess the ABC training-fit gap from saved calibration/particle receipts
 before deciding on one small tighter-tolerance control. Keep the support and
