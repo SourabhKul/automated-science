@@ -1,6 +1,256 @@
 # Automated science: current research state
 
-Updated: 2026-10-03T12:08Z. This file records observed state, not inferred execution.
+Updated: 2026-10-15T09:59Z. This file records observed state, not inferred execution.
+
+## First real development comparison independently reproduced
+
+All 20 arms completed and the single development score finished at 09:54:56Z.
+Independent Luna replay matched every RMSE exactly (maximum discrepancy zero)
+using only the already-consumed estimation suffix. ARX RMSE is 0.989970;
+ABC family medians are C2 2.849383, O2 2.898543 and S0 3.172464. Persistence
+is 3.790537. Matched point search beat ABC in every one of nine pairs.
+C2's median improves only about 1.7% over O2, below the frozen 10% margin;
+the paired direction changes across seeds. Locked outcome: unresolved.
+No retained-state mechanism, calibrated uncertainty or LLM benefit follows.
+
+The full development-fit stage took 28.090 seconds, including 14,476 fitting
+calls and 585 forecast replays, with no failed
+arm or external stop and 65.1 MiB peak sampled worker-tree RSS. Original
+Qwen hit the 768-token limit and failed JSON validation; it was not retried.
+The official test and old ABC6 campaign remain closed. The first tangible
+methods result exists; it is not a scientific breakthrough or replication.
+
+See `reports/cascaded-tanks-week-development-results-2026-10-15.md` and
+`reports/research-ledger/2026-10-15T0941Z.md` for all arm errors, costs and
+hashes. Independent factual/figure/metadata review is complete; one-owner
+Git sync is pending. Source content is already on origin/main at
+`5997cc2c0498b3ff435499c049fb5976f4b2f1e2`; later report sync is pending.
+Keep raw targets/particles out of Git and preserve deferred B2a. A saved-training
+receipt check found all nine point fits at the `c=1.5` upper boundary and
+training RMSE below every paired final ABC particle. Final tolerances remain
+broad. Next: assess these support/tolerance warnings using training evidence
+before another fit; they are hypotheses about the gap, not a causal result.
+Any changed method or refit/final stage needs its own frozen review. Do not
+restart this run, retune from its targets or resume broad runtime engineering.
+
+## Development-only scope cleared; implementation resumed
+
+The first real development fit ran once at 09:46:26–09:46:55Z, exit 0,
+run `ct-memory-week-dev-20261015-v1`. All 20 arms report complete before
+scoring. It used 14,476 fit calls and 585 forecast replays, 28.090 seconds
+reported fit wall time, and 68,304,896 bytes peak sampled worker-tree RSS.
+No external stop occurred. Independent Luna is checking the frozen forecast
+bundle before the separate score. Performance remains unknown; no score or
+target access is authorized yet. The one original-Qwen training-only request
+returned HTTP 200 with exact model and 768 tokens, but invalid JSON. It was
+recorded without retry and did not change any candidate or setting.
+
+Seven reviewed source/test/protocol/endpoint files are synced non-force as
+`5997cc2c0498b3ff435499c049fb5976f4b2f1e2`, freshly verified on
+origin/main. HEAD stays fixed through fit and score. The ignored manifest
+SHA-256 is `1981072a7557a87bba893fb1f71ae7f051bcad40f5651b70b80821229f6de029`.
+See the 09:41Z ledger for source/runtime/roster and launch/log evidence.
+Deferred B2a and unrelated docs remain local; no old campaign was resumed.
+
+Independent exact-byte review now clears the bounded development fit.
+All 12 focused synthetic tests pass current and exact clean-HEAD overlay;
+compilation passes. The final two runtime files total 994 lines and the
+test file has 299 lines. The stopped-arm evidence/status defects and an
+invalid-draw NaN-versus-infinity mismatch are corrected. Final hashes and
+negative review history are in the 09:07Z ledger. The reviewer also cleared
+the protocols and endpoint templates. Primary dispatched one Git owner for
+the exact seven-file sync and manifest freeze. Manifest inspection and the
+actual monitored fit are next. No real result or target score exists yet.
+Every frozen forecast/failure needs separate review before scoring.
+
+Independent review found and corrected a forecast-clock bug that would fail
+all simulator forecasts. The stronger synthetic test now exercises all 585
+simulator replays and all 20 arms. The reviewer reproduced 12 passing tests
+in both the current tree and an exact clean-HEAD overlay. Real fitting stays
+on HOLD for two further defects: a calibration stop loses completed draw
+evidence, and a later forecast stop overwrites already-computed baselines.
+The author is fixing only those cases. The reviewer found no concrete
+protocol or endpoint-config blocker. These are code checks, not real results.
+
+Fresh 09:30:11Z operator snapshot: no week process or new run directory,
+claim or lock; exact original Qwen is listed by oMLX. A fresh fetch verifies
+main/origin/main at `3a4afd0835677e77bf7ddb702d315232bbcbc498`.
+Nothing is staged. Deferred B2a bytes remain preserved. Data/artifacts are
+6.2 MiB/61 MiB; disk free is 332 GiB. No new fit, score or generation ran.
+
+By 09:23Z the author completed the bounded pass: 972 runtime lines and 282
+test lines; all 12 synthetic tests pass current and exact clean-HEAD overlay,
+and compilation passes. Calibration theta/outcome arrays and both population
+receipts are now retained. Resource stops distinguish a terminated started
+arm from never-started arms. Independent exact-byte code review is running;
+no real fit or score is approved yet. The sole Git owner is preparing commands
+and resource monitoring, without launching or staging. Latest source hashes
+and author-only evidence are in the 09:07Z ledger addendum.
+
+At 09:18Z, the current draft is 936 runtime lines and 191 test lines. Ten
+synthetic author tests and compilation pass after correcting duplicate
+exclusive checkpoint writes and forecast status mismatches. It is not yet
+independently code-reviewed. Calibration theta retention, both population
+receipts and resource-stop/not-run handling still need correction.
+Independent Luna architectural triage found no safe 300-line cut. Primary
+made one explicit pre-outcome cap revision to 1,000 readable lines across
+the same two files; numerical and target limits stay fixed. This correction
+to the audit's estimate does not approve the draft or a real run.
+
+Strata connection config and guide are ready: 46-line JSON and 38-line guide,
+verified against local routes and GET-only checks. They preserve exact IDs,
+manual lifecycle calls and the future scientific acceptance task budget.
+No model load/unload/generation was sent. Paths:
+`configs/local_research_llm_endpoints.json` and
+`reports/strata-local-inference-connection-2026-10-15.md`.
+
+The first Luna author turn stopped with `Your workspace is out of credits.
+Ask your workspace owner to refill in order to continue.` A bounded recovery
+monitor succeeded at 09:03Z. The author then resumed on a smaller scope; no
+claim is made that the partial code is tested or reviewed.
+
+The primary cut this first delivery to development fit and a separate score,
+preserving all three families, three seeds, matched point fits, ARX and
+persistence. Full-estimation refit and official-test accessors are deferred
+and must be rejected by this version. Independent Luna design review gave
+GO to `reports/cascaded-tanks-week-development-v1-protocol-2026-10-15.md`
+for bounded implementation and a later run after exact-byte code review.
+No development or official outcomes have been read for this new study.
+
+Fresh 09:03Z monitor: no research/pytest worker or held artifact lock; oMLX
+8000 and Strata 8080 are running. Original Qwen is listed. Strata health and
+models return HTTP 200 with `qwen3.8-flash-next-iq3_s` unloaded. The user's
+`/Users/sourabh/Strata/serve_strata.sh` is present; it was not executed, and
+no load, unload or generation request was sent. A Luna is preparing static
+connection config and request templates only. This does not delay the study.
+
+Fresh fetch still verifies committed main/origin/main at
+`3a4afd0835677e77bf7ddb702d315232bbcbc498`; local edits are unstaged.
+Data/artifacts remain 6.2 MB/61 MB; free disk about 332 GiB. Deferred B2a
+evidence is saved as ignored `artifacts/deferred_work/b2a-20261014.patch`,
+57,353 bytes, SHA-256
+`224f76b37136b01a4dae51fea4bfe05b0c01e1f3570e0b18cf13b0a01f659cf7`.
+See `reports/research-ledger/2026-10-15T0907Z.md`.
+
+## Resumed: narrow Cascaded Tanks week study
+
+The user explicitly authorized implementing the audit plan with `gpt-6-luna`
+max subagents. This resumes execution for the new study. Defer B2a/ABC6 and
+preserve their unreviewed edit. The primary wrote
+`reports/cascaded-tanks-week-study-protocol-2026-10-14.md`; an independent
+Luna design review is underway before source changes or real fitting. The
+new protocol uses the existing named methods track, not the historical
+external-repeat/discovery contract. Its all-three-family final refit uses one
+seed per family at the same proposed 99,840-call allowance as the audit's
+single-family/three-seed suggestion; this change needs design review.
+
+At 23:38Z a Luna preflight found no active research/pytest job, verified the
+existing archive SHA-256 and byte count, and freshly fetched clean committed
+`main == origin/main == 3a4afd0835677e77bf7ddb702d315232bbcbc498`.
+Local B2a and report edits remain unstaged. The exact original Qwen is listed;
+the newer model is not available at this endpoint. Capacity: 16 CPUs, 128 GiB
+RAM, about 390 GiB free, 6.2 MiB data plus 61 MiB artifacts. A separate setup
+job exists under Strata, so generation and first simulation runs stay serial.
+
+The app successfully updated the existing five-hour heartbeat to the new
+study and ACTIVE status at 23:42Z. Earlier permission failures are historical.
+No target score or fit has run for the new protocol. See
+`reports/research-ledger/2026-10-14T2342Z.md`.
+
+## One-time progress audit complete; execution remains paused
+
+The user authorized a one-time `gpt-6.1-sol` max-reasoning audit. It found
+useful methods controls but no confirmed scientific finding. It recommends
+deferring the unfinished B2a patch and running one small Cascaded Tanks
+comparison after the user resumes. Engineering would stop after two days and
+600 runtime lines; a real prediction table is due by day four, with reviewed
+results or explicit failures by day seven. The primary checked its key source
+claims. See `reports/project-audit-and-seven-day-reset-2026-10-14.md` and
+`reports/research-ledger/2026-10-14T2333Z.md`. These are recommendations,
+not a frozen launch protocol. No execution resumed.
+
+The user is setting up a new Qwen 3.8 Flash Next Q3 model. Its exact served ID
+is unknown. This permits a future narrow two-model acceptance comparison
+under a new development protocol, with no sealed outcomes for model choice.
+Keep historical frozen campaigns and consumed tests unchanged. Default code,
+test, review and experiment subagents remain `gpt-6-luna` max; the audit was
+a one-time exception. The project stays paused pending user direction.
+
+## Paused for user progress review — 2026-10-14T23:22Z
+
+The user asked to pause and reevaluate progress. The primary interrupted the
+active Luna B2a code author. No further code, test, experiment, monitoring or
+Git task is authorized until the user resumes or redirects the work. A Luna
+max read-only audit found one unreviewed, untested partial B2a edit in
+`core/real_data/cascaded_tanks_abc6_replay.py` (1,105 added lines, no test
+file changes), plus the local protocol, ledger and state edits. This is not a
+component GO. The reserved synthetic run and all prospective or official
+targets stay on HOLD.
+
+The latest checked Git sync remains `main == origin/main ==
+3a4afd0835677e77bf7ddb702d315232bbcbc498` at 23:08Z. A later Luna
+Git owner could not perform the required fresh fetch: `.git/FETCH_HEAD`
+returned `Operation not permitted`. It staged, committed and pushed nothing;
+current remote state is not verified. The primary tried to pause the recurring
+heartbeat through the app automation tool using the saved fields. The tool
+returned `MCP tool call requires approval, but approval policy is never`.
+The schedule therefore remains ACTIVE; future wakeups must respect this user
+pause and not restart research work. See the 2026-10-14 ledger.
+
+A final read-only pause check at 23:22:50Z found no reserved run path under
+`artifacts/` through depth 8. It could not verify live processes: `ps`
+returned `Operation not permitted`, and `pgrep` could not obtain the process
+list because `sysmond` was unavailable. Do not infer current process absence
+from the earlier 23:07–23:08Z snapshot.
+
+Progress assessment: the opt-in train/validation/sealed boundary and a
+mathematically consistent ABC-SMC reference have focused tests and small
+synthetic controls. The legacy canonical inference path is still separate
+from that reference. A controlled real Silverbox development run did not
+produce a final score. The ABC6 work has many reviewed fake-only provenance
+and launch components, but no production manifest, approval, public v4
+replay, synthetic campaign launch, real-data Qwen/ABC pilot or independent
+scientific finding. The next decision should reduce scope to one complete,
+bounded methods pilot before more gate features are built.
+
+## Latest checkpoint: fresh HOLD snapshot and terminal-v4 B2a design review
+
+The host observations below were made at 23:07–23:08Z. The design review
+decision and author dispatch were added by 23:18Z; they are separate events.
+An independent Luna max factual reviewer gave GO to the compact protocol,
+state and ledger. One Luna Git owner then tried a required fresh fetch at
+23:19Z. It failed before staging with
+`error: cannot open '.git/FETCH_HEAD': Operation not permitted` (exit 255).
+No commit or push occurred, and current remote state is unverified. The
+working tree contains the unsynced docs and concurrent B2a author edits.
+
+After a gap since the 2026-10-03 ledger, a Luna max read-only monitor at
+2026-10-14T23:07:41–23:08:14Z found no ABC6 or other Python/research job,
+no reserved `ct-abc6-20260928-v1` directory, campaign/score claim, marker,
+checkpoint or log. The only research-related process was `omlx-server` PID
+587. Local `GET /v1/models` returned HTTP 200 and listed the exact fixed
+`Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed`; no generation occurred.
+`data/` occupied 6.2 MiB, `artifacts/` 61 MiB, with 416 GiB free. The
+monitor freshly fetched and verified clean
+`main == origin/main == 3a4afd0835677e77bf7ddb702d315232bbcbc498`.
+This is a timestamped snapshot, not a guarantee about later runtime state.
+
+The primary drafted
+`reports/cascaded-tanks-abc6-terminal-v4-b2a-protocol-2026-10-14.md` as a
+bounded fake-only four-state lifecycle evidence contract. An independent Luna
+max design review first returned HOLD for missing claim-only and process
+requirements, campaign/score absence checks, and delivery-status cases. A
+second HOLD found a missing terminal-to-record grant digest comparison. The
+primary corrected these points. The reviewer then gave **design GO only for
+bounded fake-only B2a implementation**. A separate Luna max author has begun
+that task. No implementation result or public v4 replay is yet reviewed.
+Production expected-binding construction and launch remain HOLD. The protocol
+and this checkpoint are local and unsynced because Git fetch is blocked.
+Source pins stay
+`None`, the reserved synthetic ID stays UNUSED/HOLD, and no prospective
+targets, real tank Qwen/ABC, `yEst[768:1024]`, official `uVal/yVal`, or
+Silverbox final score were accessed. No breakthrough. See
+`reports/research-ledger/2026-10-14T2310Z.md`.
 
 ## Latest checkpoint: corrected fake-only pre-marker writer synced
 
