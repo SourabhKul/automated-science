@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-21T04:33Z. This file records observed state, not inferred execution.
+Updated: 2026-10-21T04:35Z. This file records observed state, not inferred execution.
 
 
 ## Seven-day methods study closed; no official evaluation
@@ -37,10 +37,14 @@ refused. No startup or lifecycle action was made. Data/artifacts were about
 observations. The one-time two-model acceptance check stays complete, with
 no more calls from its unused repair slots and no research-model upgrade.
 
-Initial fresh fetch verified main/HEAD/origin/main/advertised remote at
-`d509b2921f7437fb10ec66430bd44fc78df433be`. Final factual review and scoped
-docs sync are pending. The whole worktree is not clean: deferred B2a source,
-protocol and October 14 23:10 ledger remain local. No raw evidence is staged.
+Independent factual review cleared the four exact week-close/protocol/state/ledger
+paths. Sole Luna Git owner fresh-fetched upstream, checked their hashes and
+staged only those paths. Non-force content push succeeded on main as
+`e8ba252b0de0a9005ad20ec89318fb3d27c884d9`. Post-push fresh fetch verified
+HEAD, origin/main and advertised remote main at that commit. This status
+addendum records the actual sync; it does not change any scientific result.
+The whole worktree is not clean: deferred B2a source, protocol and October 14
+23:10 ledger remain local, unchanged and unstaged. No raw evidence was staged.
 
 Next: primary makes one bounded scientific choice with independent evaluation
 units and a credible measurement model. Assess accessible non-official tank
