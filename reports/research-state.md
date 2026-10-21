@@ -1,6 +1,53 @@
 # Automated science: current research state
 
-Updated: 2026-10-15T19:39Z. This file records observed state, not inferred execution.
+Updated: 2026-10-21T04:33Z. This file records observed state, not inferred execution.
+
+
+## Seven-day methods study closed; no official evaluation
+
+The week-close report consolidates the independently replayed 20-arm result:
+ARX RMSE 0.989970 is best; point fitting beats ABC in all nine matched pairs;
+C2/O2 differ by only about 1.7%, below the frozen 10% margin, with changing
+paired direction. The mechanism outcome stays unresolved. The current v1
+configuration remains stopped before refit/official access. This is primary
+scientific prioritization, not a new prespecified gate. The wider discovery
+project is not complete. See `reports/cascaded-tanks-week-close-2026-10-21.md`
+and `reports/research-ledger/2026-10-21T0414Z.md`.
+
+Primary cuts the optional S0 third-epsilon control this week. Its scientific
+design passed independent review, but the author withdrew the early feasibility
+estimate: full prefix/failure/cost/pin/output checks do not fit one readable
+80-line existing-API command. No command, new run folder or fit was created.
+The frozen unexecuted protocol remains design history, not launch GO. This is
+an operational scope cut, not evidence that a tighter tolerance cannot work.
+Do not expand runtime code or resume ABC6 to avoid the decision.
+
+No new fit, forecast, target score, LLM generation or data acquisition occurred
+this wake. Totals remain 20,620 fitting calls and 585 forecast replays. The two
+child-stage times sum to 38.735304 seconds; supervisor times sum to about
+39.616584 seconds. Neither is total project or review time. Source remains
+`5997cc2c0498b3ff435499c049fb5976f4b2f1e2`, at 994 product runtime lines
+and 299 focused test lines. Preserve all earlier failures and B2a local work.
+
+Fresh 04:18–04:19Z Luna preflight found no study/pytest/generation job or
+completed-run lock. Archive bytes/hash match. Original exact Qwen was listed
+by port 8000 HTTP 200; Strata port 8080 health/models returned connection
+refused. No startup or lifecycle action was made. Data/artifacts were about
+6.2/150 MiB with 330 GiB disk free on a 16-core/128 GiB host; these are dated
+observations. The one-time two-model acceptance check stays complete, with
+no more calls from its unused repair slots and no research-model upgrade.
+
+Initial fresh fetch verified main/HEAD/origin/main/advertised remote at
+`d509b2921f7437fb10ec66430bd44fc78df433be`. Final factual review and scoped
+docs sync are pending. The whole worktree is not clean: deferred B2a source,
+protocol and October 14 23:10 ledger remain local. No raw evidence is staged.
+
+Next: primary makes one bounded scientific choice with independent evaluation
+units and a credible measurement model. Assess accessible non-official tank
+conditions and primary literature; if unsuitable, choose one other free data
+domain. Freeze competing mechanisms, controls, units/splits, costs and stop
+rules before fitting. No more current-v1 scoring, automatic support widening,
+general local-model ranking or authority/replay infrastructure.
 
 ## Current v1 configuration stops before official scoring
 
