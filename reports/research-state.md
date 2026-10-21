@@ -23,6 +23,13 @@ pilot remains conditional, access/mapping HOLD, with no fit/reader/command GO.
 No new numerical or biological result; prior cumulative costs are unchanged.
 The earlier two-file request remains pending and should not be notified again.
 
+Independent exact-byte factual review cleared this compact source-check update.
+Sole Luna owner verified three hashes, staged only ledger/state/negative
+feasibility metadata, and pushed non-force on main as
+`8db950d45d1a38ba7d7ca398b3921724a0903682`. Fresh fetch verified HEAD,
+origin/main and advertised remote main at that content commit. B2a remains
+local/unstaged. This factual sync addendum changes no scientific authorization.
+
 ## Next pilot selected conditionally; source access HOLD
 
 Primary compared three domains using primary sources: additional tank
