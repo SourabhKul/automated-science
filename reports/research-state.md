@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-21T09:27Z. This file records observed state, not inferred execution.
+Updated: 2026-10-21T09:35Z. This file records observed state, not inferred execution.
 
 
 
@@ -39,7 +39,7 @@ controls are distinct from media-only measurement blanks.
 Primary derived two analytic restrictions without new simulation: logistic
 OD curves cannot separate biomass and measurement scale without calibration;
 a two-sigmoid description nests a single sigmoid and has phase/amplitude
-degeneracies. Equations in the choice note await independent review. Retain
+degeneracies. Independent review verified both equations in the choice note. Retain
 cheap controls and a tractable reference; no particle-based model probabilities
 or molecular cause claim follows. No source/runtime/test code was added.
 Runtime has Python 3.14.3/NumPy 2.4.2/pandas 2.2.2 but lacks SciPy; no package was
@@ -53,9 +53,16 @@ Data/artifacts were 6.2/150 MiB, disk 330 GiB free on a 16 CPU/128 GiB host. Sna
 `ea5387066faf2bdeb642a6e9765e2feadbefc2d3f18678fea571408059308be7`.
 Fresh main/HEAD/origin/main/advertised remote matched
 `1b2513d7b515f219bcee95629172808cad8a7ac8`; B2a three-path scope remains
-local and unstaged. Current pilot docs/evidence await independent factual
-review and one-owner sync. No new fitting, forecasting, scoring or LLM calls;
-prior totals remain 20,620 fitting calls and 585 forecast replays.
+local and unstaged. Independent exact-byte factual review cleared the five
+pilot report/protocol/evidence/state/ledger paths after preserving the initial
+actor-history HOLD and correction. Sole Luna owner verified hashes, staged
+only those paths and pushed non-force on main as
+`f911c71a9eb43c38ce87be81f76f8ddfdb35f5ac`. Post-push fresh fetch verified
+HEAD, origin/main and advertised remote main at that content commit. This
+factual status addendum does not authorize acquisition or fitting. Deferred
+B2a remains local and unstaged. No new fitting, forecasting, scoring or LLM
+generation; model-list/status GETs and public-source feasibility requests did
+occur. Prior totals remain 20,620 fitting calls and 585 forecast replays.
 
 ## Seven-day methods study closed; no official evaluation
 
