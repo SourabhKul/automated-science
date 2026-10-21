@@ -1,7 +1,61 @@
 # Automated science: current research state
 
-Updated: 2026-10-21T04:35Z. This file records observed state, not inferred execution.
+Updated: 2026-10-21T09:27Z. This file records observed state, not inferred execution.
 
+
+
+## Next pilot selected conditionally; source access HOLD
+
+Primary compared three domains using primary sources: additional tank
+conditions, enzyme inhibition, and yeast diauxic growth. Select a bounded
+retrospective yeast assay-transfer question: compare one-phase and delayed
+second-phase growth descriptions under a credible OD measurement model.
+This is not a biological discovery or independent confirmation. See
+`reports/next-pilot-choice-2026-10-21.md` and
+`reports/research-ledger/2026-10-21T0917Z.md`. The tank week remains closed;
+its optional S0 control, official record and ABC6 remain closed.
+
+Concrete feasibility is complete, with no source archive or OD values read.
+Official Dryad public metadata is accessible (version 1/CC0); Dataset 1.zip
+file14183 is 1,594,286 bytes, MD5 40bcd862ebf977036a3d9d5c9b33a74c;
+README file14184 is 4,777 bytes, MD5 693ff0c43eb2245892837305af955b85.
+README API download returned a bearer-token-required error; the single normal
+Luna linked-stream fallback returned 403. Luna did not request the ZIP;
+primary separately attempted the normal ZIP and README links via the web
+tool, both denied 403. No archive bytes or OD rows were obtained and no new
+acquisition run followed. Source schema/plate/isolate-alias/control mapping remains unknown.
+The inventory protocol is unexecuted design history on HOLD, not launch GO.
+Do not repeat denied requests or implement a reader before source access.
+
+Next dependency: legitimate access to only those two files, through Dryad's
+normal permitted path or user-supplied files. No further request while HOLD
+is unchanged. After access changes, verify sizes/checksums, then review
+headers/mapping under a bounded command. No full collection, credentials workaround or paid access.
+Two plates with shared inoculation are technical repeats, not independent
+biological cultures. Keep alias isolates together; no random timepoint split.
+A later fit must freeze its exact estimand, grouping and split. Pure-sugar
+controls are distinct from media-only measurement blanks.
+
+Primary derived two analytic restrictions without new simulation: logistic
+OD curves cannot separate biomass and measurement scale without calibration;
+a two-sigmoid description nests a single sigmoid and has phase/amplitude
+degeneracies. Equations in the choice note await independent review. Retain
+cheap controls and a tractable reference; no particle-based model probabilities
+or molecular cause claim follows. No source/runtime/test code was added.
+Runtime has Python 3.14.3/NumPy 2.4.2/pandas 2.2.2 but lacks SciPy; no package was
+installed. Existing generic NumPy ODE/ABC APIs can be reused if a fit is later
+justified; there is no yeast reader today.
+
+At 09:20Z fresh Luna preflight found no research job; completed runs intact.
+Exact original Qwen was listed at port 8000 HTTP 200; other IDs were ignored. A Strata
+server process is now visible, but no port 8080 request/startup/generation was made.
+Data/artifacts were 6.2/150 MiB, disk 330 GiB free on a 16 CPU/128 GiB host. Snapshot SHA
+`ea5387066faf2bdeb642a6e9765e2feadbefc2d3f18678fea571408059308be7`.
+Fresh main/HEAD/origin/main/advertised remote matched
+`1b2513d7b515f219bcee95629172808cad8a7ac8`; B2a three-path scope remains
+local and unstaged. Current pilot docs/evidence await independent factual
+review and one-owner sync. No new fitting, forecasting, scoring or LLM calls;
+prior totals remain 20,620 fitting calls and 585 forecast replays.
 
 ## Seven-day methods study closed; no official evaluation
 

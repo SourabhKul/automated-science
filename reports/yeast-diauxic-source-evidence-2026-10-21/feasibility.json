@@ -1,0 +1,173 @@
+{
+  "schema": "dryad-source-feasibility-v1",
+  "observed_date": "2026-10-21",
+  "scope": {
+    "metadata_only": true,
+    "dataset_zip_requested": false,
+    "readme_bytes_obtained": false,
+    "od_rows_or_arrays_obtained": false,
+    "fit_or_generation_run": false,
+    "project_source_or_git_changed": false,
+    "raw_response_bodies_saved": false,
+    "raw_response_sha256": null
+  },
+  "study": {
+    "paper_doi": "10.1371/journal.pbio.1002041",
+    "paper_title": "Natural Variation in Preparation for Nutrient Depletion Reveals a Cost-Benefit Tradeoff",
+    "data_doi": "10.5061/dryad.39h5m",
+    "dryad_version_id": 2078,
+    "dryad_version_number": 1,
+    "dryad_version_status": "submitted",
+    "dryad_curation_status": "Published",
+    "visibility": "public",
+    "publication_date": "2016-01-15",
+    "dataset_storage_size_bytes": 4717779005,
+    "license": {
+      "spdx": "CC0-1.0",
+      "url": "https://spdx.org/licenses/CC0-1.0.html",
+      "source": "Dryad dataset API metadata"
+    }
+  },
+  "file_metadata": [
+    {
+      "file_id": 14183,
+      "path": "Dataset 1.zip",
+      "size_bytes": 1594286,
+      "mime_type": "application/zip",
+      "status": "created",
+      "digest_type": "md5",
+      "digest_from_metadata": "40bcd862ebf977036a3d9d5c9b33a74c",
+      "description": "GROWTH CURVES (Figure 1, S1-3, S11A-B; Also used in figure 3, 4, 7C). Contains .csv files of raw OD600 readings from plate reader."
+    },
+    {
+      "file_id": 14184,
+      "path": "README_for_Dataset 1.txt",
+      "size_bytes": 4777,
+      "mime_type": "text/plain",
+      "status": "created",
+      "digest_type": "md5",
+      "digest_from_metadata": "693ff0c43eb2245892837305af955b85",
+      "description": "GROWTH CURVES (Figure 1, S1-3, S11A-B; Also used in figure 3, 4, 7C). Contains .csv files of raw OD600 readings from plate reader."
+    }
+  ],
+  "actual_requests": [
+    {
+      "method": "GET",
+      "url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.39h5m",
+      "client": "curl",
+      "request_header": "X-API-Version: 2.1.0",
+      "http_status": 200,
+      "response_headers_observed": {
+        "content_type": "application/json; charset=utf-8",
+        "content_length_bytes": 8843,
+        "x_api_version": "2.1.0"
+      },
+      "response_body_saved": false
+    },
+    {
+      "method": "GET",
+      "url": "https://datadryad.org/api/v2/versions/2078/files",
+      "client": "curl",
+      "request_header": "X-API-Version: 2.1.0",
+      "http_status": 200,
+      "response_headers_observed": {
+        "content_type": "application/json; charset=utf-8",
+        "content_length_bytes": 15263,
+        "x_api_version": "2.1.0"
+      },
+      "response_body_saved": false
+    },
+    {
+      "method": "GET",
+      "url": "https://datadryad.org/api/v2/files/14184/download",
+      "client": "curl",
+      "http_status": null,
+      "http_status_capture": "not captured; curl output body only",
+      "response_error_text": "{\"error\":\"Unauthorized, must have current bearer token\"}",
+      "response_body_saved": false
+    },
+    {
+      "method": "GET via page link",
+      "url": "https://datadryad.org/downloads/file_stream/14184",
+      "client": "web browser fallback: clicked README link on Dryad landing page",
+      "http_status": 403,
+      "response_error_text": "Failed to fetch https://datadryad.org/downloads/file_stream/14184: (403) Forbidden",
+      "response_body_saved": false
+    },
+    {
+      "method": "open",
+      "url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.39h5m",
+      "client": "web page reader",
+      "result": "URL not accessible via this tool; followed by the successful curl metadata request above"
+    },
+    {
+      "method": "open",
+      "url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.39h5m/versions",
+      "client": "web page reader",
+      "result": "URL not accessible via this tool; version id was obtained from the successful dataset API metadata"
+    },
+    {
+      "method": "open",
+      "url": "https://datadryad.org/dataset/doi%3A10.5061/dryad.39h5m",
+      "client": "web page reader",
+      "result": "landing page accessible; HTTP status not exposed"
+    },
+    {
+      "method": "open",
+      "url": "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002041",
+      "client": "web page reader",
+      "result": "article accessible; HTTP status not exposed"
+    },
+    {
+      "method": "open",
+      "url": "https://github.com/datadryad/dryad-app/blob/main/documentation/apis/README.md",
+      "client": "web page reader",
+      "result": "official Dryad API documentation accessible; HTTP status not exposed"
+    }
+  ],
+  "observed_paper_metadata": {
+    "organism": "Saccharomyces cerevisiae",
+    "growth_curve_strains_reported": 43,
+    "measurement": "OD600",
+    "sampling_interval_minutes_approx": 10,
+    "duration_hours_up_to": 48,
+    "plate_statement": "The article says final inoculation was performed into two plates and describes the curves as replicate growth curves that were nearly indistinguishable.",
+    "plate_replication_interpretation": "Inference: paired plates are technical/plate replicates, not independent biological-culture replicates; the methods describe one shared pre-culture sequence and do not report independently started cultures for the two plates.",
+    "duplicate_alias_statement": "Some strains were obtained in duplicate and marked with -SGRP or -WashU source suffixes; Y12 showed reproducibly different diauxic phenotypes by source and may have been mislabeled.",
+    "paper_license": "Creative Commons Attribution License; distinct from the dataset CC0-1.0 license",
+    "sources": [
+      "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002041",
+      "https://datadryad.org/dataset/doi%3A10.5061/dryad.39h5m"
+    ]
+  },
+  "repository_and_runtime": {
+    "yeast_or_growth_curve_reader_found": false,
+    "generic_ode_api": "core.ode_reference_controls.integrate_ode: generic fixed-step RK4 with NumPy",
+    "generic_abc_api": "core.abc_smc_reference.run_gaussian_abc_smc_reference: simulator/discrepancy generic",
+    "decay_control_scope": "Existing ODE control driver is decay-specific; it is not a yeast model.",
+    "actual_runtime": {
+      "python": "3.14.3",
+      "numpy": "2.4.2",
+      "pandas": "2.2.2",
+      "scipy": "not installed; import raised ModuleNotFoundError: No module named 'scipy'"
+    },
+    "requirements_freeze": {
+      "numpy": "2.4.4",
+      "pandas": "3.0.2",
+      "scipy": "1.17.1"
+    },
+    "runtime_note": "Runtime differs from requirements-freeze; standard-library CSV and existing NumPy APIs avoid SciPy for a future small inventory/model pilot. No dependency was installed."
+  },
+  "unknowns": [
+    "README contents were not obtained.",
+    "Dataset 1 ZIP member names and internal paths are unknown.",
+    "CSV schema, headers, plate identifiers, exact row/curve count, and missingness are unknown.",
+    "Exact strain alias-to-isolate mapping is unknown; no strain-group split can be frozen yet.",
+    "No OD values or target arrays were downloaded or opened.",
+    "No raw HTTP response bodies were saved; their SHA-256 values are intentionally null/not reported."
+  ],
+  "next_step": {
+    "status": "HOLD; unexecuted",
+    "scope": "No further README request, ZIP request, extraction, numeric parsing, model fit, or generation until primary authorizes a later inventory protocol and the official file route is accessible."
+  }
+}
