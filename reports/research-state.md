@@ -1,8 +1,27 @@
 # Automated science: current research state
 
-Updated: 2026-10-21T09:35Z. This file records observed state, not inferred execution.
+Updated: 2026-10-21T14:23Z. This file records observed state, not inferred execution.
 
 
+
+
+## 14:17Z wake: source HOLD unchanged
+
+No exact-name source ZIP/README was found in the checked project/Downloads
+locations. No denied URL was retried, observation values read or fit run. No active
+research job; fresh main/HEAD/origin/main/advertised remote matched
+`04b408493c4aa56d0bde30e68ffeb01729a5ed90`; B2a remains local and unstaged.
+See `reports/research-ledger/2026-10-21T1417Z.md` for the bounded search scope.
+
+One permitted author-source lead (gcplyr manuscript example, distinct
+Pseudomonas data) failed the required record/replicate/plate lineage check
+on available metadata. The CSV was not opened and its curve count is unknown;
+no data were substituted. Data reuse terms remain unestablished. The six-request
+agent lookup is complete; do not repeat this lead or chase the larger file
+without new evidence. Preserve its compact negative receipt. The original yeast
+pilot remains conditional, access/mapping HOLD, with no fit/reader/command GO.
+No new numerical or biological result; prior cumulative costs are unchanged.
+The earlier two-file request remains pending and should not be notified again.
 
 ## Next pilot selected conditionally; source access HOLD
 

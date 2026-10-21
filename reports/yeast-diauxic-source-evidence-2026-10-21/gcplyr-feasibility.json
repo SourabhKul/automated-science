@@ -1,0 +1,157 @@
+{
+  "schema": "metadata-only-source-feasibility.v1",
+  "observed_date": "2026-10-21",
+  "scope": {
+    "source_lead_from_parent": "Blazanin 2024 gcplyr paper, DOI 10.1186/s12859-024-05817-3; repository manuscript directory; Pseudomonas ancestral/evolved curves",
+    "network_request_limit": 6,
+    "network_requests_made_by_this_subtask": 6,
+    "metadata_byte_limit": 2097152,
+    "measurement_note": "Tree response was measured at 32097 bytes. Decoded README and R script payloads were measured at 4258 and 3737 bytes. Other response lengths were not measured. All six responses were small metadata/API responses; no data file or repository archive was fetched.",
+    "fallback": "GitHub web page open failed; used official GitHub REST API as the one fallback route and made no further route retry.",
+    "data_accessed": false,
+    "plots_opened": false,
+    "code_executed": false,
+    "raw_response_bodies_saved_locally": false
+  },
+  "requests": [
+    {
+      "n": 1,
+      "method": "web.open",
+      "url": "https://github.com/mikeblazanin/gcplyr/tree/master/manuscript",
+      "status": null,
+      "outcome": "tool-level failure; no HTTP status was supplied",
+      "error_exact": "Internal Error; Failed to fetch https://github.com/mikeblazanin/gcplyr/tree/master/manuscript: Failed to fetch restricted URL",
+      "body_saved_locally": false,
+      "body_sha256": null
+    },
+    {
+      "n": 2,
+      "method": "GET",
+      "url": "https://api.github.com/repos/mikeblazanin/gcplyr",
+      "status": 200,
+      "response_body_bytes": null,
+      "body_saved_locally": false,
+      "body_sha256": null
+    },
+    {
+      "n": 3,
+      "method": "GET",
+      "url": "https://api.github.com/repos/mikeblazanin/gcplyr/branches/master",
+      "status": 200,
+      "response_body_bytes": null,
+      "body_saved_locally": false,
+      "body_sha256": null
+    },
+    {
+      "n": 4,
+      "method": "GET",
+      "url": "https://api.github.com/repos/mikeblazanin/gcplyr/git/trees/dc8ceb3a26388502c66594bf0fb31c7bca7075a5?recursive=1",
+      "status": 200,
+      "response_body_bytes": 32097,
+      "tree_entries": 136,
+      "truncated": false,
+      "body_saved_locally": false,
+      "body_sha256": null
+    },
+    {
+      "n": 5,
+      "method": "GET",
+      "url": "https://api.github.com/repos/mikeblazanin/gcplyr/contents/README.md?ref=dc8ceb3a26388502c66594bf0fb31c7bca7075a5",
+      "status": 200,
+      "decoded_file_bytes": 4258,
+      "github_git_blob_sha1": "ad255a3219abc56aa89bf9efa5ad1f09a169dd23",
+      "body_saved_locally": false,
+      "body_sha256": null
+    },
+    {
+      "n": 6,
+      "method": "GET",
+      "url": "https://api.github.com/repos/mikeblazanin/gcplyr/contents/manuscript/manuscript_figs.R?ref=dc8ceb3a26388502c66594bf0fb31c7bca7075a5",
+      "status": 200,
+      "decoded_file_bytes": 3737,
+      "github_git_blob_sha1": "0802797e48439d4e15162f4c535ecfbc45809723",
+      "body_saved_locally": false,
+      "body_sha256": null
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/mikeblazanin/gcplyr",
+    "default_branch": "master",
+    "pinned_branch_commit_sha": "dc8ceb3a26388502c66594bf0fb31c7bca7075a5",
+    "tree_sha_returned_for_pinned_request": "dc8ceb3a26388502c66594bf0fb31c7bca7075a5",
+    "paper_cited_in_readme": "Blazanin, M. gcplyr: an R package for microbial growth curve data analysis. BMC Bioinformatics 25, 232 (2024). DOI 10.1186/s12859-024-05817-3",
+    "organism": {
+      "parent_source_lead": "Pseudomonas",
+      "independently_confirmed_in_inspected_readme_or_script": false
+    },
+    "license": {
+      "software_readme_badge": "MIT",
+      "github_api_repo_classifier": {
+        "name": "Other",
+        "spdx_id": "NOASSERTION"
+      },
+      "license_paths_in_tree_not_opened": [
+        "LICENSE",
+        "LICENSE.md"
+      ],
+      "separate_data_license": "not stated in inspected README or manuscript script; unknown",
+      "note": "The README badge supports a software MIT claim, while the repository API classifier is inconclusive. License file contents were not requested within the call cap. No data reuse license was established."
+    }
+  },
+  "files_observed_from_tree_only": [
+    {
+      "path": "manuscript/Isolate_growth_curves.csv",
+      "size_bytes": 2772,
+      "github_git_blob_sha1": "c7fc20beed58fbf5090b3d9b1c6642874fbf88e2",
+      "role": "small curated measurement file named by the manuscript plotting script; content not opened"
+    },
+    {
+      "path": "manuscript/manuscript_figs.R",
+      "size_bytes": 3737,
+      "github_git_blob_sha1": "0802797e48439d4e15162f4c535ecfbc45809723",
+      "role": "author analysis script; read as text, not executed"
+    },
+    {
+      "path": "data-raw/all_data.csv",
+      "size_bytes": 2380005,
+      "github_git_blob_sha1": "652efa5d48d72cb4daa0030ef1f570fcc5d16d60",
+      "role": "larger raw-data candidate seen by filename and size only; no link to manuscript subset confirmed; content not opened"
+    },
+    {
+      "path": "README.md",
+      "size_bytes": 4258,
+      "github_git_blob_sha1": "ad255a3219abc56aa89bf9efa5ad1f09a169dd23",
+      "role": "repository documentation; read transiently"
+    }
+  ],
+  "design_and_lineage_observed": {
+    "manuscript_directory_files": [
+      "manuscript/Isolate_growth_curves.csv",
+      "manuscript/manuscript_figs.R"
+    ],
+    "separate_plate_or_design_metadata_file": "none observed in manuscript directory",
+    "script_source_comment": "The script says the example was filtered from 'Blazanin et al Travisano' growth-curve data. Its commented filtering code refers to an input path Isolate_growth_curves2.csv, which is absent from the observed manuscript directory tree.",
+    "filter_fields_in_script_comment": {
+      "Date": "2019-09-10",
+      "Proj": "125",
+      "Media": "25-50",
+      "ancestor_selector": "Treat == Anc and Rep_Well == 3",
+      "evolved_selector": "Pop == A and Treat == C and Rep_Well == 1"
+    },
+    "measurement_and_unit_fields": "The commented preparation selects only Treat, Time_s, and OD600_norm. The script reads those fields, groups and summarizes by Treat, and does not preserve Rep_Well, Pop, isolate, plate, or other unit identifiers in its plotted analysis.",
+    "replication": "The source code selects one Rep_Well value for each treatment selector, but metadata do not define whether wells are technical or biological replicates. The CSV was not opened, so the count of curves or rows was not assessed.",
+    "plate_and_date": "A date appears in the commented filter. No plate identifier or plate-to-well map was observed.",
+    "original_data_publication_or_accession": "The script names 'Blazanin et al Travisano' but gives no DOI/accession for that underlying dataset. The README DOI is for the gcplyr software paper, not established here as the experiment's data publication."
+  },
+  "feasibility": {
+    "within_study_whole_record_transfer": "FAIL on available metadata",
+    "reason": "The selected example is keyed by well slot and treatment, then the script discards well/population identifiers and aggregates only by treatment. No biological-unit or plate mapping is supplied, so a defensible whole-record split cannot be defined from the inspected source. This is a metadata failure, not proof that the uninspected CSV contains exactly one curve per condition.",
+    "next_decision_gate": "Do not acquire or analyze data until the primary chooses this source and resolves the underlying data lineage, unit mapping, and data license."
+  },
+  "not_done": [
+    "No CSV or other measurement file was fetched or opened.",
+    "No repository archive, plot, result table, or numeric measurement was fetched or opened.",
+    "No R code was run, no software was installed, and no analysis or fit was performed.",
+    "No project source, tests, or tracked documentation were changed; no Git operation changed repository state."
+  ]
+}
