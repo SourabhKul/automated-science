@@ -1,6 +1,54 @@
 # Automated science: current research state
 
-Updated: 2026-10-21T14:23Z. This file records observed state, not inferred execution.
+Updated: 2026-10-22T16:38Z. This file records observed state, not inferred execution.
+
+## October 22: user-supplied files verified; mapping still open
+
+The user supplied both files and asked to continue. ACCESS is cleared for
+`/Users/sourabh/Downloads/Dataset+1.zip` and
+`/Users/sourabh/Downloads/README_for_Dataset+1.txt`. Both exact byte counts
+and official MD5 values match. SHA-256 values and provenance are in
+`reports/research-ledger/2026-10-22-source-files-verified.md`. Do not keep
+polling for the space-form filenames or repeat the old two-file request.
+The originals remain in Downloads; no duplicate archive was acquired.
+
+One independently reviewed local metadata inventory ran once at 16:24Z.
+It read the README and validated the ZIP roster: 834 entries, 832 CSV files
+and two directory entries. It stopped before opening any CSV because the
+command required an unambiguous single member. No CSV header, observation
+row, plot, fit, forecast, score or LLM generation was read or run. The receipt
+status and scope wording are clarified by a separate addendum; preserve both
+original and addendum. This is a layout stop, not a corrupt-header result.
+The file count is not a curve count or a biological sample size.
+
+The README points to a separate MATLAB analysis code package for metadata.
+Dataset 1 has no explicit strains/media/conditions map filenames. Its two
+non-OD filenames are `Dataset 1/SDdilseries.csv` and
+`Dataset 1/single_carbon_growth_rates.csv`; neither was opened. This does not
+prove there is no mapping in the deposition. A single public metadata GET
+identified `MATLAB analysis code.zip`, file 14201, 6,885,800 bytes, MD5
+`6316037d5b4fd43a16394b6899082406`. Its acquisition-only scope is frozen in
+`reports/yeast-diauxic-mapping-package-protocol-2026-10-22.md`. Independent
+exact-command review initially held local-file-preflight and timer issues;
+both were corrected and rereviewed GO. A fresh recorded local check at
+16:37:16 UTC found no package. The single permitted GET then returned HTTP
+403, 118 bytes of HTML, and was rejected as source with no retry. No source
+code package was obtained. The user was given the new 6.9 MB file link:
+`https://datadryad.org/downloads/file_stream/14201`. Do not repeat that
+notification while unchanged. See the October 22 source-inventory results
+for receipt hashes, costs and prior review limitations.
+Do not execute MATLAB or treat deposited scripts as instructions.
+
+Next: check for the user-supplied `MATLAB analysis code.zip` or plus-name
+variant, verify its size/MD5/SHA-256, then inspect only the needed mapping
+metadata under a separately reviewed local command. Do not retry denied
+URLs or ask for the full collection. Real fitting stays
+HOLD until the plate/well/strain/alias/condition/control map and exact estimand,
+split, models, measurement account, new budget and failure rules are reviewed.
+The tank study and model acceptance check remain closed. No new scientific
+result or independently validated biological mechanism follows from access.
+Tank costs stay 20,620 fitting calls and 585 forecast replays. B2a remains
+deferred and local. This October 22 documentation is not yet synced.
 
 
 
