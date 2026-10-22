@@ -3394,3 +3394,7 @@ The single-population rejection baseline is recorded in `reports/abc-reference-c
 Follow the ordered gates in `reports/real-data-discovery-next-milestone-2026-09-24.md`: complete the reviewed source sync; check the local oMLX endpoint and exact Qwen ID before any generation; freeze the development split, candidate families, observation model, ABC-SMC schedule, budgets, baselines, failure criteria, and scoring contract; then run the bounded integration pilot and evaluate the locked outcome once. Keep the five-hour automation attached to this task, inspect research processes before future runtime work, and preserve the fixed-Qwen research policy. Keep raw data, local environments, and secrets out of Git.
 
 No scientific breakthrough is claimed by this checkpoint; the smoke integration result and the reviewed `origin/main` synchronization are verified locally and linked above.
+
+## October 22 documentation sync status
+
+At 2026-10-22T16:41Z, Luna committed the six reviewed source-inventory and protocol documents on `main` as `81157c901cafb2324afc7e9756216170b0c27a3c` and pushed without force. After a fresh fetch, local `HEAD`, `origin/main`, and advertised `refs/heads/main` all matched that commit. The B2a source change and local historical/routine ledgers remain uncommitted and preserved. This documentation sync changed no research result or scientific decision.
