@@ -1,6 +1,40 @@
 # Automated science: current research state
 
-Updated: 2026-10-22T16:38Z. This file records observed state, not inferred execution.
+Updated: 2026-10-29T16:55Z. This file records observed state, not inferred execution.
+
+## October 29: mapping package verified; local metadata work can continue
+
+The user supplied `/Users/sourabh/Downloads/MATLAB+analysis+code.zip`.
+Its 6,885,800 bytes and MD5 match the public file metadata. SHA-256 is
+`28d5a982ad2dcac338f6a9575308e1d256d0209599475cfe04f257a22e150084`.
+The package-access blocker is cleared. Do not ask for or poll for this file
+again, retry the old denied GET, or copy the original archive.
+
+Reviewed local stages listed 241 archive entries, then read six selected
+source/metadata members across two successful text runs. A first UTF-8 read
+failed; preserve it and the one reviewed lossless-byte recovery. There was no
+MATLAB execution, raw OD row parsing, binary-cache read, fit, score or model
+call. The source metric script contains historical manual metric overrides;
+their exposure is recorded and they must not become targets or cohort rules.
+
+The strain table is an 8 by 12 layout. Loader source reads matching plate
+blocks, extracts plate IDs and assay-finish timestamps, but orders input by
+filesystem modification time. Well helpers define letter-row and numeric-
+column lookup. The metric script comments describe mixed-sugar paired plates
+and a time origin; active code loads a cache. It uses a filtered strain map
+and a fixed background argument. These source choices do not prove the exact
+blank-well identities, alias groups, cohort or measurement calibration.
+The table's single non-ASCII byte remains encoding-unknown and unnormalized.
+
+Next: use a new narrow reviewed selection for the metadata-loading/background
+helpers; resolve the exact crosswalk, blank roles and aliases from metadata.
+Then freeze the estimand, cohort/split, pure-sugar role, measurement model,
+controls, inference and new limits before parsing observations or fitting.
+No new user download is requested. Do not rerun completed metadata stages.
+See `reports/yeast-diauxic-mapping-metadata-results-2026-10-29.md` and
+`reports/research-ledger/2026-10-29T1618Z.md` for evidence and review history.
+Tank/model-acceptance work remains closed; old counts stay fixed. B2a and
+historical/local work remain preserved. The sections below are history.
 
 ## October 22: user-supplied files verified; mapping still open
 
