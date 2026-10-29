@@ -1,6 +1,49 @@
 # Automated science: current research state
 
-Updated: 2026-10-29T18:10Z. This file records observed state, not inferred execution.
+Updated: 2026-10-29T23:15Z. This file records observed state, not inferred execution.
+
+## October 29 22:54Z wake: raw metadata and clock gate completed
+
+New run `yeast-diauxic-raw-metadata-20261029-v1` completed once. All 542
+mixed-sugar members, 271 for each filename plate ID, had the allowlisted
+IW-OD600 channel token and a first assay-finish timestamp. All passed full
+CRC checks. Eight measurement records per file were consumed as opaque
+bytes; no OD value was decoded, tokenized, converted, retained or output.
+This was an explicit new metadata contract. The old inventory, first-record
+check and source/helper stages remain closed and unchanged. No package
+polling, duplicate archive or network request occurred.
+
+New receipt-only run `yeast-diauxic-time-contract-20261029-v1` parsed all
+542 saved timestamp strings, with 271 unique times per plate. The format is
+month/day/year with a 12-hour clock; timezone is unknown. Use the first
+plate1 timestamp, 7/19/2013 5:10:58 PM, as a common naive clock origin under
+an explicit shared stable-clock assumption. Plate1 spans 158,967 seconds;
+plate2 covers offsets 113 to 159,152 seconds, including 185 seconds beyond
+the last training timestamp. All irregular intervals remain saved. Sorting
+checks unique times, not independent acquisition chronology or clock
+stability. No inoculation-time or simultaneous-reading claim follows.
+
+Exact hashes, limits, costs and review history are in
+`reports/yeast-diauxic-raw-metadata-results-2026-10-29.md` and
+`reports/research-ledger/2026-10-29T2254Z.md`. Reuse the receipts; do not rerun
+either metadata stage or reopen raw members to repeat these checks.
+
+The four-well known-strain raw-OD paired-plate proposal remains conditional
+on offset/gain transfer. A possible shared-plate OU plus independent Gaussian
+error model received independent mathematical design GO only. Separate
+per-well marginal predictions remain correlated and cannot be multiplied
+into a joint score or counted as independent cultures. Noise scales are
+not frozen. Exact physical blanks and full alias groups remain unresolved
+for broader calibrated or held-out-strain claims.
+
+Next: freeze curve equations/support, error scales, scores, cheap point and
+tractable Gaussian-likelihood weighting controls, ABC settings, seeds, new
+wall/RSS/artifact/call limits and failure rules. Then independently review
+the exact small reader/adapter and training/prediction/evaluation sequence
+before any OD parsing or fit. No new framework, closed-product expansion
+or inherited tank budget. No fit, score, model call, cache/plot access or
+MATLAB execution occurred. Tank/model-check totals and deferred B2a stay
+fixed. No user download or other new user action is needed.
 
 ## October 29: mapping package verified; local metadata work can continue
 

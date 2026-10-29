@@ -82,3 +82,51 @@ call accounting, ABC discrepancy/tolerance schedule, seeds, output freeze,
 new wall/RSS/artifact/call limits, reference-quality gates and stop rules.
 Any small adapter needs independent design and exact-byte code review. Do
 not inherit tank budgets, expand its closed source or build a new framework.
+
+## Proposed marginal error model
+
+An independent Luna max design review accepted the following mathematical
+option, with fitting still on HOLD. For well k on plate p, let
+
+`y[p,k](t) = f[k](t; theta[k]) + u[p](t) + e[p,k](t)`.
+
+Here `u[p]` is a zero-mean shared plate process with covariance
+`sigma_p^2 * exp(-abs(t-s)/ell)`. The errors `e[p,k]` are independent Gaussian
+errors with variance `sigma_e^2`, independent of the plate processes. Assume
+independent plate processes across plates. A common instrument drift across
+both plates would violate that assumption.
+
+Each well can use only its own plate1 data. Its marginal Gaussian covariance
+is `sigma_e^2 I + sigma_p^2 K_ell`, built from actual elapsed-time differences.
+This deliberately leaves other wells unused when learning a plate effect.
+It loses information but gives a coherent marginal prediction. Plate2
+prediction integrates parameter uncertainty and a new independent plate
+process; it must not condition on plate2 values before the prediction freeze.
+
+The four predictions remain correlated through shared plate errors. Report
+four descriptive trajectory scores. Do not multiply their likelihoods into
+a joint score, count them as independent cultures or use them for population
+inference. A long process length scale can resemble an offset and confound
+the curve intercept. Prespecify `sigma_p`, `ell` and `sigma_e` before any OD
+inspection; no numerical values are frozen here. A likelihood control must
+include both the residual quadratic and covariance log determinant. This
+review establishes a possible error structure, not calibrated noise, an
+exact posterior or permission to fit.
+
+## Metadata gate completed; fitting remains closed
+
+The separate raw-record and receipt-only time stages completed on October 29.
+All 542 selected file identities have the allowed channel and a saved assay
+timestamp. No OD values were parsed. See
+`yeast-diauxic-raw-metadata-results-2026-10-29.md` for exact receipt hashes,
+format, full-scan limits and time checks. These stages must not be rerun.
+
+Use the first plate1 timestamp, `7/19/2013 5:10:58 PM`, as the common clock
+origin and express differences in hours. The timestamp format is numeric
+month/day/year with a 12-hour clock. The timezone is unknown. Treat this as
+a shared, stable local-clock coordinate, not validated time since inoculation.
+Retain the distinct, irregular assay times. Plate2 begins 113 seconds after
+that origin and ends 185 seconds beyond the last plate1 timestamp. The
+prediction task includes that short extrapolation; do not trim it after
+seeing values. Unique times after sorting do not independently prove clock
+stability or acquisition order. No OD matrix shape has yet been validated.
