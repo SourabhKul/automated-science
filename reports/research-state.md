@@ -1,6 +1,6 @@
 # Automated science: current research state
 
-Updated: 2026-10-29T16:55Z. This file records observed state, not inferred execution.
+Updated: 2026-10-29T18:10Z. This file records observed state, not inferred execution.
 
 ## October 29: mapping package verified; local metadata work can continue
 
@@ -26,10 +26,25 @@ and a fixed background argument. These source choices do not prove the exact
 blank-well identities, alias groups, cohort or measurement calibration.
 The table's single non-ASCII byte remains encoding-unknown and unnormalized.
 
-Next: use a new narrow reviewed selection for the metadata-loading/background
-helpers; resolve the exact crosswalk, blank roles and aliases from metadata.
-Then freeze the estimand, cohort/split, pure-sugar role, measurement model,
-controls, inference and new limits before parsing observations or fitting.
+The later helper/parser stages completed once: five new source members,
+3,888 bytes and five full CRCs. They show metadata padding/EMPTY conversion,
+label sanitization and `log2(max(odraw-bg, 2^-10))`. None estimates the blank
+level or identifies biological aliases. Do not silently adopt the floor or
+fixed old argument. Row/column subset selection is not an offset error.
+
+Primary selected a proposed small known-strain plate1-to-plate2 raw-OD assay
+prediction question, conditional on offset/gain transfer. Its first four
+literal safe labels are B2=DBVPG6765, B3=SK1, B4=Y55 and B5=YPS128. It uses
+no published quality filter, alias merge or pure-sugar records. See
+`reports/yeast-diauxic-paired-plate-design-2026-10-29.md`. This is a design
+proposal, not fitting authorization or measured-blank calibration.
+
+Next: freeze a separate metadata-only contract to verify raw-file identity,
+OD channel and actual assay timestamps for those selected records. All
+completed source reads stay closed. Then freeze equations/support/noise,
+point and Gaussian-likelihood controls, ABC settings, new budgets and stop
+rules before observations or fits. Exact physical blanks and the full alias
+map remain needed for any broader calibrated or held-out-strain claim.
 No new user download is requested. Do not rerun completed metadata stages.
 See `reports/yeast-diauxic-mapping-metadata-results-2026-10-29.md` and
 `reports/research-ledger/2026-10-29T1618Z.md` for evidence and review history.
