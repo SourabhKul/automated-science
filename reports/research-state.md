@@ -1,6 +1,45 @@
 # Automated science: current research state
 
-Updated: 2026-10-29T23:15Z. This file records observed state, not inferred execution.
+Updated: 2026-10-30T05:18Z. This file records observed state, not inferred execution.
+
+## October 30: first yeast training stopped; held-out data remain unopened
+
+Run `yeast-diauxic-pilot-train-20261030-v1` ran once under the frozen
+four-well known-label raw-OD protocol. All 271 plate1 members were read and
+validated; only B2–B5 OD cells were converted. All eight point/importance
+controls completed. Five failed the fixed quality gates: all four two-phase
+cases and SK1 one-phase. DBVPG6765, Y55 and YPS128 one-phase passed. No
+survivor-only comparison, posterior or biological curve preference follows.
+
+The actual terminal status is `stopped_artifact_limit` /
+`new_artifact_bytes_including_final_receipt` while saving the aggregate
+partial controls. Retained bytes are below the cap; the rejected projected
+write included a temporary file and receipt reserve. The deleted temporary
+file's exact size is unavailable. Keep that resource stop separate from the
+five quality failures. Individual blocks, full point histories and all-case
+progress/receipt remain in ignored storage. No ABC, successful prediction
+commit, plate2 observation read or held-out score occurred.
+
+Exact results, costs and limitations are in
+`reports/yeast-diauxic-pilot-results-2026-10-30.md` and
+`reports/research-ledger/2026-10-30T0357Z.md`. Driver SHA is
+`91cd6da5dede16f7f0257aae3f2377fd2e06c132b11c46a0b6e5ee83f2b062d8`;
+training receipt SHA is
+`bf7e453c0ccbddc029bdb42fc535b0a7c8c126aed741b33b2fec096005802844`.
+Two independent static reviews and a reviewed 15-method synthetic unittest
+check preceded launch. A failed missing-pytest attempt and its one bounded
+stdlib recovery are preserved. No packages were installed. The new yeast
+costs are separate: 292,977 combined curves, 33.361760 processing seconds,
+286,687,232 bytes sampled peak RSS and 59,498,890 retained run bytes.
+
+This ID is consumed. Do not rerun, add draws, weaken quality gates, expand
+the cap, run ABC for survivors or open plate2 to finish the pipeline. Next
+work is an analytic, target-independent review of weight concentration,
+weak/boundary directions and retained artifact sizing. It does not authorize
+another fit, research synthetic campaign or evaluation. No model/server,
+MATLAB, binary-cache or plot action occurred. No new download or user action
+is needed. Closed tank totals, fixed research model and deferred B2a stay
+unchanged. All completed source and metadata stages remain closed.
 
 ## October 29 22:54Z wake: raw metadata and clock gate completed
 
