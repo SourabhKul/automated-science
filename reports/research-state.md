@@ -1,6 +1,34 @@
 # Automated science: current research state
 
-Updated: 2026-10-30T14:05Z. This file records observed state, not inferred execution.
+Updated: 2026-10-30T19:14Z. This file records observed state, not inferred execution.
+
+## October 30 19:06Z: two-family screen; no pilot selected
+
+The screen and evidence limits are in
+`reports/scientific-question-screen-2026-10-30.md` and
+`reports/research-ledger/2026-10-30T1906Z.md`. Only thermal relaxation and
+radioactive counting were screened. The checked thermal teaching sources
+lack the required repeat/calibration provenance for this pilot. The Ag
+spectrometry deposition has stronger metadata, but processed peak areas
+and detector corrections do not establish an independent Poisson count
+contract. No empirical source, code or acquisition is selected.
+
+A conditional count-shape likelihood is tractable in principle when raw
+integer bins, exposure, background and event-loss assumptions hold. This is
+a design lead only; no checked Poisson-count reference exists here. The
+current Gaussian ODE reference fixes unit initial state, zero asymptote and
+known common sigma. Its sibling finite-epsilon CDF hard-codes df=4; do not
+reuse that branch at n!=4 without review. Default four-point controls remain
+unchanged.
+
+Web search unexpectedly displayed a teaching cooling table and a published
+radioactive result. Exposure is recorded; this screen is not observation-
+blind. No data file, spectrum, workbook or archive was opened, no rows were
+used for fitting or cohort/calibration rules, and no numerical/model call
+ran. Next is a bounded count measurement-contract decision using existing
+metadata/equations. No third family, download or new study is authorized.
+Yeast remains deferred, plate2 unopened and consumed stages closed. No user
+action is needed; B2a and closed tank work remain intact.
 
 ## October 30 13:57Z: defer the yeast comparison
 
