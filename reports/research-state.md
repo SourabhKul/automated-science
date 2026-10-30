@@ -1,6 +1,28 @@
 # Automated science: current research state
 
-Updated: 2026-10-30T05:18Z. This file records observed state, not inferred execution.
+Updated: 2026-10-30T09:10Z. This file records observed state, not inferred execution.
+
+## October 30 09:01Z: analytic diagnosis; no new run
+
+The methods review is recorded in
+`reports/yeast-diauxic-analytic-diagnosis-2026-10-30.md` and
+`reports/research-ledger/2026-10-30T0901Z.md`. The defensive uniform mixture
+bounds ideal importance weights, but it does not ensure useful finite-budget
+ESS. The local matrix is a Gauss–Newton scale heuristic, not a full Hessian
+or global-coverage proof. Structural weak directions are possible; their
+role in any recorded case is unproved. No new method or tuning is selected.
+
+Artifact review separates retained bytes from old-plus-temp transaction
+peaks. The existing size check is not a prior bound on all temporary writes.
+The deleted NPZ size is unknown, so no actual hard-cap breach is inferred.
+Any later design needs an explicit transaction envelope and adequate
+reference checks before a new numerical protocol can be considered.
+
+No observation or array payload was read. No fit, simulation, test, score
+or model call ran this wake. The five failed controls and actual artifact stop
+remain unchanged. The prior run/check IDs remain consumed; no ABC or plate2
+access is authorized. No user action is needed. All raw/partial evidence,
+closed tank totals and deferred B2a work remain intact.
 
 ## October 30: first yeast training stopped; held-out data remain unopened
 
