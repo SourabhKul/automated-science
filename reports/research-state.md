@@ -1,6 +1,31 @@
 # Automated science: current research state
 
-Updated: 2026-10-30T09:10Z. This file records observed state, not inferred execution.
+Updated: 2026-10-30T14:05Z. This file records observed state, not inferred execution.
+
+## October 30 13:57Z: defer the yeast comparison
+
+The bounded feasibility decision is in
+`reports/yeast-diauxic-reference-feasibility-decision-2026-10-30.md` and
+`reports/research-ledger/2026-10-30T1357Z.md`. Both independent math/source
+reviews accepted the decision memo. Another yeast scientific comparison is
+not ready within the current checked interfaces and allowed work. The five
+failed controls remain decisive; no justified replacement reference has been
+established. This does not prove that other methods cannot work.
+
+Prior rejection has an exact accepted law in ideal arithmetic, but its
+unknown acceptance rate supplies no useful cost bound here. A generic scalar
+example limits uniform finite-budget claims; it does not diagnose an observed
+yeast case or add a post-hoc criterion to the old run. Available scalar/ODE
+references are specialized. No replacement sampler, tuning or new framework
+is selected.
+
+Keep plate2 unopened and all consumed stages closed. No new fit, simulation,
+check, model call or observation read occurred. Do not compact old evidence,
+run survivors, expand budgets or fit a repair. Next is a small scientific-
+question screen that starts from a tractable reference and sound measurement,
+provenance and independent-unit assumptions. It authorizes no data acquisition
+or numerical study. No user action is needed; B2a and closed tank work remain
+unchanged.
 
 ## October 30 09:01Z: analytic diagnosis; no new run
 
