@@ -1,6 +1,29 @@
 # Automated science: current research state
 
-Updated: 2026-10-30T19:14Z. This file records observed state, not inferred execution.
+Updated: 2026-10-31T00:08Z. This file records observed state, not inferred execution.
+
+## October 31 00:03Z: count lead rejected for readiness; screen closed
+
+The final contract decision is in
+`reports/count-measurement-contract-decision-2026-10-31.md` and
+`reports/research-ledger/2026-10-31T0003Z.md`. The inspected Ag metadata does
+not establish raw-bin counts, relative exposure, background/event-loss
+factorization or grouping needed for the conditional model. Reject current
+empirical readiness. This does not establish that the unseen archive is
+unusable, nor impose physical-source replication on within-source inference.
+
+The two-family screen is closed with no eligible pilot. No data acquisition,
+reader, reference-code project, sampler, fit or numerical study is selected.
+Do not extend the screen, add a family, repeat its contract, acquire the Ag
+material or ask again for user files under this completed scope. A new explicit
+research scope is needed for further source-search or reference-methods work.
+The wider scientific objective remains open and is not marked achieved.
+
+End this scheduled planning branch after review and evidence preservation;
+there is no active job, selected pilot or external condition to watch. No new
+web/data access, numeric/model call or runtime change occurred. Yeast stays
+deferred and plate2 unopened. All original, partial, closed tank and B2a
+evidence remains intact. The project/chat remains available for a later scope.
 
 ## October 30 19:06Z: two-family screen; no pilot selected
 
