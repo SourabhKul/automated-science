@@ -1,0 +1,42 @@
+{
+  "id": "ecology-source-gate-reader-review-20261102-v2",
+  "reviewer": "lab_reviewer",
+  "scope": "source_gate_code_and_fixture_review",
+  "verdict": "hold",
+  "bindings": {
+    "script": {
+      "path": "scripts/ecology_source_gate.py",
+      "sha256": "bd921803420efebc771cacda16422abd4c9c89c362e9869eb788463390bc9c13"
+    },
+    "tests": {
+      "path": "tests/test_ecology_source_gate.py",
+      "sha256": "235cdcef24e84d96ba87c0610cdc4fcc0174d524e51599b9b9248ed17288b65b"
+    },
+    "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919"
+  },
+  "blockers": [
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "396-431",
+      "issue": "Only exact lowercase top-level md5 and sha256 keys are added to the digest set. The generic guard lowercases and removes hyphens, then exempts normalized sha256 without adding the supplied value. For example, top-level sha-256 or SHA256 is silently ignored. Uppercase MD5 and case variants of digest/digestType can also bypass validation. A file may therefore pass without comparing a supplied digest.",
+      "minimal_fix": "Parse supported top-level checksum aliases case-insensitively and compare them, or fail closed on every checksum-like top-level key not explicitly parsed. Add offline fixtures for a sha-256 alias and uppercase MD5 that assert compare-or-stop."
+    }
+  ],
+  "verified_fixes": [
+    "Removed the second deletion of the opaque outcome token; parser fixtures cover both count columns.",
+    "Added exact yes/no candidate-arm coverage, Decimal day identity, unknown-label HOLD and sparse-arm reporting; raw day tokens remain visible and fit readiness stays HOLD.",
+    "Added dataset-license fallback and dataset/version conflict checks.",
+    "Scoped outcome retention statements to interpreted metadata and separately report local raw-file retention.",
+    "Added nonzero exit statuses for held/incomplete/interrupted runs and stopped masking interruption with a finally return.",
+    "Patched the successful five-request fixture to use a temporary GATE.ROOT.",
+    "Added fixed-path symlink/out-of-scope storage rejection.",
+    "Included receipt finalization in the total wall deadline with explicit measurement points."
+  ],
+  "verified_controls": [
+    "No authentication, redirect, retry or alternate download route; strict host/path allowlists and five-request cap remain.",
+    "Candidate aliases remain provisional and case-sensitive; unknown, duplicate or ambiguous headers stop before rows.",
+    "Outcome count/Colonies remain unconverted and absent from interpreted records; errors do not include row values.",
+    "Coverage is only a screening result; fit readiness remains HOLD."
+  ],
+  "status": "Static review only. No import, fixture test, source request, data read, model call, simulator call or experiment was run. Do not run the fixture test or source gate against these held bytes. Re-review changed hashes."
+}

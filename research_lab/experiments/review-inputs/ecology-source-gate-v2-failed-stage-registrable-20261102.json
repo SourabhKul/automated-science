@@ -1,0 +1,280 @@
+{
+  "code_review": {
+    "bound_sha256": "4de85e0375b91e89df69740060ae5cd3b4db167c5797c7cf90a495d9d02b6102",
+    "reviewer": "lab_reviewer",
+    "verdict": "go"
+  },
+  "codepaths": [
+    {
+      "path": "scripts/ecology_source_gate.py",
+      "sha256": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9"
+    },
+    {
+      "path": "tests/test_ecology_source_gate.py",
+      "sha256": "c90626e101c5c18f70a663481fa6badf38700d49f049509664765389572b24fc"
+    }
+  ],
+  "costs": {
+    "artifact_bytes": 24066,
+    "forecast_calls": 0,
+    "llm_calls": 0,
+    "peak_rss_bytes": 33751040,
+    "simulator_calls": 0,
+    "wall_seconds": 0.56973
+  },
+  "design_review": {
+    "bound_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+    "reviewer": "source_gate_final",
+    "verdict": "go"
+  },
+  "executor": "lab_executor_git",
+  "hypothesis_outcome": "inconclusive",
+  "id": "ecology-source-gate-v2-failed-stage-20261102",
+  "kind": "source_gate",
+  "limitations": [
+    "The run stopped after two successful metadata GETs because the version JSON omitted the top-level id field required by the frozen identity check; its self link named version 25141. No files GET, source CSV read, or raw-file retention occurred.",
+    "This is a failed source-stage identity contract, not evidence of public-source denial, data failure, fit readiness, or a scientific outcome.",
+    "The stored receipt elapsed_seconds 0.569315 is measured before the final atomic receipt replacement. Captured stdout reports 0.569723 after the last receipt write and 0.569730 after the finalization attempt. The execution tool separately reported 0.491636 seconds; outer UTC start/end were not captured. These measures have different boundaries and are not summed; complete outer runtime is unknown.",
+    "Reported transaction accounting is 286340 bytes and includes receipt reserve/accounting; it is not an independently measured physical peak. Retained run files are 19435 bytes; captured stdout/stderr add 4631 bytes.",
+    "The v2 run ID and its remaining request allowance are consumed. Do not rerun this ID or reuse unused requests.",
+    "Project and review time are unmeasured. Remote server processing time is not observable.",
+    "The reviewed reader and test files contain 851 and 250 nonblank lines, above authoring targets of 350 and 150. Preserve these exact reviewed bytes; do not rewrite or rerun this check."
+  ],
+  "metrics": {
+    "actual_requests": 2,
+    "calls": {
+      "forecast": 0,
+      "likelihood": 0,
+      "model": 0,
+      "simulator": 0
+    },
+    "captured_stderr": {
+      "bytes": 0,
+      "path": "research_lab/evidence/ecology-source-gate-20261102-v2/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "captured_stdout": {
+      "bytes": 4631,
+      "path": "research_lab/evidence/ecology-source-gate-20261102-v2/stdout.json",
+      "sha256": "23dc26ea8477f645d776b8d1fae81384716cd19465221e91876f9e7f8e69b8fa"
+    },
+    "code_bindings": {
+      "codepaths_canonical_sha256": "4de85e0375b91e89df69740060ae5cd3b4db167c5797c7cf90a495d9d02b6102",
+      "script": {
+        "path": "scripts/ecology_source_gate.py",
+        "sha256": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9"
+      },
+      "tests": {
+        "path": "tests/test_ecology_source_gate.py",
+        "sha256": "c90626e101c5c18f70a663481fa6badf38700d49f049509664765389572b24fc"
+      }
+    },
+    "data_before_after": {
+      "artifact_bytes_after": 209647955,
+      "artifact_bytes_before": 209647955,
+      "data_bytes_after": 6283554,
+      "data_bytes_before": 6267893
+    },
+    "dataset_metadata_observation": {
+      "dataset_id": 25068,
+      "identifier": "doi:10.5061/dryad.3kb72",
+      "publicationDate": "2015-10-27",
+      "versionNumber": 1,
+      "version_link": {
+        "href": "/api/v2/versions/25141"
+      }
+    },
+    "downloaded_body_bytes": 15661,
+    "engineering_scope": {
+      "authoring_targets_nonblank_lines": {
+        "reader": 350,
+        "tests": 150
+      },
+      "deviation": "Both files exceed authoring targets; preserve exact reviewed bytes; no rewrite or rerun.",
+      "reader_nonblank_lines": 851,
+      "tests_nonblank_lines": 250
+    },
+    "failure_class": "source_metadata_identity_contract_gap",
+    "failure_code": "version_identity_mismatch",
+    "fit_readiness": "HOLD",
+    "partial_files": [],
+    "proposal_raw_sha256": "95bb6e330cb3419f8fddea9b8a110e3cf5163e1ee2f8ade6adc1c4a168e84941",
+    "proposal_registered_sha256": "024a15f62d3858e34a45f2a03bc11dc8c3d0a91826c8396957b52d21a84f9d84",
+    "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+    "raw_file_requests": [],
+    "remote_server_processing_cost": "unknown_not_observable",
+    "reported_transaction_accounting_bytes": 286340,
+    "reported_transaction_accounting_semantics": "includes receipt reserve/accounting; not an independently measured physical peak",
+    "request_counts": {
+      "file": 0,
+      "metadata": 2
+    },
+    "requests": [
+      {
+        "body_bytes": 7812,
+        "body_sha256": "169e9d32d9481dd02fb7fe4978ded757a3d4cc1b800ee6715aedb9d58563c7d7",
+        "error": null,
+        "final_url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.3kb72",
+        "kind": "metadata",
+        "method": "GET",
+        "number": 1,
+        "partial_path": null,
+        "requested_url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.3kb72",
+        "saved_path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-01.json",
+        "status": 200
+      },
+      {
+        "body_bytes": 7849,
+        "body_sha256": "ee0936cbb4e9a93662ffd633ee8cd2197452a95f425dbdffb27d6b0fdcf1b09a",
+        "error": null,
+        "final_url": "https://datadryad.org/api/v2/versions/25141",
+        "kind": "metadata",
+        "method": "GET",
+        "number": 2,
+        "partial_path": null,
+        "requested_url": "https://datadryad.org/api/v2/versions/25141",
+        "saved_path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-02.json",
+        "status": 200
+      }
+    ],
+    "resource": {
+      "artifact_bytes_after": 209647955,
+      "artifact_bytes_before": 209647955,
+      "data_after_measurement_point": "after acquisition, before receipt finalization",
+      "data_bytes_after": 6283554,
+      "data_bytes_before": 6267893,
+      "downloaded_body_bytes": 15661,
+      "elapsed_measurement_point": "includes first receipt write; excludes the final atomic receipt replacement",
+      "elapsed_seconds": 0.569315,
+      "elapsed_seconds_before_last_atomic_receipt_update": 0.569314,
+      "elapsed_seconds_before_receipt_finalization": 0.56849,
+      "peak_sampled_rss_bytes": 33751040,
+      "receipt_finalization_seconds_through_first_write": 0.062199,
+      "request_counts": {
+        "file": 0,
+        "metadata": 2
+      },
+      "retained_run_bytes": 19435,
+      "rss_hard_limit": "checked at network/parser checkpoints",
+      "rss_method": "sampled resource.ru_maxrss OS high-water; checkpoint samples, not a cgroup hard kill",
+      "rss_samples": [
+        {
+          "elapsed_seconds": 0.07976,
+          "rss_high_water_bytes": 31768576
+        },
+        {
+          "elapsed_seconds": 0.296191,
+          "rss_high_water_bytes": 33587200
+        },
+        {
+          "elapsed_seconds": 0.297611,
+          "rss_high_water_bytes": 33603584
+        },
+        {
+          "elapsed_seconds": 0.505536,
+          "rss_high_water_bytes": 33751040
+        }
+      ],
+      "transaction_peak_bytes": 286340
+    },
+    "retained_captured_output_bytes": 4631,
+    "retained_source_run_bytes": 19435,
+    "review_bindings": {
+      "design": {
+        "bound_proposal_sha256": "024a15f62d3858e34a45f2a03bc11dc8c3d0a91826c8396957b52d21a84f9d84",
+        "id": "ecology-v2-source-review-20261102",
+        "path": "research_lab/reviews/2026-11-02T1806Z/ecology-v2-source-review.json",
+        "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+        "reviewer": "source_gate_final",
+        "sha256": "0c4d645bffb713d415a32a8d8ab6daf067253b91396e1dce7527ff00a9130603",
+        "verdict": "go"
+      },
+      "execution_code": {
+        "codepaths_canonical_sha256": "4de85e0375b91e89df69740060ae5cd3b4db167c5797c7cf90a495d9d02b6102",
+        "id": "ecology-source-gate-code-go-20261102-v1",
+        "path": "research_lab/reviews/2026-11-02T2310Z/ecology-source-execution-code-go.json",
+        "pi_condition_satisfied": true,
+        "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+        "reviewer": "lab_reviewer",
+        "sha256": "aa90bba2a140c751e1480a33a882dbdd0451189db7c8cac7b400a5760bc4ffb7",
+        "verdict": "go_conditional_on_PI_launch_GO"
+      },
+      "proposal_peer": {
+        "bound_proposal_sha256": "024a15f62d3858e34a45f2a03bc11dc8c3d0a91826c8396957b52d21a84f9d84",
+        "id": "ecology-v2-peer-review-20261102",
+        "path": "research_lab/reviews/2026-11-02T1806Z/ecology-v2-peer-review.json",
+        "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+        "reviewer": "lab_reviewer",
+        "sha256": "dbeffccd44804c37d3e122d9e89edbf90471c052ff05465ca0cf4e928a6398c4",
+        "verdict": "go"
+      },
+      "receipt_review_designated_reviewer": "ecology_receipt_auditor"
+    },
+    "selected_file_gets": 0,
+    "selection_id": "selection-000002",
+    "source_bytes": 0,
+    "source_manifest": [
+      {
+        "bytes": 7812,
+        "final_url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.3kb72",
+        "http_status": 200,
+        "kind": "metadata_response",
+        "path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-01.json",
+        "request_number": 1,
+        "requested_url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.3kb72",
+        "sha256": "169e9d32d9481dd02fb7fe4978ded757a3d4cc1b800ee6715aedb9d58563c7d7"
+      },
+      {
+        "bytes": 7849,
+        "final_url": "https://datadryad.org/api/v2/versions/25141",
+        "http_status": 200,
+        "kind": "metadata_response",
+        "path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-02.json",
+        "request_number": 2,
+        "requested_url": "https://datadryad.org/api/v2/versions/25141",
+        "sha256": "ee0936cbb4e9a93662ffd633ee8cd2197452a95f425dbdffb27d6b0fdcf1b09a"
+      }
+    ],
+    "source_rows_read": 0,
+    "source_run_receipt": {
+      "bytes": 3774,
+      "path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/receipt.json",
+      "sha256": "5ce8734cfe8a72799696230ae820ee1f647cc96a4bcd9b7c73823fcbbd146f6d"
+    },
+    "source_stage_result": "held_failure",
+    "timing_measurements": {
+      "complete_outer_runtime_seconds": "unknown_measurements_have_different_boundaries",
+      "elapsed_seconds_before_last_atomic_receipt_update": 0.569314,
+      "elapsed_seconds_before_receipt_finalization": 0.56849,
+      "exec_command_wall_time_seconds": 0.491636,
+      "outer_end_utc": "unknown_not_captured",
+      "outer_start_utc": "unknown_not_captured",
+      "receipt_elapsed_measurement_point": "includes first receipt write; excludes the final atomic receipt replacement",
+      "receipt_elapsed_seconds": 0.569315,
+      "stdout_elapsed_seconds_after_finalization_attempt": 0.56973,
+      "stdout_elapsed_seconds_after_last_receipt_write": 0.569723
+    },
+    "total_retained_evidence_bytes": 24066,
+    "version_metadata_observation": {
+      "publicationDate": "2015-10-27",
+      "self_link": {
+        "href": "/api/v2/versions/25141"
+      },
+      "top_level_id": null,
+      "top_level_id_present": false,
+      "versionNumber": 1
+    }
+  },
+  "proposal_id": "ecology-source-gate-20261102-v2",
+  "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+  "protocolpath": "research_lab/protocols/ecology-source-gate-2026-11-02-v2.md",
+  "status": "failed",
+  "receipt_review": {
+    "bound_sha256": "0add846baf246c81133fef184d4bf1ab86b4f63b7556124cceaf9a035c7cfdfb",
+    "review_id": "ecology-v2-receipt-factual-review-20261102",
+    "review_path": "research_lab/reviews/2026-11-02T2310Z/ecology-v2-receipt-factual-review.json",
+    "review_sha256": "a412cc841aacc7a0929b0490323a725475339d86d7c295984bddfc2c15d14b58",
+    "reviewer": "ecology_receipt_auditor",
+    "verdict": "go"
+  }
+}

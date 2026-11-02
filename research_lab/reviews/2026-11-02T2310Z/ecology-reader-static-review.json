@@ -1,0 +1,83 @@
+{
+  "id": "ecology-source-gate-reader-review-20261102-v1",
+  "reviewer": "lab_reviewer",
+  "scope": "source_gate_code_and_fixture_review",
+  "verdict": "hold",
+  "bindings": {
+    "script": {
+      "path": "scripts/ecology_source_gate.py",
+      "sha256": "306f0e985442bed4ffbdc742f1d2d927378c36a17671043a2828339aa190d821"
+    },
+    "tests": {
+      "path": "tests/test_ecology_source_gate.py",
+      "sha256": "48bdd918fd0d04bec385c177a4e251551199b517c37e381742103e90494bd39a"
+    },
+    "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+    "proposal_canonical_sha256": "024a15f62d3858e34a45f2a03bc11dc8c3d0a91826c8396957b52d21a84f9d84",
+    "v1_plan_sha256": "cd35ff8ab2251cbc9837f04652b459e8c752598d25f00447b52a0db28bb14bfd"
+  },
+  "blockers": [
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "475-498",
+      "issue": "Every valid metadata row deletes `opaque` at line 477 and again at line 498. The second delete raises UnboundLocalError, so the candidate-parser fixture cannot pass.",
+      "minimal_fix": "Remove the redundant second `opaque` deletion; add a fixture for both opaque count columns and verify their values never enter interpreted output."
+    },
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "504-561",
+      "issue": "The map never applies the predeclared four-arm or per-unit coverage rules. `candidate_arm_coverage` is hard-coded to not evaluated. SERRA has observed species/day lists and literal join overlaps, but no explicit per-unit missingness status.",
+      "minimal_fix": "Evaluate candidate arms only for exact literal yes/no flags; never map 0/1 or other labels. Report units per arm and each unit's distinct PARA and conditional DIDI day counts. Parse day tokens as finite, nonnegative Decimal values for distinctness (`1` and `01` are one day; fractional days remain valid) while preserving the original tokens. Report SERRA observed coverage and missingness as unknown when no planned schedule is established. Keep sparse units, conflicts, every literal combination, and unmatched joins. Unknown labels must leave coverage unevaluated and fit readiness HOLD."
+    },
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "615-622",
+      "issue": "License lookup reads only the version record. The saved Dryad precedent exposes the license at dataset level, so a version response without that field stops even when the identified dataset has an explicit license. The code also cannot detect conflicting dataset and version licenses.",
+      "minimal_fix": "Accept an explicit license from the identified dataset when the version omits it; if both are present, require exact agreement and stop on conflict. Record which metadata record supplied it."
+    },
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "693-694",
+      "issue": "`opaque_outcomes.retained: false` is unscoped, but the complete raw CSVs, including outcome bytes, are deliberately retained under ignored storage.",
+      "minimal_fix": "Scope the false value to interpreted metadata records, and separately state that raw source bytes are retained locally."
+    },
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "703-741",
+      "issue": "The print-only entry point exits zero for `held_failure` and schema HOLD. The unconditional return in `finally` can also suppress KeyboardInterrupt and return the still-started receipt as if the command succeeded.",
+      "minimal_fix": "Make complete source-map status the only zero exit. Return nonzero for held failure, incomplete schema, and interruption; preserve an explicit interrupted status instead of masking the exception with a `finally` return."
+    },
+    {
+      "file": "tests/test_ecology_source_gate.py",
+      "lines": "65-83",
+      "issue": "The successful five-request fixture writes under `tempfile.TemporaryDirectory()`, outside `GATE.ROOT`. `Client.fetch` later calls `target.relative_to(ROOT)`, which raises and turns the fixture request into a failure.",
+      "minimal_fix": "Patch `GATE.ROOT` to the fixture root for the test, or create its temporary request trees under a controlled repository root and clean them afterward."
+    },
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "352-360",
+      "issue": "`checksums` entries with unsupported algorithms or malformed non-string values are silently ignored, although the protocol requires comparing all supplied digests or stopping.",
+      "minimal_fix": "Stop on any supplied nonempty digest that the code cannot validate; add an unsupported-digest fixture."
+    },
+    {
+      "file": "scripts/ecology_source_gate.py",
+      "lines": "564-576",
+      "issue": "The raw and provenance roots are created without rejecting symlinked path components. A symlink can redirect raw CSV bytes outside the ignored directories while lexical receipt paths still appear in-repository.",
+      "minimal_fix": "Before creating run directories, fail closed if either root or any existing path component is a symlink or resolves outside the repository's intended ignored storage."
+    },
+    {
+      "file": "scripts/ecology_source_gate.py and tests/test_ecology_source_gate.py",
+      "lines": "598-737; tests 42-175",
+      "issue": "The 90-second alarm ends before final receipt construction and writing; elapsed time is recorded before that work. The tests do not cover the fixed coverage thresholds, Decimal day identity, license fallback/conflict, or exit-status distinction.",
+      "minimal_fix": "Keep final receipt work under the total deadline and report its time honestly. Add focused offline fixtures for exact-label coverage, unknown-label HOLD, numeric-day equivalence, SERRA coverage/missingness, license resolution, and success versus held exit status."
+    }
+  ],
+  "verified_controls": [
+    "The request client restricts metadata and file URLs to HTTPS datadryad.org paths, disables proxies and redirects, sends no authorization header, and enforces the five-request, per-kind, per-body, aggregate-body, per-GET, and overall processing limits during requests.",
+    "Only the two named CSVs are eligible for file GETs. The normal public file_stream route is selected; API download links are logged but not followed.",
+    "The candidate header table is literal and explicitly provisional. Unknown, duplicate, or ambiguous headers stop before data rows; label tokens are not normalized.",
+    "Outcome tokens are not converted or added to interpreted records. Exceptions use fixed codes rather than row contents. Fit readiness remains HOLD.",
+    "The code author and designated executor are different."
+  ],
+  "status": "Static review only. No module import, test, source request, data read, model call, simulator call, or experiment was run. Do not run the fixture test or source gate against these held bytes. Re-review changed hashes before the single approved fixture invocation."
+}

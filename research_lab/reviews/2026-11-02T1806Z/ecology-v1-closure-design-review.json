@@ -1,0 +1,30 @@
+{
+  "id": "ecology-v1-closure-design-review-20261102",
+  "run_id": "ecology-source-gate-20261102-v1",
+  "reviewer": "lab_reviewer",
+  "verdict": "go",
+  "scope": "prelaunch_retirement_no_execution",
+  "protocol_sha256": "cd35ff8ab2251cbc9837f04652b459e8c752598d25f00447b52a0db28bb14bfd",
+  "bound_sha256": "cd35ff8ab2251cbc9837f04652b459e8c752598d25f00447b52a0db28bb14bfd",
+  "closure_input_raw_sha256": "984067d5f9807cd5a2542ca49ab5428c94c667229b813403ea9bb8df3e1110f3",
+  "closure_payload_sha256": "0f4305b71365a0d6d034f8eec50c91d4ab7c0ef9c8ad1d89d4d9976efa404d27",
+  "codepaths": [],
+  "codepaths_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+  "verified_zeroes": {
+    "metadata_gets": 0,
+    "selected_file_gets": 0,
+    "network_requests": 0,
+    "source_bytes": 0,
+    "source_rows_read": 0,
+    "model_calls": 0,
+    "simulator_calls": 0,
+    "likelihood_calls": 0,
+    "forecast_calls": 0,
+    "source_stage_artifact_bytes": 0
+  },
+  "unknown_costs": {
+    "wall_seconds": "unknown",
+    "peak_rss_bytes": "unknown"
+  },
+  "critique": "GO to retire the selected v1 source-gate plan as prelaunch incomplete. The closure is bound to the original plan SHA and has an empty codepath list with the correct canonical empty-list hash. The recorded source, metadata, file, network, model, simulator, likelihood, forecast and source-row counts are zero. Planning/project wall time and RSS are correctly unknown, not zero; zero artifact bytes refers only to source-stage outputs, not the ledger receipt. This is a bookkeeping closure, not an empirical run, source failure, implementation review, or science result. It does not authorize access under v1 or v2. The v1 selection must be closed through the receipt reviewed by the distinct receipt reviewer before a PI can select v2. No code, data, network, model, test, or experiment was run for this review."
+}

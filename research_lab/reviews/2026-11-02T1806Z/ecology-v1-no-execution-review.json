@@ -1,0 +1,29 @@
+{
+  "reviewer": "source_gate_final",
+  "run_id": "ecology-source-gate-20261102-v1",
+  "bound_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+  "verdict": "go",
+  "scope": "prelaunch_retirement_no_execution",
+  "limits": {
+    "not_reader_review": true,
+    "not_acquisition": true,
+    "not_fitting": true,
+    "codepaths": [],
+    "source_calls": 0,
+    "network_calls": 0,
+    "model_calls": 0,
+    "simulator_calls": 0,
+    "likelihood_calls": 0,
+    "forecast_calls": 0,
+    "old_attempt_or_retry": false,
+    "project_time_seconds": null,
+    "project_memory_bytes": null
+  },
+  "evidence": {
+    "owner_preflight": "Fresh owner preflight reports no raw source, active job, or checkpoint.",
+    "state_path": "research_lab/state.json",
+    "state": "The v1 proposal is still the selected active-stage pointer; experiments is empty and last_receipt is null. No execution receipt exists.",
+    "retirement_reason": "The v1 allowance of one metadata GET plus two file GETs cannot cover the known dataset/version/file metadata traversal. Retire as prelaunch incomplete before any request under this run ID."
+  },
+  "critique": "GO to close v1 as prelaunch incomplete. This review covers retirement status only. It does not review a reader, approve acquisition, or approve a fit. No code path was supplied or executed (`codepaths` is empty); this is not a code-pass claim. The owner preflight and state support zero source, network, model, simulator, likelihood, and forecast calls under v1, with no old attempt or retry. Project time and memory remain unknown, not zero."
+}

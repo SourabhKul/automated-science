@@ -1,0 +1,8 @@
+{
+  "id": "ecology-v1-prelaunch-closure-receipt-review-20261102",
+  "reviewer": "research_scout",
+  "bound_sha256": "0f4305b71365a0d6d034f8eec50c91d4ab7c0ef9c8ad1d89d4d9976efa404d27",
+  "verdict": "go",
+  "scope": "prelaunch_incomplete_v1_closure_only",
+  "critique": "I independently checked the exact draft (raw SHA-256 984067d5f9807cd5a2542ca49ab5428c94c667229b813403ea9bb8df3e1110f3) and recomputed its canonical payload SHA with receipt_review excluded. The plan hash matches the original v1 plan; current state still points to the selected v1 stage with no recorded experiment or last receipt. The linked reviews bind the original plan and the empty codepath list. Stage-scoped source, network, model, simulator, likelihood, forecast and source-row counts are zero. Wall time and RSS are unknown; zero artifact bytes refers to source-stage outputs. GO only to record v1 as prelaunch incomplete. This is bookkeeping, not an empirical test, source failure, implementation pass, fit-readiness decision, or authorization to run v2."
+}

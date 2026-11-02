@@ -1,6 +1,27 @@
 # Automated science: current research state
 
-Updated: 2026-11-02T17:18Z. This file records observed state, not inferred execution.
+Updated: 2026-11-02T23:50Z. This file records observed state, not inferred execution.
+
+## November 2: ecology v2 consumed on API identity-contract failure
+
+See `reports/research-ledger/2026-11-02T1806Z.md`. The v1 selection closed as
+a zero-call prelaunch ledger receipt. A new v2 design received two independent
+GOs and PI selection. Its reviewed reader passed 17 offline fixtures once.
+The source run then made two HTTP-200 metadata GETs and stopped before any
+CSV access: the version record has a HAL self link but no top-level `id`.
+This is a reader API-contract failure, not access denial or scientific failure.
+
+The two bodies and consumed run are preserved; no source CSV, numeric outcome,
+fit, likelihood, simulator, forecast or model call occurred in this stage.
+V2 may not be rerun or extended. Its failed-stage receipt passed independent
+factual review and is registered. The active pointer is clear; the two recorded
+source-stage receipts are one prelaunch closure and one failed metadata run,
+with zero scientific outcomes. The next action is one separately frozen
+cached-metadata HAL
+identity recovery with no repeat of the two GETs, retaining all source/license,
+measurement and budget gates. If that bounded recovery fails, pivot to an
+independent lead. The lab and hourly automation remain active. No user action
+is needed. Prior tank/yeast holdouts and user B2a work remain untouched.
 
 ## November 2: user restarts the persistent autoresearch lab
 

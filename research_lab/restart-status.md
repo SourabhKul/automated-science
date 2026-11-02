@@ -5,10 +5,10 @@ ACTIVE in this chat. Model: `qwen3.8-flash-next-iq3_s` at port 8080.
 
 ## Scientific progress
 
-Two source-backed proposals and two independent ecology reviews are registered.
-The PI recorded `selection-000001` for the ecology source/measurement gate;
-CAMELS remains a pivot lead on HOLD. No new raw data,
-fit, simulator run or held-out score has run in this restart. There are zero
+The queue has two scientific leads and a reviewed revision of the ecology
+source plan. CAMELS remains a pivot lead on HOLD. The v2 ecology selection
+ran only a source-metadata check. No source CSV or numeric observation was
+read; no fit, simulator run or held-out score has run in this restart. There are zero
 scientific hypotheses tested and zero discovery claims.
 
 The [generated scorecard](scorecard.md) counts registered stage receipts.
@@ -57,8 +57,20 @@ This is an engineering result, not evidence of inference accuracy.
 
 ## Next action
 
-Implement and independently review the selected metadata reader. The ledger's
-active-stage pointer means selected work, not an active runner. No runner or
-writer lock is active. The map's output
-must retain unresolved facts and failed units. If it cannot qualify a small
-scientific test, revise the question or pivot. Keep the lab active.
+The reviewed reader passed 17 offline fixture tests. Its one v2 source run
+then stopped on an API identity-field mismatch after two successful metadata
+GETs. The version identifies itself through a HAL self link, not the top-level
+`id` expected by the reader. No CSV, count value, fit or model call occurred.
+Both metadata bodies and the failed-run evidence are preserved. This is not
+a source denial or a scientific result.
+
+V1 is closed as a zero-call prelaunch ledger receipt. V2 is consumed and its
+independently reviewed failure receipt is registered. The ledger has two
+source-stage receipts and zero scientific outcomes; its active pointer is
+clear. Do not rerun either ID.
+The next action is one separately reviewed cached-metadata identity recovery,
+with no repeat of those two GETs and a fresh explicit request budget. If that
+bounded recovery fails, advance another lead. The active-stage pointer is a
+ledger field, not proof of a runner. No user action is needed.
+
+Full evidence and cost limits: [source-gate ledger](../reports/research-ledger/2026-11-02T1806Z.md).

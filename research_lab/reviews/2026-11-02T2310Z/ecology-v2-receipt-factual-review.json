@@ -1,0 +1,137 @@
+{
+  "id": "ecology-v2-receipt-factual-review-20261102",
+  "reviewer": "ecology_receipt_auditor",
+  "scope": "factual review of the consumed v2 ecology source-gate failure",
+  "verdict": "go",
+  "bindings": {
+    "source_receipt": {
+      "path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/receipt.json",
+      "sha256": "5ce8734cfe8a72799696230ae820ee1f647cc96a4bcd9b7c73823fcbbd146f6d"
+    },
+    "stdout_evidence": {
+      "path": "research_lab/evidence/ecology-source-gate-20261102-v2/stdout.json",
+      "sha256": "23dc26ea8477f645d776b8d1fae81384716cd19465221e91876f9e7f8e69b8fa"
+    },
+    "metadata_bodies": [
+      {
+        "path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-01.json",
+        "bytes": 7812,
+        "sha256": "169e9d32d9481dd02fb7fe4978ded757a3d4cc1b800ee6715aedb9d58563c7d7"
+      },
+      {
+        "path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-02.json",
+        "bytes": 7849,
+        "sha256": "ee0936cbb4e9a93662ffd633ee8cd2197452a95f425dbdffb27d6b0fdcf1b09a"
+      }
+    ],
+    "protocol": {
+      "path": "research_lab/protocols/ecology-source-gate-2026-11-02-v2.md",
+      "sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919"
+    },
+    "proposal": {
+      "path": "research_lab/proposals/restart-2026-11-02/ecology-source-gate-v2.json",
+      "raw_sha256": "95bb6e330cb3419f8fddea9b8a110e3cf5163e1ee2f8ade6adc1c4a168e84941",
+      "canonical_sha256": "024a15f62d3858e34a45f2a03bc11dc8c3d0a91826c8396957b52d21a84f9d84"
+    },
+    "design_reviews": [
+      {
+        "path": "research_lab/reviews/2026-11-02T1806Z/ecology-v2-source-review.json",
+        "sha256": "0c4d645bffb713d415a32a8d8ab6daf067253b91396e1dce7527ff00a9130603",
+        "reviewer": "source_gate_final",
+        "verdict": "go"
+      },
+      {
+        "path": "research_lab/reviews/2026-11-02T1806Z/ecology-v2-peer-review.json",
+        "sha256": "dbeffccd44804c37d3e122d9e89edbf90471c052ff05465ca0cf4e928a6398c4",
+        "reviewer": "lab_reviewer",
+        "verdict": "go"
+      }
+    ],
+    "code_go": {
+      "path": "research_lab/reviews/2026-11-02T2310Z/ecology-source-execution-code-go.json",
+      "sha256": "aa90bba2a140c751e1480a33a882dbdd0451189db7c8cac7b400a5760bc4ffb7",
+      "script_sha256": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9",
+      "test_sha256": "c90626e101c5c18f70a663481fa6badf38700d49f049509b9b9248ed17288b65b"
+    },
+    "fixture_review": {
+      "path": "research_lab/reviews/2026-11-02T2310Z/ecology-reader-static-review-v3.json",
+      "sha256": "30f06379e1790154c54752edd1b5a29b1a10b6d295b671d3325552036f0ffae2"
+    },
+    "passing_fixture_receipt": {
+      "path": "research_lab/evidence/ecology-source-gate-check-20261102-v1/receipt.json",
+      "sha256": "013133820840be09a022d6fe0630a22b65f8fca3187bdf3c79e6667d1a4abe40",
+      "tests_run": 17,
+      "failures": 0,
+      "errors": 0,
+      "status": "pass"
+    }
+  },
+  "findings": {
+    "stage_status": "held_failure",
+    "failure_code": "version_identity_mismatch",
+    "fit_readiness": "HOLD",
+    "api_identity": {
+      "dataset_identifier_matches_requested_doi": true,
+      "dataset_version_link_id": "25141",
+      "version_top_level_id": null,
+      "version_self_link": "/api/v2/versions/25141",
+      "version_dataset_link_matches_dataset": true,
+      "version_number": 1,
+      "publication_date": "2015-10-27"
+    },
+    "requests": {
+      "metadata_gets": 2,
+      "file_gets": 0,
+      "total_gets": 2,
+      "http_statuses": [200, 200],
+      "final_urls_unchanged": true,
+      "body_bytes": [7812, 7849],
+      "downloaded_body_bytes": 15661,
+      "recorded_body_hashes_match_files": true
+    },
+    "resource_accounting": {
+      "data_bytes_before": 6267893,
+      "data_bytes_after": 6283554,
+      "data_byte_increase": 15661,
+      "artifact_bytes_before": 209647955,
+      "artifact_bytes_after": 209647955,
+      "retained_run_bytes": 19435,
+      "transaction_peak_bytes": 286340,
+      "transaction_cap_bytes": 4194304,
+      "peak_sampled_rss_bytes": 33751040,
+      "sampled_rss_cap_bytes": 268435456,
+      "rss_samples": 4,
+      "rss_method": "resource.ru_maxrss checkpoint samples; no cgroup hard kill",
+      "model_simulator_likelihood_forecast_fit_calls": 0,
+      "remote_server_processing": "unobservable"
+    },
+    "unread_data": {
+      "selected_csv_file_gets": 0,
+      "source_rows_read": 0,
+      "metadata_map_created": false,
+      "raw_csv_files_retained": []
+    },
+    "accounting_limitations": [
+      "No individual request elapsed times are recorded.",
+      "The persisted receipt and stdout differ: stdout adds elapsed_seconds_after_last_receipt_write and elapsed_seconds_after_finalization_attempt.",
+      "Elapsed metrics do not reconcile: 0.568490 seconds before finalization plus 0.062199 seconds through the first write does not equal the recorded 0.569315 seconds. Treat exact wall time as unknown; no reported total approaches the 90-second limit."
+    ]
+  },
+  "assessment": {
+    "failure_class": "reader API-identity contract mismatch",
+    "basis": "The bound reader requires version.get('id') to equal the numeric ID in the already validated version link. The returned version body has no top-level id, while its HAL self link and dataset link identify the exact requested resources. Both requests returned HTTP 200 with unchanged URLs. The reader stopped before the file-list request.",
+    "access_denied": false,
+    "empirical_or_scientific_failure": false,
+    "recovery_recommendation": "For one separately identified and reviewed source-stage continuation, reuse both cached metadata bodies and do not repeat their GETs. Accept version identity only when validated HAL self and dataset links agree with the already resolved DOI and version paths, and retain the exact version/date and explicit license checks. If those checks pass, spend at most the one remaining metadata GET on the pinned file manifest and the two predeclared public file_stream GETs, with all size/digest and fit-HOLD rules unchanged. Preserve the consumed run and do not treat this review as launch approval."
+  },
+  "registrable_failure_receipt_review": {
+    "status": "reviewed",
+    "path": "research_lab/experiments/review-inputs/ecology-source-gate-v2-failed-stage-20261102.json",
+    "raw_sha256": "3ade133140aa23f6dc8368cdaa951b8d2f0adcec8c3be61947a7127dc0345b54",
+    "reviewer": "ecology_receipt_auditor",
+    "bound_sha256": "0add846baf246c81133fef184d4bf1ab86b4f63b7556124cceaf9a035c7cfdfb",
+    "canonical_payload_sha256_excluding_receipt_review": "0add846baf246c81133fef184d4bf1ab86b4f63b7556124cceaf9a035c7cfdfb",
+    "verdict": "go",
+    "review_note": "Payload facts match the consumed source receipt, cached metadata, stdout/stderr evidence, protocol, review bindings, and exact code/test hashes. Wall time is an internal reported measure; the complete outer runtime remains unknown."
+  }
+}

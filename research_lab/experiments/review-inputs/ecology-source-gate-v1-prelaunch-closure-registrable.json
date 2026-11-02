@@ -1,0 +1,55 @@
+{
+  "code_review": {
+    "bound_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "reviewer": "source_gate_final",
+    "verdict": "go"
+  },
+  "codepaths": [],
+  "costs": {
+    "artifact_bytes": 0,
+    "forecast_calls": 0,
+    "llm_calls": 0,
+    "peak_rss_bytes": "unknown",
+    "simulator_calls": 0,
+    "wall_seconds": "unknown"
+  },
+  "design_review": {
+    "bound_sha256": "cd35ff8ab2251cbc9837f04652b459e8c752598d25f00447b52a0db28bb14bfd",
+    "reviewer": "lab_reviewer",
+    "verdict": "go"
+  },
+  "executor": "status_check",
+  "hypothesis_outcome": "inconclusive",
+  "id": "ecology-source-gate-v1-prelaunch-closure-20261102",
+  "kind": "source_gate",
+  "limitations": [
+    "This is a prelaunch incomplete closure, not an empirical source failure or scientific result.",
+    "No metadata, file, model, simulator, likelihood or forecast call occurred; no source rows were read.",
+    "codepaths is empty. The code/no-execution review concerns the empty code binding and does not claim implementation passed.",
+    "The receipt uses the original v1 plan hash. The v2 protocol is a new revision and does not reuse v1 request budget.",
+    "Peak RSS is unknown because no source-client process ran; artifact_bytes counts source-stage outputs, not ledger bookkeeping."
+  ],
+  "metrics": {
+    "fit_readiness": "HOLD",
+    "forecast_calls": 0,
+    "likelihood_calls": 0,
+    "metadata_gets": 0,
+    "model_calls": 0,
+    "network_requests": 0,
+    "phase": "prelaunch_protocol_gap",
+    "reason": "The v1 request cap did not provide a bounded dataset/version/files traversal for identity and integrity checks. No selected-source request or empirical read occurred.",
+    "selected_file_gets": 0,
+    "simulator_calls": 0,
+    "source_bytes": 0,
+    "source_rows_read": 0
+  },
+  "proposal_id": "ecology-source-gate-20261102-v1",
+  "protocol_sha256": "cd35ff8ab2251cbc9837f04652b459e8c752598d25f00447b52a0db28bb14bfd",
+  "protocolpath": "research_lab/plans/ecology-source-gate-v1.md",
+  "status": "incomplete",
+  "receipt_review": {
+    "reviewer": "research_scout",
+    "bound_sha256": "0f4305b71365a0d6d034f8eec50c91d4ab7c0ef9c8ad1d89d4d9976efa404d27",
+    "verdict": "go"
+  }
+}

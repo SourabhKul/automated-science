@@ -1,0 +1,55 @@
+{
+  "actual_fit_calls": 0,
+  "actual_model_calls": 0,
+  "actual_network_calls": 0,
+  "actual_simulator_calls": 0,
+  "artifact_temp_bytes_before_receipt": 2985,
+  "authorization": "root_pi conditional GO for this one offline fixture check",
+  "check_id": "ecology-source-gate-check-20261102-v1",
+  "command": "in-process unittest.TextTestRunner(verbosity=2) over tests/test_ecology_source_gate.py",
+  "elapsed_wall_seconds": 0.069849,
+  "errors": 0,
+  "exception": null,
+  "exit_code": 0,
+  "failure_reason": null,
+  "failures": 0,
+  "file_hashes": {
+    "research_lab/protocols/ecology-source-gate-2026-11-02-v2.md": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+    "scripts/ecology_source_gate.py": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9",
+    "tests/test_ecology_source_gate.py": "c90626e101c5c18f70a663481fa6badf38700d49f049509664765389572b24fc"
+  },
+  "finished_at_utc": "2026-11-02T23:35:25.876614+00:00",
+  "independent_review": {
+    "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+    "reviewer": "lab_reviewer",
+    "script_sha256": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9",
+    "test_sha256": "c90626e101c5c18f70a663481fa6badf38700d49f049509664765389572b24fc",
+    "verdict": "go"
+  },
+  "max_artifact_temp_receipt_bytes": 4194304,
+  "max_sampled_rss_bytes": 268435456,
+  "peak_artifact_temp_bytes_before_receipt": 3933515,
+  "peak_artifact_temp_receipt_bytes": 3933515,
+  "peak_process_rss_bytes": 41598976,
+  "receipt_bytes": 2289,
+  "receipt_reserve_bytes": 65536,
+  "retained_bytes_after_receipt": 5274,
+  "rss_cap_exceeded": false,
+  "rss_measurement": "resource.getrusage(RUSAGE_SELF).ru_maxrss in the same process as the test runner; high-water mark",
+  "schema": "offline-fixture-check-v1",
+  "started_at_utc": "2026-11-02T23:35:25.806660+00:00",
+  "status": "pass",
+  "stderr": {
+    "bytes": 2985,
+    "sha256": "8da83334ceb9c5e26ce3e3752b5a725c10ed7f469110bc7aaa3f3574fbddce20"
+  },
+  "stdout": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "temporary_files_remaining": [],
+  "test_file": "tests/test_ecology_source_gate.py",
+  "tests_run": 17,
+  "timed_out": false,
+  "timeout_seconds": 60
+}

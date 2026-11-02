@@ -1,0 +1,51 @@
+{
+  "id": "ecology-source-gate-code-go-20261102-v1",
+  "reviewer": "lab_reviewer",
+  "scope": "one_v2_source_gate_execution",
+  "verdict": "go_conditional_on_PI_launch_GO",
+  "bindings": {
+    "script": {
+      "path": "scripts/ecology_source_gate.py",
+      "sha256": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9"
+    },
+    "tests": {
+      "path": "tests/test_ecology_source_gate.py",
+      "sha256": "c90626e101c5c18f70a663481fa6badf38700d49f049509664765389572b24fc"
+    },
+    "protocol_sha256": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+    "fixture_receipt": {
+      "path": "research_lab/evidence/ecology-source-gate-check-20261102-v1/receipt.json",
+      "sha256": "013133820840be09a022d6fe0630a22b65f8fca3187bdf3c79e6667d1a4abe40",
+      "status": "pass",
+      "tests_run": 17,
+      "failures": 0,
+      "errors": 0,
+      "elapsed_wall_seconds": 0.069849,
+      "peak_process_rss_bytes": 41598976,
+      "peak_artifact_temp_receipt_bytes": 3933515,
+      "retained_bytes_after_receipt": 5274,
+      "actual_network_calls": 0,
+      "actual_model_calls": 0,
+      "actual_simulator_calls": 0,
+      "actual_fit_calls": 0
+    }
+  },
+  "one_run_limits": {
+    "metadata_gets": 3,
+    "file_gets": 2,
+    "total_gets": 5,
+    "wall_seconds": 90,
+    "per_get_seconds": 15,
+    "sampled_client_rss_bytes": 268435456,
+    "downloaded_body_bytes": 1048576,
+    "transaction_bytes_including_temporary_files_and_receipt": 4194304,
+    "authentication": false,
+    "redirects": false,
+    "retries_or_fallbacks": false,
+    "model_calls": 0,
+    "simulator_calls": 0,
+    "likelihood_calls": 0,
+    "forecast_calls": 0
+  },
+  "condition": "The PI must record a separate launch GO before the single source execution. The executor must recheck the three bound hashes immediately before launch. This review does not authorize another attempt or a later fit."
+}

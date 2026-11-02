@@ -1,0 +1,123 @@
+{
+  "run_id": "ecology-source-gate-20261102-v2",
+  "status": "held_failure",
+  "stage": "source_gate",
+  "fit_readiness": "HOLD",
+  "source": null,
+  "files": {},
+  "requests": [
+    {
+      "number": 1,
+      "kind": "metadata",
+      "method": "GET",
+      "requested_url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.3kb72",
+      "final_url": "https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.3kb72",
+      "status": 200,
+      "body_bytes": 7812,
+      "body_sha256": "169e9d32d9481dd02fb7fe4978ded757a3d4cc1b800ee6715aedb9d58563c7d7",
+      "partial_path": null,
+      "error": null,
+      "saved_path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-01.json"
+    },
+    {
+      "number": 2,
+      "kind": "metadata",
+      "method": "GET",
+      "requested_url": "https://datadryad.org/api/v2/versions/25141",
+      "final_url": "https://datadryad.org/api/v2/versions/25141",
+      "status": 200,
+      "body_bytes": 7849,
+      "body_sha256": "ee0936cbb4e9a93662ffd633ee8cd2197452a95f425dbdffb27d6b0fdcf1b09a",
+      "partial_path": null,
+      "error": null,
+      "saved_path": "data/real/ecology/source_provenance/ecology-source-gate-20261102-v2/metadata-02.json"
+    }
+  ],
+  "frozen_inputs": {
+    "research_lab/protocols/ecology-source-gate-2026-11-02-v2.md": "f1fdb9c65b7ff8b964ddad898111b6151320742a79d9ff9d4c31cc434cf79919",
+    "research_lab/plans/ecology-source-gate-v1.md": "cd35ff8ab2251cbc9837f04652b459e8c752598d25f00447b52a0db28bb14bfd",
+    "research_lab/proposals/restart-2026-11-02/ecology-source-gate-v2.json": "95bb6e330cb3419f8fddea9b8a110e3cf5163e1ee2f8ade6adc1c4a168e84941",
+    "research_lab/reviews/2026-11-02T1806Z/ecology-v2-source-review.json": "0c4d645bffb713d415a32a8d8ab6daf067253b91396e1dce7527ff00a9130603",
+    "research_lab/reviews/2026-11-02T1806Z/ecology-v2-peer-review.json": "dbeffccd44804c37d3e122d9e89edbf90471c052ff05465ca0cf4e928a6398c4",
+    "research_lab/reviews/2026-11-02T1806Z/ecology-v2-source-check-summary.md": "ea2376f220e1123f2fc24037025c034bccdf4dd9e7bb509c4605f3bdb1df5570"
+  },
+  "code_sha256": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9",
+  "map_sha256": null,
+  "map_path": null,
+  "limits": {
+    "metadata_gets": 3,
+    "file_gets": 2,
+    "requests": 5,
+    "metadata_bytes_each": 131072,
+    "file_bytes_each": 262144,
+    "all_downloaded_bytes": 1048576,
+    "wall_seconds": 90.0,
+    "get_seconds_each": 15.0,
+    "sampled_rss_bytes": 268435456,
+    "transaction_bytes": 4194304
+  },
+  "resource": {
+    "data_bytes_before": 6267893,
+    "data_bytes_after": 6283554,
+    "artifact_bytes_before": 209647955,
+    "artifact_bytes_after": 209647955,
+    "retained_run_bytes": 19435,
+    "transaction_peak_bytes": 286340,
+    "data_after_measurement_point": "after acquisition, before receipt finalization",
+    "downloaded_body_bytes": 15661,
+    "elapsed_seconds": 0.569315,
+    "rss_samples": [
+      {
+        "elapsed_seconds": 0.07976,
+        "rss_high_water_bytes": 31768576
+      },
+      {
+        "elapsed_seconds": 0.296191,
+        "rss_high_water_bytes": 33587200
+      },
+      {
+        "elapsed_seconds": 0.297611,
+        "rss_high_water_bytes": 33603584
+      },
+      {
+        "elapsed_seconds": 0.505536,
+        "rss_high_water_bytes": 33751040
+      }
+    ],
+    "rss_method": "sampled resource.ru_maxrss OS high-water; checkpoint samples, not a cgroup hard kill",
+    "rss_hard_limit": "checked at network/parser checkpoints",
+    "request_counts": {
+      "metadata": 2,
+      "file": 0
+    },
+    "peak_sampled_rss_bytes": 33751040,
+    "elapsed_seconds_before_receipt_finalization": 0.56849,
+    "receipt_finalization_seconds_through_first_write": 0.062199,
+    "elapsed_seconds_before_last_atomic_receipt_update": 0.569314,
+    "elapsed_measurement_point": "includes first receipt write; excludes the final atomic receipt replacement",
+    "elapsed_seconds_after_last_receipt_write": 0.569723,
+    "elapsed_seconds_after_finalization_attempt": 0.56973
+  },
+  "calls": {
+    "model": 0,
+    "simulator": 0,
+    "likelihood": 0,
+    "forecast": 0
+  },
+  "missing_costs": [
+    "remote server processing is not observable"
+  ],
+  "header_roles_verified_by_source": false,
+  "failure_code": "version_identity_mismatch",
+  "actual_requests": 2,
+  "outcome_retention": {
+    "interpreted_metadata_records": {
+      "converted": false,
+      "retained": false,
+      "emitted": false
+    },
+    "raw_source_files_retained_locally": [],
+    "raw_store_path": "data/real/ecology/raw/ecology-source-gate-20261102-v2"
+  },
+  "completion_status": "held_failure"
+}

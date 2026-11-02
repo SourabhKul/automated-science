@@ -1,0 +1,25 @@
+{
+  "id": "ecology-v2-receipt-factual-review-correction-20261102",
+  "kind": "metadata_correction",
+  "corrects_review": {
+    "path": "research_lab/reviews/2026-11-02T2310Z/ecology-v2-receipt-factual-review.json",
+    "sha256": "a412cc841aacc7a0929b0490323a725475339d86d7c295984bddfc2c15d14b58"
+  },
+  "bound_receipt_payload_sha256_excluding_receipt_review": "0add846baf246c81133fef184d4bf1ab86b4f63b7556124cceaf9a035c7cfdfb",
+  "correction": {
+    "field": "bindings.code_go.test_sha256",
+    "previous_value": "c90626e101c5c18f70a663481fa6badf38700d49f049509b9b9248ed17288b65b",
+    "correct_value": "c90626e101c5c18f70a663481fa6badf38700d49f049509664765389572b24fc"
+  },
+  "original_code_go": {
+    "path": "research_lab/reviews/2026-11-02T2310Z/ecology-source-execution-code-go.json",
+    "sha256": "aa90bba2a140c751e1480a33a882dbdd0451189db7c8cac7b400a5760bc4ffb7",
+    "reviewer": "lab_reviewer",
+    "verdict": "go_conditional_on_PI_launch_GO",
+    "script_sha256": "72e0b13f25c4ef630e3275a1d6f4f2acab9f10b61cc2da0b8d19f7efed8d10a9",
+    "test_sha256": "c90626e101c5c18f70a663481fa6badf38700d49f049509664765389572b24fc"
+  },
+  "original_review_file_preserved": true,
+  "factual_go_unchanged": true,
+  "scope": "metadata correction only; no source or test execution"
+}
