@@ -1,0 +1,21 @@
+{
+  "id": "ecology-source-review-final-20261102-v1",
+  "proposal_id": "ecology-source-gate-20261102-v1",
+  "proposal_sha256": "e1fb2cd82a081239f20dafa730c7bb7e53a0f437ef56ddfa1b414c6c568811e7",
+  "proposal_raw_sha256": "0dd1979facfd1bbfa1253d376a09bcf906739855549743aa3b0b30fe53845767",
+  "plan_sha256": "cd35ff8ab2251cbc9837f04652b459e8c752598d25f00447b52a0db28bb14bfd",
+  "reviewer": "source_gate_final",
+  "scope": {
+    "stage": "source_gate"
+  },
+  "verdict": "go",
+  "scores": {
+    "scientific_value": 3,
+    "data_readiness": 4,
+    "identifiability": 2,
+    "falsifiability": 5,
+    "compute_fit": 5
+  },
+  "blockers": [],
+  "critique": "GO covers only the source and metadata stage: bounded acquisition of the two selected CSVs, source-integrity checks, and metadata-field mapping. It authorizes no fitting, count interpretation, final split, or held-out scoring. The exact plan calls for a separate code review before the reader runs.\nThis is an independent review of the expanded card and its hash-pinned plan. It does not reuse the earlier peer review, whose GO was limited to row-free source and measurement-contract review.\nThe plan resolves the earlier source-stage holds: it limits methods context to already inspected Dryad usage notes without another paper request; maps all prey, predator, and parasite combinations against four explicit prey-present arms; requires PARA and conditional DIDI coverage per candidate repID; and keeps count and Colonies opaque without outcome-based row deletion.\nThe card's cheap_test field does not name the plan's SERRA coverage, missingness, and join-report requirements. Because the card hash-pins this plan and calls for a full per-unit coverage map, I read the plan's more specific output contract as governing. The implementation and receipt must include that complete SERRA map and preserve unmatched records.\nNo source-stage blocker remains if the stage follows the plan's pre-GET identity, license, size, checksum, byte-cap, and request-cap checks. Unresolved microcosm independence, cross-file unit joins, exposure units, and sampling/removal facts remain future fit-readiness risks and require HOLD for any fit until resolved or explicitly bounded in a separately reviewed design."
+}

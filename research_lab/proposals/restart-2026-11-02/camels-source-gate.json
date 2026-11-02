@@ -1,0 +1,21 @@
+{
+  "id": "camels-source-gate-20261102-v1",
+  "stage": "source_gate",
+  "author": "root_pi",
+  "research_model": "qwen3.8-flash-next-iq3_s",
+  "question": "Can a small train-only recession test compare one and two storage time scales under a fixed forcing and flow measurement contract?",
+  "hypothesis": "A source and QC contract may support a later short-window predictive comparison; readiness is currently unresolved.",
+  "sources": [
+    {"url": "https://doi.org/10.5194/hess-21-5293-2017", "verified": true, "note": "Primary CAMELS source paper and local manifests were reviewed during screening."},
+    {"url": "https://zenodo.org/records/15529996", "verified": true, "note": "Official versioned source metadata identifies the large archive; no new archive acquisition is selected."}
+  ],
+  "measurement": "Daily forcing and gauged flow require area conversion, zero/missing/censoring rules and a documented QC contract. The A:< token remains unresolved.",
+  "independent_unit": "Basin for spatial transfer; preserve time dependence and whole recession windows within each basin.",
+  "models": ["one linear reservoir recession", "two exponential reservoir recession"],
+  "baseline": "Later direct exponential regression or likelihood, before any ABC comparison.",
+  "reference": "Later analytic curve and tractable observation likelihood; no reference implementation or numerical study selected now.",
+  "split": "Preserve existing 36 train, 12 selection and 16 external basin groups. External observations remain sealed. No event selection from held-out flow.",
+  "cheap_test": "HOLD. Before a separate stage, scope a metadata/QC and precipitation-only window contract using the existing manifest. Do not download or parse the large archive now.",
+  "budget": {"network_requests": 0, "wall_seconds": 0, "peak_rss_bytes": 0, "artifact_transaction_bytes": 0, "simulator_calls": 0, "likelihood_calls": 0, "forecast_calls": 0, "llm_calls": 0},
+  "risks": ["QC A:< is unresolved.", "Window selection, snow and human-impact scope are not frozen.", "A two-reservoir model can have weak amplitude/rate directions.", "Archive acquisition is a new cost and has no allocation in this card."]
+}

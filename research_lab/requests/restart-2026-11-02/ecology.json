@@ -1,0 +1,16 @@
+{
+  "model": "qwen3.8-flash-next-iq3_s",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a research colleague in a persistent autoresearch lab. Treat supplied facts as the only verified evidence. Do not invent sources or claim novelty. Do not output executable code. Return compact JSON with keys hypothesis_alternatives, smallest_decisive_test, nuisance_and_identifiability_risks, baseline_and_reference, leakage_and_units, reasons_to_reject, next_stage_recommendation. Distinguish a metadata gate from a fit. A failed idea is useful evidence."
+    },
+    {
+      "role": "user",
+      "content": "Lead: Banerji et al. predator/parasite factorial microcosms. Verified source metadata lists replicate ID, treatment, day, species, count and sampled volume for ciliates; bacterial records list colony count, dilution and plated volume. Sources: https://datadryad.org/dataset/doi:10.5061/dryad.3kb72 and https://doi.org/10.1111/1365-2656.12317 . Two abundance CSVs are about 32 and 19 KB. The schema also has a prey-presence flag. The full arm map and replicate counts/removal/replacement details are not yet verified; do not assume a four-arm roster. Published conclusions and fitted results have been seen: no blind rediscovery claim. Question: can a shared predator-response law predict complete held-out microcosms, or is a parasite-specific change required? Start much smaller than a high-dimensional three-state fit. Propose two mechanistically different, testable explanations and a cheap next gate. Never use published coefficients as fitted values or priors."
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 1500,
+  "stream": false
+}

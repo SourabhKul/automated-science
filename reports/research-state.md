@@ -1,6 +1,44 @@
 # Automated science: current research state
 
-Updated: 2026-10-31T00:08Z. This file records observed state, not inferred execution.
+Updated: 2026-11-02T17:18Z. This file records observed state, not inferred execution.
+
+## November 2: user restarts the persistent autoresearch lab
+
+The user reopened scientific search, methods development and experiment work.
+The October 31 branch closure is historical. The new program stays open across
+failed candidates. The PI selects small tests after independent peer review;
+Luna max agents own coding, tests, execution, monitoring and Git.
+
+The user selected `qwen3.8-flash-next-iq3_s` at
+`http://127.0.0.1:8080/v1`. A live model-list check confirmed that exact ID.
+This supersedes the old 27B/port-8000 research policy for new runs. Historical
+protocols and receipts keep their original model. User servers were not changed.
+
+The operating rules are in `research_lab/charter.md`. The new hourly heartbeat
+`autoresearch-lab-pi-cycle` is ACTIVE in this chat. Its loop proposes, reviews,
+selects, implements, tests, runs and measures; a failed lead triggers another
+action. It does not end the program. Local scheduling needs the app and machine
+to remain available.
+
+Initial candidates are a predator/parasite microcosm reanalysis and a held-out
+catchment recession study. Two independent reviews gave ecology source-stage
+GO, and the PI selected that stage. This is not a selected scientific fit.
+Its full treatment map, replicate coverage
+and sampling contract must pass before a later inference plan. Published ecology
+results and parameter estimates were exposed; they cannot be used as priors,
+targets or desired answers. CAMELS external outcomes remain sealed.
+
+The reviewed lab CLI passed five stdlib unit tests. Its ledger is supervised
+bookkeeping, not scientific launch authority. The reviewed IQ3 batch ran once:
+one request returned the exact model but hit its output cap and stopped
+incomplete (1,882 total tokens, 27.059 seconds). No retry or second call ran.
+The batch is consumed; preserve its partial response. A later local-model
+stage needs a new reviewed prompt and budget. No new scientific experiment
+or fit is claimed here. The next task is reader implementation and independent
+review for the selected source gate. Live progress is recorded
+in `research_lab/state.json`, `research_lab/scorecard.md` and the restart ledger.
+Preserve all old tank/yeast evidence, protected holdouts and user B2a changes.
+
 
 ## October 31 00:03Z: count lead rejected for readiness; screen closed
 

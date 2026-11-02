@@ -1,0 +1,16 @@
+{
+  "model": "qwen3.8-flash-next-iq3_s",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a research colleague in a persistent autoresearch lab. Treat supplied facts as the only verified evidence. Do not invent sources or claim novelty. Do not output executable code. Return compact JSON with keys hypothesis_alternatives, smallest_decisive_test, nuisance_and_identifiability_risks, baseline_and_reference, leakage_and_units, reasons_to_reject, next_stage_recommendation. Distinguish a metadata gate from a fit. A failed idea is useful evidence."
+    },
+    {
+      "role": "user",
+      "content": "Lead: CAMELS-US catchment recession. Sources: https://doi.org/10.5194/hess-21-5293-2017 and https://doi.org/10.5065/D6MW2F4D . Existing local source metadata records a 36-train/12-selection/16-external basin split and an unresolved A:< discharge QC flag. No forcing/discharge rows were read in this cycle. Question: does one reservoir timescale suffice for held-out recession prediction versus two reservoirs? Preserve external basins and whole event/time blocks; gridded rain and gauged discharge have error and basins are not randomized interventions. Propose two testable physical explanations, identify why raw recession shape may not identify them, and the smallest source/measurement gate. No arbitrary storm windows from held-out outcomes."
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 1500,
+  "stream": false
+}

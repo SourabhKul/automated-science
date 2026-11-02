@@ -1,0 +1,19 @@
+{
+  "id": "ecology-source-review-peer-20261102-v1",
+  "proposal_id": "ecology-source-gate-20261102-v1",
+  "proposal_sha256": "e1fb2cd82a081239f20dafa730c7bb7e53a0f437ef56ddfa1b414c6c568811e7",
+  "reviewer": "lab_reviewer",
+  "scope": {
+    "stage": "source_gate"
+  },
+  "verdict": "go",
+  "scores": {
+    "scientific_value": 3,
+    "data_readiness": 4,
+    "identifiability": 2,
+    "falsifiability": 5,
+    "compute_fit": 5
+  },
+  "blockers": [],
+  "critique": "GO for the bounded source and metadata gate only. The exact-source scope, opaque outcome handling, whole-repID coverage rules, and stage limits are clear. The card reports that published findings and parameter estimates were exposed; treat them as prior work, not priors or desired answers. The cited Dryad metadata and paper claims are supplied project evidence for this review; I did not independently access the pages or any data rows. Before GET, verify the exact deposition version, file IDs, sizes, license, and available digests as the plan requires. Keep missing unit, sampling, join, and exposure facts unresolved. Coverage minima do not establish power, independence, or fit readiness. This GO authorizes no count interpretation, fitting, final split, or held-out scoring."
+}

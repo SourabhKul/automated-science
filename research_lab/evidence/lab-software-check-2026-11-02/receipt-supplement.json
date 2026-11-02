@@ -1,0 +1,29 @@
+{
+  "artifact_cap_bytes": 8388608,
+  "observed_rss_bytes": 393216,
+  "receipt_sha256": "17dc4751fda5349d09a07bfb69f0dff457b438636feb5014ce2c4359a2e80f52",
+  "result": "5 tests passed; test command exit 0",
+  "retained_files_before_supplement": [
+    {
+      "bytes": 1467,
+      "path": "receipt.json",
+      "sha256": "17dc4751fda5349d09a07bfb69f0dff457b438636feb5014ce2c4359a2e80f52"
+    },
+    {
+      "bytes": 103,
+      "path": "stderr.txt",
+      "sha256": "c4b1fc5b17ccc12075c5cfe1cc38df743d7f72b116ba6ff9fafc161c1a40de72"
+    },
+    {
+      "bytes": 0,
+      "path": "stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "retained_total_bytes_including_supplement": 2591,
+  "rss_peak_assessment": "unknown; one early sample does not establish peak RSS",
+  "rss_samples": 1,
+  "run_capture_peak_bytes": 103,
+  "run_capture_scope": "stdout/stderr and TMPDIR during test capture; excludes receipt publication",
+  "schema": "lab-software-check-accounting-v1"
+}

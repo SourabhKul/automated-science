@@ -1,0 +1,51 @@
+{
+  "artifact_cap_exceeded": false,
+  "artifact_plus_temp_cap_bytes": 8388608,
+  "call_counts": {
+    "data_accesses": 0,
+    "forecast_calls": 0,
+    "model_requests": 0,
+    "network_calls": 0,
+    "simulator_calls": 0,
+    "unittest_discovery_invocations": 1
+  },
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "tests",
+    "-p",
+    "test_autoresearch_lab.py"
+  ],
+  "elapsed_wall_seconds": 0.1141,
+  "ended_at_utc": "2026-11-02T17:15:59Z",
+  "exit_code": 0,
+  "file_hashes": {
+    "scripts/autoresearch_lab.py": "38070425699f6db349ff11c65e9fc859b6883b21698eef2a62e6d85c341fc296",
+    "tests/test_autoresearch_lab.py": "fd4d6d790f8ec3b93d3718803387354847e30da300d70f872a0702ce08d3ba27"
+  },
+  "hard_memory_limit": "unavailable on this macOS host; RSS sampled and process stopped if a sample exceeded cap",
+  "logs": {
+    "stderr.txt": {
+      "bytes": 103,
+      "sha256": "c4b1fc5b17ccc12075c5cfe1cc38df743d7f72b116ba6ff9fafc161c1a40de72"
+    },
+    "stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "peak_artifact_plus_temp_bytes": 103,
+  "peak_sampled_rss_bytes": 393216,
+  "rss_cap_bytes": 536870912,
+  "rss_cap_exceeded": false,
+  "rss_samples": 1,
+  "rss_sampling_interval_seconds": 0.1,
+  "schema": "lab-software-check-v1",
+  "started_at_utc": "2026-11-02T17:15:59Z",
+  "status": "pass",
+  "timed_out": false,
+  "timeout_seconds": 60
+}
